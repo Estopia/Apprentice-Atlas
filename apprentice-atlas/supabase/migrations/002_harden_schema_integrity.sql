@@ -28,15 +28,6 @@ alter table public.sync_runs
 alter table public.sync_runs
   drop constraint if exists sync_runs_check;
 
--- Normalize source metadata before installing exact, permanent constraints.
-update public.job_sources
-set provider = 'legacy-source-' || id::text
-where btrim(provider) = '';
-
-update public.job_sources
-set external_id = 'legacy-' || id::text
-where btrim(external_id) = '';
-
 update public.sync_runs
 set provider = case
   when btrim(provider) = '' then 'legacy-run-' || id::text
@@ -106,26 +97,6 @@ alter table public.sync_runs
 
 alter table public.sync_runs
   alter column source_key set not null;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conrelid = 'public.job_sources'::regclass
-      and conname = 'job_sources_provider_external_id_check'
-  ) then
-    alter table public.job_sources
-      add constraint job_sources_provider_external_id_check
-      check (
-        btrim(provider) = provider
-        and btrim(provider) <> ''
-        and btrim(external_id) = external_id
-        and btrim(external_id) <> ''
-      );
-  end if;
-end
-$$;
 
 do $$
 begin
