@@ -13,27 +13,31 @@ as $$
 declare
   expired_count integer;
 begin
-  with stale_sources as (
-    update public.job_sources
-    set status = 'retired'
-    where provider = p_provider
-      and status = 'active'
-      and fetched_at < p_seen_before
-    returning job_id
-  ), expired_jobs as (
-    update public.jobs as jobs
-    set status = 'expired', updated_at = p_seen_before
-    where jobs.status = 'active'
-      and jobs.id in (select job_id from stale_sources where job_id is not null)
-      and not exists (
-        select 1
-        from public.job_sources as remaining_sources
-        where remaining_sources.job_id = jobs.id
-          and remaining_sources.status = 'active'
-      )
-    returning jobs.id
-  )
-  select count(*)::integer into expired_count from expired_jobs;
+  update public.job_sources
+  set status = 'retired'
+  where provider = p_provider
+    and status = 'active'
+    and fetched_at < p_seen_before;
+
+  update public.jobs as jobs
+  set status = 'expired', updated_at = p_seen_before
+  where jobs.status = 'active'
+    and exists (
+      select 1
+      from public.job_sources as retired_sources
+      where retired_sources.job_id = jobs.id
+        and retired_sources.provider = p_provider
+        and retired_sources.status = 'retired'
+        and retired_sources.fetched_at < p_seen_before
+    )
+    and not exists (
+      select 1
+      from public.job_sources as remaining_sources
+      where remaining_sources.job_id = jobs.id
+        and remaining_sources.status = 'active'
+    );
+
+  get diagnostics expired_count = row_count;
 
   return expired_count;
 end;

@@ -31,6 +31,9 @@ describe('atomic sync RPC permissions', () => {
     expect(expirationMigration).toContain('grant execute on function public.expire_stale_source_jobs(text, timestamptz) to service_role;');
     expect(expirationMigration).toContain('update public.job_sources');
     expect(expirationMigration).toContain('update public.jobs as jobs');
+    expect(expirationMigration).toContain('get diagnostics expired_count = row_count;');
+    expect(expirationMigration.indexOf('update public.job_sources')).toBeLessThan(expirationMigration.indexOf('update public.jobs as jobs'));
+    expect(expirationMigration).not.toMatch(/with\s+stale_sources\s+as\s*\(\s*update/i);
     expect(expirationMigration).toContain("has_function_privilege('service_role'");
   });
 });
