@@ -47,7 +47,7 @@ create table public.job_sources (
 create table public.sync_runs (
   id uuid primary key default gen_random_uuid(),
   provider text not null,
-  source_id uuid references public.job_sources(id) on delete set null,
+  source_key text not null,
   status text not null check (status in ('running', 'succeeded', 'failed', 'partial')),
   started_at timestamptz not null default now(),
   finished_at timestamptz,
@@ -57,7 +57,12 @@ create table public.sync_runs (
   expired_count integer not null default 0 check (expired_count >= 0),
   error_count integer not null default 0 check (error_count >= 0),
   error_details jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (
+    provider <> ''
+    and source_key <> ''
+    and source_key like provider || ':%'
+  )
 );
 
 create table public.job_translations (
@@ -73,7 +78,11 @@ create table public.job_translations (
   published_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (job_id, language_code)
+  unique (job_id, language_code),
+  check (
+    (status = 'published' and published_at is not null)
+    or (status in ('draft', 'archived') and published_at is null)
+  )
 );
 
 create table public.favorites (
@@ -118,8 +127,9 @@ create index jobs_category_idx on public.jobs (category);
 create index jobs_job_type_idx on public.jobs (job_type);
 create index jobs_active_status_idx on public.jobs (status) where status = 'active';
 create index jobs_coordinates_idx on public.jobs (latitude, longitude);
+create index jobs_tags_gin_idx on public.jobs using gin (tags);
 create index job_sources_job_id_idx on public.job_sources (job_id);
-create index sync_runs_provider_started_idx on public.sync_runs (provider, started_at desc);
+create index sync_runs_provider_source_started_idx on public.sync_runs (provider, source_key, started_at desc);
 create index job_translations_job_status_idx on public.job_translations (job_id, status);
 create index favorites_user_id_idx on public.favorites (user_id);
 create index job_ai_content_job_idx on public.job_ai_content (job_id, language_code);
@@ -161,17 +171,19 @@ alter table public.job_ai_content enable row level security;
 create policy "Anyone can read active jobs"
 on public.jobs for select
 to anon, authenticated
-using (status = 'active');
+using (status = 'active' and (expires_at is null or expires_at > now()));
 
 create policy "Anyone can read published translations for active jobs"
 on public.job_translations for select
 to anon, authenticated
 using (
   status = 'published'
+  and (published_at is not null)
   and exists (
     select 1 from public.jobs
     where jobs.id = job_translations.job_id
       and jobs.status = 'active'
+      and (jobs.expires_at is null or jobs.expires_at > now())
   )
 );
 

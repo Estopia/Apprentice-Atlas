@@ -26,4 +26,6 @@ No-scraping rule: Apprentice Atlas must not scrape either source's public websit
 
 RLS exposes only active jobs and published translations to anonymous/authenticated clients. Favorites are private to the authenticated owner. `job_sources`, `sync_runs`, and cached AI content have no client read policies; ingestion and AI functions are responsible for privileged access.
 
+Each `sync_runs` row records a provider configuration run, not an individual `job_sources` row. `provider` identifies the adapter and `source_key` must be namespaced as `provider:configuration` (for example, `find-apprenticeship:default`); the migration check prevents a mismatched provider prefix. Individual external listings remain in `job_sources`.
+
 The MVP deliberately stores latitude/longitude as numeric columns and uses bounding-box filtering. PostGIS is intentionally not required yet.
