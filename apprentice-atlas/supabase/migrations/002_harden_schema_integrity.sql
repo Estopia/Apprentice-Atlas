@@ -34,8 +34,12 @@ set provider = 'legacy-source-' || id::text
 where btrim(provider) = '';
 
 update public.job_sources
+set external_id = btrim(external_id)
+where external_id is not null;
+
+update public.job_sources
 set external_id = 'legacy-' || id::text
-where btrim(external_id) = '';
+where external_id = '';
 
 update public.sync_runs
 set provider = case
