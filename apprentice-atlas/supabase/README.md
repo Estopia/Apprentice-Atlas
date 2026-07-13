@@ -17,6 +17,13 @@ npx supabase db reset
 
 Production jobs may only be ingested by trusted Supabase Edge Functions or other server-side code using the service role. Those functions must use approved official-source adapters, retain the official source URL and external ID, and write provider payloads to `job_sources`. The client must never receive source payloads, sync-run records, provider credentials, or the service-role key. Do not load `seed.sql` into production.
 
+### Official sources and access boundaries
+
+- **United Kingdom — Find an apprenticeship Display Advert API v2:** the official live base endpoint is `https://api.apprenticeships.education.gov.uk/vacancies`. Use the [official Display Advert API developer documentation](https://developer.apprenticeships.education.gov.uk/Documentation/display-advert-api-v2), including its API-key and version-header requirements. Calls belong in a server-side adapter; never expose the API key in the app.
+- **Germany — Bundesagentur für Arbeit Jobsuche:** this is the intended official German source, surfaced through the [BA Jobsuche](https://www.arbeitsagentur.de/jobsuche). The official read API endpoint, API availability for this product, authentication requirements, rate limits, and reuse terms still need confirmation directly with the Bundesagentur für Arbeit. Until that confirmation is recorded, do not implement against an assumed endpoint or treat third-party API documentation as an official access grant.
+
+No-scraping rule: Apprentice Atlas must not scrape either source's public website or bypass authentication, rate limits, robots controls, or terms of use. Ingestion is permitted only through a confirmed, authorized official API/feed or an explicitly approved server-side integration. Every adapter must keep credentials server-side, preserve the canonical source URL, and record the provider external ID.
+
 RLS exposes only active jobs and published translations to anonymous/authenticated clients. Favorites are private to the authenticated owner. `job_sources`, `sync_runs`, and cached AI content have no client read policies; ingestion and AI functions are responsible for privileged access.
 
 The MVP deliberately stores latitude/longitude as numeric columns and uses bounding-box filtering. PostGIS is intentionally not required yet.
