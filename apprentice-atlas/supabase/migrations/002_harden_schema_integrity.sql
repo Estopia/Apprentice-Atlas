@@ -20,23 +20,20 @@ begin
   ) then
     execute $backfill$
       update public.sync_runs as runs
-      set source_key = sources.provider || ':' || sources.external_id
+      set source_key = runs.provider || ':' || btrim(sources.external_id)
       from public.job_sources as sources
       where runs.source_id = sources.id
+        and btrim(sources.external_id) <> ''
         and (runs.source_key is null or btrim(runs.source_key) = '')
     $backfill$;
 
-    -- Rows whose old source_id cannot be joined, plus rows without one, retain
-    -- a deterministic provider-scoped fallback rather than losing run identity.
+    -- Rows whose old source_id cannot be joined, plus rows whose matched source
+    -- has an empty external_id, retain a deterministic provider-scoped fallback
+    -- rather than losing run identity. A NULL source_id uses the run id.
     execute $fallback$
       update public.sync_runs as runs
       set source_key = runs.provider || ':legacy-' || coalesce(runs.source_id::text, runs.id::text)
       where (runs.source_key is null or btrim(runs.source_key) = '')
-        and not exists (
-          select 1
-          from public.job_sources as sources
-          where sources.id = runs.source_id
-        )
     $fallback$;
   else
     -- This is the rerun path: source_id was already removed, so only fill
