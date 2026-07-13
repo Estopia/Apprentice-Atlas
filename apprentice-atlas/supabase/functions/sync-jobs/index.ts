@@ -6,6 +6,7 @@ import { SourceConfigurationError, type SourceAdapter } from '../_shared/source-
 import { isSyncRequestAuthorized } from '../_shared/sync-auth.ts';
 import { runSync, type SyncRepository } from '../_shared/sync-runner.ts';
 import { jobInsertPayload } from '../_shared/sync-helpers.ts';
+import { parseSyncRequest } from '../_shared/sync-request.ts';
 
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Promise<Response>): void } | undefined;
 
@@ -42,11 +43,9 @@ function createSupabaseRepository(supabase: SupabaseLike): SyncRepository {
       return { jobId: result.data[0].job_id, inserted: Boolean(result.data[0].inserted) };
     },
     async expireStaleListings(provider, seenBefore) {
-      const sources = await supabase.from('job_sources').update({ status: 'retired' }).eq('provider', provider).eq('status', 'active').lt('fetched_at', seenBefore).select('job_id');
-      if (sources.error) throw new Error(`Unable to retire stale sources: ${sources.error.message}`);
-      const jobs = await supabase.from('jobs').update({ status: 'expired', updated_at: seenBefore }).eq('source_name', provider).eq('status', 'active').lt('last_seen_at', seenBefore).select('id');
-      if (jobs.error) throw new Error(`Unable to expire stale jobs: ${jobs.error.message}`);
-      return jobs.data?.length ?? 0;
+      const result = await supabase.rpc('expire_stale_source_jobs', { p_provider: provider, p_seen_before: seenBefore });
+      if (result.error || typeof result.data !== 'number') throw new Error(`Unable to atomically expire stale listings: ${result.error?.message ?? 'missing expiration count'}`);
+      return result.data;
     },
     async finishRun(runId, payload) {
       const result = await supabase.from('sync_runs').update(payload).eq('id', runId);
@@ -66,7 +65,9 @@ export async function handleSyncRequest(request: Request): Promise<Response> {
   if (request.method !== 'POST') return json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Use POST' } }, 405);
   if (!isSyncRequestAuthorized(request, { internalSecret: env('SYNC_INTERNAL_SECRET'), serviceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY') })) return json({ error: { code: 'UNAUTHORIZED', message: 'Internal synchronization authorization required' } }, 401);
   try {
-    const body = await request.json().catch(() => ({})) as { provider?: Provider };
+    const parsed = await parseSyncRequest(request);
+    if (parsed.error) return json({ error: parsed.error }, 400);
+    const body = parsed.body;
     const provider = body.provider ?? 'find-apprenticeship';
     if (provider !== 'find-apprenticeship' && provider !== 'bundesagentur-fuer-arbeit') return json({ error: { code: 'INVALID_PROVIDER', message: `Unsupported provider: ${String(provider)}` } }, 400);
     const supabaseUrl = env('SUPABASE_URL');

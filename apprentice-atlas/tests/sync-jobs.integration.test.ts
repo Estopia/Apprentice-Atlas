@@ -123,6 +123,17 @@ describe('sync-jobs lifecycle with a mocked repository', () => {
     expect(repository.operations.filter((operation) => operation.startsWith('expire:'))).toHaveLength(1);
   });
 
+  it('expires stale listings after a valid completed empty sync', async () => {
+    const repository = new MockRepository();
+    await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });
+    const emptyAdapter = adapterFromIds([{ ids: [], nextCursor: null, complete: true }]);
+    const result = await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: emptyAdapter, repository, startedAt: '2026-01-02T00:00:00.000Z', finishedAt: () => '2026-01-02T00:00:00.000Z', pageDelayMs: 0 });
+    expect(result.status).toBe('succeeded');
+    expect(result.fetched_count).toBe(0);
+    expect(result.expired_count).toBe(1);
+    expect(repository.jobs.get('generated-old')?.status).toBe('expired');
+  });
+
   it('records sync error and does not expire on adapter failure', async () => {
     const repository = new MockRepository();
     await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });

@@ -95,8 +95,13 @@ describe('official source adapters', () => {
     expect(page.complete).toBe(true);
   });
 
+  it('treats totalPages zero as a completed empty sync', async () => {
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 0 }), { status: 200 }) });
+    await expect(adapter.fetchPage(null)).resolves.toEqual({ records: [], nextCursor: null, complete: true });
+  });
+
   it('fails when UK totalPages metadata is missing or malformed', async () => {
-    for (const metadata of [{}, { totalPages: 0 }, { totalPages: 'not-a-number' }, { totalPages: 1.5 }]) {
+    for (const metadata of [{}, { totalPages: 'not-a-number' }, { totalPages: 1.5 }]) {
       const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], ...metadata }), { status: 200 }) });
       await expect(adapter.fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
     }

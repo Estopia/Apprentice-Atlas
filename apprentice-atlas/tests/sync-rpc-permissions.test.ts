@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const migration = readFileSync('supabase/migrations/20260714100000_atomic_job_source_sync.sql', 'utf8');
+const expirationMigration = readFileSync('supabase/migrations/20260714110000_atomic_stale_expiration.sql', 'utf8');
 const functionSignature = 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)';
 
 describe('atomic sync RPC permissions', () => {
@@ -19,5 +20,17 @@ describe('atomic sync RPC permissions', () => {
     expect(migration).toContain("has_function_privilege('anon'");
     expect(migration).toContain("has_function_privilege('authenticated'");
     expect(migration).toContain("has_function_privilege('service_role'");
+  });
+
+  it('locks the stale expiration RPC to service_role and keeps it transactional', () => {
+    expect(expirationMigration).toMatch(/create or replace function public\.expire_stale_source_jobs/i);
+    expect(expirationMigration).toMatch(/security definer\s+set search_path = public/i);
+    expect(expirationMigration).toContain('revoke execute on function public.expire_stale_source_jobs(text, timestamptz) from public;');
+    expect(expirationMigration).toContain('revoke execute on function public.expire_stale_source_jobs(text, timestamptz) from anon;');
+    expect(expirationMigration).toContain('revoke execute on function public.expire_stale_source_jobs(text, timestamptz) from authenticated;');
+    expect(expirationMigration).toContain('grant execute on function public.expire_stale_source_jobs(text, timestamptz) to service_role;');
+    expect(expirationMigration).toContain('update public.job_sources');
+    expect(expirationMigration).toContain('update public.jobs as jobs');
+    expect(expirationMigration).toContain("has_function_privilege('service_role'");
   });
 });

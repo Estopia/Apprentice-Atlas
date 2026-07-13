@@ -33,7 +33,8 @@ export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRe
     const payloadObject = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as SourceRecord : {};
     const rawTotalPages = payloadObject.totalPages ?? (payloadObject.pagination as SourceRecord | undefined)?.totalPages;
     const totalPages = typeof rawTotalPages === 'number' ? rawTotalPages : typeof rawTotalPages === 'string' && /^\d+$/.test(rawTotalPages.trim()) ? Number(rawTotalPages) : NaN;
-    if (!Number.isInteger(totalPages) || totalPages < 1 || pageNumber > totalPages) throw new SourcePaginationError('UK apprenticeship API response is missing valid totalPages metadata');
+    if (!Number.isInteger(totalPages) || totalPages < 0 || (totalPages === 0 && (pageNumber !== 1 || records.length > 0)) || (totalPages > 0 && pageNumber > totalPages)) throw new SourcePaginationError('UK apprenticeship API response is missing valid totalPages metadata');
+    if (totalPages === 0) return { records: [], nextCursor: null, complete: true };
     const complete = pageNumber === totalPages;
     return { records, nextCursor: complete ? null : String(pageNumber + 1), complete };
   }
