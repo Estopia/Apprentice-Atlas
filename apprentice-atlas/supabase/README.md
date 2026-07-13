@@ -11,7 +11,7 @@ npx supabase start
 npx supabase db reset
 ```
 
-`db reset` applies `supabase/migrations/001_initial_schema.sql` and then `supabase/seed.sql`. To inspect or validate migration state, use `npx supabase migration list --local` and `npx supabase db lint --local` where supported. Docker (or another Docker-compatible runtime) is required for the local stack.
+`db reset` applies `supabase/migrations/001_initial_schema.sql`, then `002_harden_schema_integrity.sql`, and finally `supabase/seed.sql`. To inspect or validate migration state, use `npx supabase migration list --local` and `npx supabase db lint --local` where supported. Docker (or another Docker-compatible runtime) is required for the local stack.
 
 ## Production-source rule
 
