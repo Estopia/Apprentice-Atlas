@@ -20,6 +20,9 @@ alter table public.job_sources
 alter table public.job_sources
   drop constraint if exists job_sources_provider_external_id_key;
 
+alter table public.job_sources
+  add column if not exists legacy_external_id text;
+
 alter table public.sync_runs
   drop constraint if exists sync_runs_source_provider_check;
 
@@ -81,6 +84,13 @@ begin
         duplicate_suffix := duplicate_suffix + 1;
         candidate := 'legacy-duplicate-' || source_row.id::text || '-' || duplicate_suffix::text;
       end loop;
+    end if;
+
+    if source_row.external_id is distinct from candidate then
+      update public.job_sources
+      set legacy_external_id = source_row.external_id
+      where id = source_row.id
+        and legacy_external_id is null;
     end if;
 
     update public.job_sources
