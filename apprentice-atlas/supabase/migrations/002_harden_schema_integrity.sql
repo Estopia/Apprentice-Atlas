@@ -4,16 +4,54 @@
 
 -- A sync run represents a provider configuration run, not one listing.
 alter table public.sync_runs
-  drop column if exists source_id;
-
-alter table public.sync_runs
   add column if not exists source_key text;
 
--- Give any pre-existing rows a deterministic, provider-namespaced key before
--- making the new provenance field mandatory. Fresh installs have no rows yet.
-update public.sync_runs
-set source_key = provider || ':legacy'
-where source_key is null or btrim(source_key) = '';
+-- Preserve provenance from the old per-listing FK while both source_id and its
+-- FK still exist. A dynamic block makes this safe to rerun after source_id is
+-- removed by this migration.
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'sync_runs'
+      and column_name = 'source_id'
+  ) then
+    execute $backfill$
+      update public.sync_runs as runs
+      set source_key = sources.provider || ':' || sources.external_id
+      from public.job_sources as sources
+      where runs.source_id = sources.id
+        and (runs.source_key is null or btrim(runs.source_key) = '')
+    $backfill$;
+
+    -- Rows whose old source_id cannot be joined, plus rows without one, retain
+    -- a deterministic provider-scoped fallback rather than losing run identity.
+    execute $fallback$
+      update public.sync_runs as runs
+      set source_key = runs.provider || ':legacy-' || coalesce(runs.source_id::text, runs.id::text)
+      where (runs.source_key is null or btrim(runs.source_key) = '')
+        and not exists (
+          select 1
+          from public.job_sources as sources
+          where sources.id = runs.source_id
+        )
+    $fallback$;
+  else
+    -- This is the rerun path: source_id was already removed, so only fill
+    -- genuinely empty keys with a deterministic legacy value.
+    update public.sync_runs as runs
+    set source_key = runs.provider || ':legacy-' || runs.id::text
+    where runs.source_key is null or btrim(runs.source_key) = '';
+  end if;
+end
+$$;
+
+-- The old FK has now served its backfill purpose and is no longer part of the
+-- provider-configuration provenance model.
+alter table public.sync_runs
+  drop column if exists source_id;
 
 alter table public.sync_runs
   alter column source_key set not null;
