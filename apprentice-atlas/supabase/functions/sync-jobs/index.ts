@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { BaAdapter } from '../_shared/ba-adapter.ts';
 import { createUkApprenticeshipAdapter } from '../_shared/uk-apprenticeship-adapter.ts';
 import { dedupeByExternalId, SourceConfigurationError, type NormalizedSourceRecord, type SourceAdapter } from '../_shared/source-adapter.ts';
+import { jobUpsertPayload, pageIsComplete, shouldExpireStaleListings, sourceUpsertPayload, syncRunInsertPayload } from '../_shared/sync-helpers.ts';
 
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Promise<Response>): void } | undefined;
 
@@ -34,7 +35,7 @@ async function syncProvider(provider: Provider) {
   const adapter = adapterFor(provider);
   const sourceKey = `${provider}:${env('SYNC_SOURCE_CONFIGURATION') || 'default'}`;
   const startedAt = new Date().toISOString();
-  const { data: run, error: runError } = await supabase.from('sync_runs').insert({ provider, source_key: sourceKey, source_provider: provider, status: 'running', started_at: startedAt }).select('id').single();
+  const { data: run, error: runError } = await supabase.from('sync_runs').insert(syncRunInsertPayload(provider, sourceKey, startedAt)).select('id').single();
   if (runError || !run) throw new Error(`Unable to create sync run: ${runError?.message ?? 'missing run id'}`);
 
   const counts = { fetched_count: 0, inserted_count: 0, updated_count: 0, expired_count: 0, error_count: 0 };
@@ -50,20 +51,20 @@ async function syncProvider(provider: Provider) {
         const existing = await supabase.from('job_sources').select('id, job_id').eq('provider', provider).eq('external_id', item.externalId).maybeSingle();
         if (existing.error) throw new Error(`Unable to read source ${item.externalId}: ${existing.error.message}`);
         const jobId = existing.data?.job_id ?? item.job.id;
-        const jobPayload = { ...jobColumns(item.job), id: jobId, last_seen_at: startedAt, updated_at: startedAt };
+        const jobPayload = jobUpsertPayload(item, jobId, startedAt);
         const job = await supabase.from('jobs').upsert(jobPayload, { onConflict: 'id' });
         if (job.error) throw new Error(`Unable to upsert job ${item.externalId}: ${job.error.message}`);
-        const source = await supabase.from('job_sources').upsert({ job_id: jobId, provider, external_id: item.externalId, source_url: item.sourceUrl, raw_payload: item.rawRecord, status: 'active', fetched_at: startedAt }, { onConflict: 'provider,external_id' });
+        const source = await supabase.from('job_sources').upsert(sourceUpsertPayload(item, jobId, provider, startedAt), { onConflict: 'provider,external_id' });
         if (source.error) throw new Error(`Unable to upsert source ${item.externalId}: ${source.error.message}`);
         if (existing.data) counts.updated_count += 1; else counts.inserted_count += 1;
       }
       cursor = result.nextCursor;
-      complete = result.complete || cursor === null;
+      complete = pageIsComplete(result);
       if (complete) break;
       if (PAGE_DELAY_MS) await new Promise((resolve) => setTimeout(resolve, PAGE_DELAY_MS));
     }
     if (!complete) errors.push({ code: 'PAGE_BOUND_REACHED', message: `Stopped after ${MAX_PAGES} pages before the source reported completion` });
-    if (complete) {
+    if (shouldExpireStaleListings(complete)) {
       const expiredSources = await supabase.from('job_sources').update({ status: 'retired' }).eq('provider', provider).eq('status', 'active').lt('fetched_at', startedAt).select('job_id');
       if (expiredSources.error) throw new Error(`Unable to retire stale sources: ${expiredSources.error.message}`);
       const expiredJobs = await supabase.from('jobs').update({ status: 'expired', updated_at: startedAt }).eq('source_name', provider).eq('status', 'active').lt('last_seen_at', startedAt).select('id');
@@ -78,10 +79,6 @@ async function syncProvider(provider: Provider) {
     await supabase.from('sync_runs').update({ ...counts, status: 'failed', finished_at: new Date().toISOString(), error_count: counts.error_count + 1, error_details: [structured] }).eq('id', run.id);
     throw error;
   }
-}
-
-function jobColumns(job: NormalizedSourceRecord['job']) {
-  return { title: job.title, company: job.company, country: job.country, city: job.city, latitude: job.latitude, longitude: job.longitude, job_type: job.jobType, level: job.level, category: job.category, tags: job.tags, raw_description: job.rawDescription, requirements: job.requirements, source_url: job.sourceUrl, source_name: job.sourceName, status: job.status, expires_at: job.expiresAt, created_at: job.createdAt };
 }
 
 export async function handleSyncRequest(request: Request): Promise<Response> {

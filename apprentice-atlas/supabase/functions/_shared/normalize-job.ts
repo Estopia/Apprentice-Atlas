@@ -23,6 +23,27 @@ const numberValue = (value: unknown): number | null => {
   return Number.isFinite(number) ? number : null;
 };
 
+const coordinatePair = (record: SourceRecord): { latitude: number; longitude: number } | null => {
+  const candidates: SourceRecord[] = [record];
+  if (Array.isArray(record.addresses)) {
+    for (const address of record.addresses) {
+      if (address && typeof address === 'object' && !Array.isArray(address)) {
+        const item = address as SourceRecord;
+        candidates.push(item);
+        if (item.address && typeof item.address === 'object' && !Array.isArray(item.address)) candidates.push(item.address as SourceRecord);
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    const latitude = numberValue(candidate.latitude ?? candidate.lat);
+    const longitude = numberValue(candidate.longitude ?? candidate.lng ?? candidate.lon);
+    if (latitude !== null && longitude !== null && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+      return { latitude, longitude };
+    }
+  }
+  return null;
+};
+
 const pickNested = (record: SourceRecord, keys: string[]): string | null => {
   for (const key of keys) {
     const value = record[key];
@@ -37,22 +58,28 @@ const pickNested = (record: SourceRecord, keys: string[]): string | null => {
 };
 
 export function normalizeJob(record: SourceRecord, options: NormalizeOptions): NormalizedSourceRecord | null {
-  const externalId = firstString(record, ['externalId', 'external_id', 'id', 'vacancyId', 'vacancyReferenceNumber', 'reference']);
+  const externalId = firstString(record, ['externalId', 'external_id', 'id', 'vacancyId', 'vacancyReference', 'vacancyReferenceNumber', 'reference']);
   const sourceUrl = firstString(record, ['sourceUrl', 'source_url', 'url', 'vacancyUrl', 'applicationUri', 'applicationUrl']);
   const title = firstString(record, ['title', 'jobTitle', 'vacancyTitle']);
   const company = pickNested(record, ['company', 'employer', 'employerName', 'organisation', 'organization']);
-  const location = record.location && typeof record.location === 'object' ? record.location as SourceRecord : {};
-  const city = pickNested(record, ['city', 'town', 'locationCity', 'locationName']) ?? pickNested(location, ['city', 'town', 'name']);
-  const country = pickNested(record, ['country', 'countryName', 'locationCountry']) ?? pickNested(location, ['country', 'countryName']);
-  const latitude = numberValue(record.latitude ?? record.lat ?? location.latitude ?? location.lat);
-  const longitude = numberValue(record.longitude ?? record.lng ?? record.lon ?? location.longitude ?? location.lng ?? location.lon);
-  const usableLocation = Boolean(city || country || (latitude !== null && longitude !== null));
-  if (!externalId || !sourceUrl || !title || !company || !usableLocation) return null;
+  const firstAddress = Array.isArray(record.addresses) && record.addresses[0] && typeof record.addresses[0] === 'object'
+    ? record.addresses[0] as SourceRecord
+    : {};
+  const nestedAddress = firstAddress.address && typeof firstAddress.address === 'object' && !Array.isArray(firstAddress.address)
+    ? firstAddress.address as SourceRecord
+    : {};
+  const city = pickNested(record, ['city', 'town', 'locationCity', 'locationName'])
+    ?? pickNested(firstAddress, ['city', 'town', 'locationName'])
+    ?? pickNested(nestedAddress, ['city', 'town', 'locality', 'postcode']);
+  const country = pickNested(record, ['country', 'countryName', 'locationCountry'])
+    ?? pickNested(firstAddress, ['country', 'countryName'])
+    ?? pickNested(nestedAddress, ['country', 'countryName']);
+  const coordinates = coordinatePair(record);
+  if (!externalId || !sourceUrl || !title || !company || !coordinates) return null;
 
   const now = new Date().toISOString();
   const normalizedCountry = country ?? options.defaultCountry ?? 'Unknown';
-  const normalizedCity = city ?? (latitude !== null && longitude !== null ? 'Unknown' : null);
-  if (!normalizedCity) return null;
+  const normalizedCity = city ?? 'Unknown';
   const description = firstString(record, ['rawDescription', 'description', 'shortDescription', 'displayText']) ?? '';
   const expiresAt = firstString(record, ['expiresAt', 'expiryDate', 'closingDate']);
   const job: CanonicalJob = {
@@ -61,8 +88,8 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     company,
     country: normalizedCountry,
     city: normalizedCity,
-    latitude: latitude !== null && latitude >= -90 && latitude <= 90 ? latitude : null,
-    longitude: longitude !== null && longitude >= -180 && longitude <= 180 ? longitude : null,
+    latitude: coordinates.latitude,
+    longitude: coordinates.longitude,
     jobType: firstString(record, ['jobType', 'type', 'employmentType']) ?? options.defaultJobType ?? 'apprenticeship',
     level: firstString(record, ['level', 'educationLevel']) ?? options.defaultLevel ?? 'entry-level',
     category: firstString(record, ['category', 'sector', 'occupation']) ?? options.defaultCategory ?? 'general',
@@ -79,4 +106,3 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
   };
   return { externalId, sourceUrl, job, rawRecord: record };
 }
-

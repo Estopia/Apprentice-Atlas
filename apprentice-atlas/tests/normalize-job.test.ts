@@ -5,13 +5,11 @@ import { UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-appren
 import { BaAdapter } from '../supabase/functions/_shared/ba-adapter';
 
 const validRecord = {
-  id: ' uk-123 ',
+  vacancyReference: ' uk-123 ',
   title: '  Software apprentice  ',
-  employer: { name: '  Atlas Ltd  ' },
-  location: { city: '  London ', country: ' UK ' },
-  latitude: '51.5072',
-  longitude: '-0.1276',
-  url: 'https://example.test/jobs/uk-123',
+  employerName: '  Atlas Ltd  ',
+  applicationUrl: 'https://example.test/jobs/uk-123',
+  addresses: [{ address: { town: '  London ', country: ' UK ' }, latitude: '51.5072', longitude: '-0.1276' }],
   description: 'Build useful things.',
 };
 
@@ -29,16 +27,27 @@ describe('normalizeJob', () => {
 
   it.each([
     ['title', { ...validRecord, title: ' ' }],
-    ['source ID', { ...validRecord, id: undefined }],
-    ['source URL', { ...validRecord, url: undefined }],
-    ['company', { ...validRecord, employer: undefined }],
-    ['location', { ...validRecord, location: undefined, latitude: undefined, longitude: undefined }],
+    ['source ID', { ...validRecord, vacancyReference: undefined }],
+    ['source URL', { ...validRecord, applicationUrl: undefined }],
+    ['company', { ...validRecord, employerName: undefined }],
+    ['location', { ...validRecord, addresses: undefined }],
   ])('rejects records missing %s', (_, record) => {
     expect(normalizeJob(record, { provider: 'test' })).toBeNull();
   });
 
+  it('rejects one-sided, non-numeric, and out-of-range coordinates', () => {
+    for (const coordinates of [
+      { latitude: 52 },
+      { latitude: 'not-a-number', longitude: 13 },
+      { latitude: 91, longitude: 13 },
+      { latitude: 52, longitude: 181 },
+    ]) {
+      expect(normalizeJob({ ...validRecord, addresses: [{ address: { town: 'Berlin' }, ...coordinates }] }, { provider: 'test', defaultCountry: 'Germany' })).toBeNull();
+    }
+  });
+
   it('accepts coordinate-only locations with an explicit fallback city', () => {
-    const normalized = normalizeJob({ ...validRecord, location: undefined, latitude: 52, longitude: 13 }, { provider: 'test', defaultCountry: 'Germany' });
+    const normalized = normalizeJob({ ...validRecord, addresses: [{ latitude: 52, longitude: 13 }] }, { provider: 'test', defaultCountry: 'Germany' });
     expect(normalized?.job.city).toBe('Unknown');
     expect(normalized?.job.country).toBe('Germany');
   });
@@ -52,18 +61,30 @@ describe('official source adapters', () => {
   it('uses the UK API key and v2 headers and extracts official URL/id', async () => {
     let request: Request | URL | string | undefined;
     let init: RequestInit | undefined;
-    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async (input, options) => {
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', pageSize: 2, fetcher: async (input, options) => {
       request = input;
       init = options;
-      return new Response(JSON.stringify({ vacancies: [validRecord] }), { status: 200 });
+      return new Response(JSON.stringify({ vacancies: [validRecord], totalPages: 2 }), { status: 200 });
     } });
     const page = await adapter.fetchPage(null);
     const normalized = adapter.normalize(page.records[0]);
-    expect(new URL(String(request)).pathname).toBe('/vacancies');
+    const requestUrl = new URL(String(request));
+    expect(requestUrl.pathname).toBe('/vacancies/vacancy');
+    expect(requestUrl.searchParams.get('PageNumber')).toBe('1');
+    expect(requestUrl.searchParams.get('PageSize')).toBe('2');
     expect(new Headers(init?.headers).get('Ocp-Apim-Subscription-Key')).toBe('secret');
     expect(new Headers(init?.headers).get('X-Version')).toBe('2');
     expect(normalized?.externalId).toBe('uk-123');
     expect(normalized?.sourceUrl).toBe('https://example.test/jobs/uk-123');
+    expect(page.nextCursor).toBe('2');
+    expect(page.complete).toBe(false);
+  });
+
+  it('completes UK pagination at totalPages', async () => {
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 2 }), { status: 200 }) });
+    const page = await adapter.fetchPage('2');
+    expect(page.nextCursor).toBeNull();
+    expect(page.complete).toBe(true);
   });
 
   it('fails BA ingestion clearly when its official read configuration is absent', async () => {
