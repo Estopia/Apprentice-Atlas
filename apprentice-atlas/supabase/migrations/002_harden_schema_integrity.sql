@@ -6,6 +6,30 @@
 alter table public.sync_runs
   add column if not exists source_key text;
 
+alter table public.sync_runs
+  add column if not exists source_provider text;
+
+-- Source identifiers are part of the provenance key. Normalize old blank
+-- values before installing the permanent integrity constraint.
+update public.job_sources
+set external_id = 'legacy-' || id::text
+where btrim(external_id) = '';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.job_sources'::regclass
+      and conname = 'job_sources_provider_external_id_check'
+  ) then
+    alter table public.job_sources
+      add constraint job_sources_provider_external_id_check
+      check (btrim(provider) <> '' and btrim(external_id) <> '');
+  end if;
+end
+$$;
+
 -- Preserve provenance from the old per-listing FK while both source_id and its
 -- FK still exist. A dynamic block makes this safe to rerun after source_id is
 -- removed by this migration.
@@ -18,6 +42,14 @@ begin
       and table_name = 'sync_runs'
       and column_name = 'source_id'
   ) then
+    execute $source_provider_backfill$
+      update public.sync_runs as runs
+      set source_provider = btrim(sources.provider)
+      from public.job_sources as sources
+      where runs.source_id = sources.id
+        and (runs.source_provider is null or btrim(runs.source_provider) = '')
+    $source_provider_backfill$;
+
     execute $backfill$
       update public.sync_runs as runs
       set source_key = runs.provider || ':' || btrim(sources.external_id)
@@ -45,6 +77,10 @@ begin
 end
 $$;
 
+update public.sync_runs
+set source_provider = null
+where source_provider is not null and btrim(source_provider) = '';
+
 -- The old FK has now served its backfill purpose and is no longer part of the
 -- provider-configuration provenance model.
 alter table public.sync_runs
@@ -52,6 +88,21 @@ alter table public.sync_runs
 
 alter table public.sync_runs
   alter column source_key set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.sync_runs'::regclass
+      and conname = 'sync_runs_source_provider_check'
+  ) then
+    alter table public.sync_runs
+      add constraint sync_runs_source_provider_check
+      check (source_provider is null or btrim(source_provider) <> '');
+  end if;
+end
+$$;
 
 do $$
 begin
