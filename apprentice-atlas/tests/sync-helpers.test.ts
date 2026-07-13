@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jobUpsertPayload, pageIsComplete, shouldExpireStaleListings, sourceUpsertPayload, syncRunInsertPayload } from '../supabase/functions/_shared/sync-helpers';
+import { jobInsertPayload, jobUpdatePayload, pageIsComplete, shouldExpireStaleListings, sourceUpsertPayload, syncRunInsertPayload } from '../supabase/functions/_shared/sync-helpers';
 
 const item = {
   externalId: 'uk-123',
@@ -26,7 +26,9 @@ describe('sync helpers', () => {
 
   it('builds schema-safe sync run and upsert payloads', () => {
     expect(syncRunInsertPayload('find-apprenticeship', 'find-apprenticeship:default', '2026-01-01T00:00:00.000Z')).toEqual({ provider: 'find-apprenticeship', source_key: 'find-apprenticeship:default', source_provider: 'find-apprenticeship', status: 'running', started_at: '2026-01-01T00:00:00.000Z' });
-    expect(jobUpsertPayload(item, 'job-id', '2026-01-02T00:00:00.000Z')).toMatchObject({ id: 'job-id', last_seen_at: '2026-01-02T00:00:00.000Z', source_url: item.sourceUrl });
+    expect(jobInsertPayload(item, 'job-id', '2026-01-02T00:00:00.000Z')).toMatchObject({ id: 'job-id', created_at: item.job.createdAt, last_seen_at: '2026-01-02T00:00:00.000Z', source_url: item.sourceUrl });
+    expect(jobUpdatePayload(item, '2026-01-02T00:00:00.000Z')).toMatchObject({ last_seen_at: '2026-01-02T00:00:00.000Z', source_url: item.sourceUrl });
+    expect(jobUpdatePayload(item, '2026-01-02T00:00:00.000Z')).not.toHaveProperty('created_at');
     expect(sourceUpsertPayload(item, 'job-id', 'find-apprenticeship', '2026-01-02T00:00:00.000Z')).toEqual({ job_id: 'job-id', provider: 'find-apprenticeship', external_id: 'uk-123', source_url: item.sourceUrl, raw_payload: item.rawRecord, status: 'active', fetched_at: '2026-01-02T00:00:00.000Z' });
   });
 });
