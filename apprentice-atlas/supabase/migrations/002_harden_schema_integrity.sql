@@ -9,9 +9,26 @@ alter table public.sync_runs
 alter table public.sync_runs
   add column if not exists source_provider text;
 
--- Source identifiers are part of the provenance key. Normalize old blank
--- provider and external ID values before installing the permanent integrity
--- constraint. Nonblank provider values are preserved byte-for-byte.
+alter table public.sync_runs
+  add column if not exists legacy_source_key text;
+
+-- Remove earlier versions of these checks before normalizing legacy rows. This
+-- also supports the intermediate schema where source_key already existed.
+alter table public.job_sources
+  drop constraint if exists job_sources_provider_external_id_check;
+
+alter table public.sync_runs
+  drop constraint if exists sync_runs_source_provider_check;
+
+alter table public.sync_runs
+  drop constraint if exists sync_runs_provider_source_key_check;
+
+-- 19da9cb used an unnamed inline source-key check, which PostgreSQL named
+-- sync_runs_check. Remove it before normalizing that intermediate schema.
+alter table public.sync_runs
+  drop constraint if exists sync_runs_check;
+
+-- Normalize source metadata before installing exact, permanent constraints.
 update public.job_sources
 set provider = 'legacy-source-' || id::text
 where btrim(provider) = '';
@@ -20,24 +37,15 @@ update public.job_sources
 set external_id = 'legacy-' || id::text
 where btrim(external_id) = '';
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conrelid = 'public.job_sources'::regclass
-      and conname = 'job_sources_provider_external_id_check'
-  ) then
-    alter table public.job_sources
-      add constraint job_sources_provider_external_id_check
-      check (btrim(provider) <> '' and btrim(external_id) <> '');
-  end if;
-end
-$$;
+update public.sync_runs
+set provider = case
+  when btrim(provider) = '' then 'legacy-run-' || id::text
+  else btrim(provider)
+end;
 
--- Preserve provenance from the old per-listing FK while both source_id and its
--- FK still exist. A dynamic block makes this safe to rerun after source_id is
--- removed by this migration.
+-- Preserve provenance from the old per-listing FK while source_id still exists.
+-- source_provider captures the listing provider; source_key keeps the provider
+-- that performed the sync as its prefix.
 do $$
 begin
   if exists (
@@ -63,28 +71,33 @@ begin
         and btrim(sources.external_id) <> ''
         and (runs.source_key is null or btrim(runs.source_key) = '')
     $backfill$;
-
-    -- Rows whose old source_id cannot be joined, plus rows whose matched source
-    -- has an empty external_id, retain a deterministic provider-scoped fallback
-    -- rather than losing run identity. A NULL source_id uses the run id.
-    execute $fallback$
-      update public.sync_runs as runs
-      set source_key = runs.provider || ':legacy-' || coalesce(runs.source_id::text, runs.id::text)
-      where (runs.source_key is null or btrim(runs.source_key) = '')
-    $fallback$;
-  else
-    -- This is the rerun path: source_id was already removed, so only fill
-    -- genuinely empty keys with a deterministic legacy value.
-    update public.sync_runs as runs
-    set source_key = runs.provider || ':legacy-' || runs.id::text
-    where runs.source_key is null or btrim(runs.source_key) = '';
   end if;
 end
 $$;
 
 update public.sync_runs
-set source_provider = null
-where source_provider is not null and btrim(source_provider) = '';
+set source_provider = nullif(btrim(source_provider), '')
+where source_provider is not null;
+
+-- Keep any non-empty legacy key that is not valid under the normalized
+-- provider in a nullable audit column, then replace it with a valid key.
+update public.sync_runs as runs
+set legacy_source_key = runs.source_key
+where btrim(runs.source_key) <> ''
+  and (
+    runs.source_key <> btrim(runs.source_key)
+    or left(runs.source_key, length(runs.provider) + 1) <> runs.provider || ':'
+    or length(runs.source_key) <= length(runs.provider) + 1
+  )
+  and (runs.legacy_source_key is null or btrim(runs.legacy_source_key) = '');
+
+update public.sync_runs as runs
+set source_key = runs.provider || ':legacy-run-' || runs.id::text
+where runs.source_key is null
+   or btrim(runs.source_key) = ''
+   or runs.source_key <> btrim(runs.source_key)
+   or left(runs.source_key, length(runs.provider) + 1) <> runs.provider || ':'
+   or length(runs.source_key) <= length(runs.provider) + 1;
 
 -- The old FK has now served its backfill purpose and is no longer part of the
 -- provider-configuration provenance model.
@@ -99,12 +112,35 @@ begin
   if not exists (
     select 1
     from pg_constraint
+    where conrelid = 'public.job_sources'::regclass
+      and conname = 'job_sources_provider_external_id_check'
+  ) then
+    alter table public.job_sources
+      add constraint job_sources_provider_external_id_check
+      check (
+        btrim(provider) = provider
+        and btrim(provider) <> ''
+        and btrim(external_id) = external_id
+        and btrim(external_id) <> ''
+      );
+  end if;
+end
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
     where conrelid = 'public.sync_runs'::regclass
       and conname = 'sync_runs_source_provider_check'
   ) then
     alter table public.sync_runs
       add constraint sync_runs_source_provider_check
-      check (source_provider is null or btrim(source_provider) <> '');
+      check (
+        source_provider is null
+        or (btrim(source_provider) = source_provider and btrim(source_provider) <> '')
+      );
   end if;
 end
 $$;
@@ -120,10 +156,10 @@ begin
     alter table public.sync_runs
       add constraint sync_runs_provider_source_key_check
       check (
-        btrim(provider) <> ''
-        and provider = btrim(provider)
+        btrim(provider) = provider
+        and btrim(provider) <> ''
+        and btrim(source_key) = source_key
         and btrim(source_key) <> ''
-        and source_key = btrim(source_key)
         and left(source_key, length(provider) + 1) = provider || ':'
         and length(source_key) > length(provider) + 1
       );
