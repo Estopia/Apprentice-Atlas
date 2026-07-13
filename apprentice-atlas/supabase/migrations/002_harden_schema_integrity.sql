@@ -17,9 +17,6 @@ alter table public.sync_runs
 alter table public.job_sources
   drop constraint if exists job_sources_provider_external_id_check;
 
-alter table public.job_sources
-  drop constraint if exists job_sources_provider_external_id_key;
-
 alter table public.sync_runs
   drop constraint if exists sync_runs_source_provider_check;
 
@@ -32,98 +29,13 @@ alter table public.sync_runs
   drop constraint if exists sync_runs_check;
 
 -- Normalize source metadata before installing exact, permanent constraints.
--- Provider whitespace is trimmed; blank results get deterministic IDs.
 update public.job_sources
-set provider = case
-  when provider is null or btrim(provider) = '' then 'legacy-source-' || id::text
-  else btrim(provider)
-end;
+set provider = 'legacy-source-' || id::text
+where btrim(provider) = '';
 
--- Trimming external IDs can collide with another raw value (for example,
--- "abc" and " abc "). Process rows in deterministic ID order while the old
--- unique constraint is absent: the lowest ID keeps the normalized value and
--- later collisions receive collision-safe legacy identifiers.
-do $$
-declare
-  source_row record;
-  normalized_external_id text;
-  candidate text;
-  duplicate_suffix integer;
-begin
-  for source_row in
-    select id, provider, external_id
-    from public.job_sources
-    order by id
-  loop
-    normalized_external_id := btrim(coalesce(source_row.external_id, ''));
-    if normalized_external_id = '' then
-      candidate := 'legacy-source-' || source_row.id::text;
-    else
-      candidate := normalized_external_id;
-    end if;
-
-    if exists (
-      select 1
-      from public.job_sources as previous
-      where previous.provider = source_row.provider
-        and previous.external_id = candidate
-        and previous.id < source_row.id
-    ) then
-      candidate := 'legacy-duplicate-' || source_row.id::text;
-      duplicate_suffix := 0;
-      while exists (
-        select 1
-        from public.job_sources as previous
-        where previous.provider = source_row.provider
-          and previous.external_id = candidate
-          and previous.id < source_row.id
-      ) loop
-        duplicate_suffix := duplicate_suffix + 1;
-        candidate := 'legacy-duplicate-' || source_row.id::text || '-' || duplicate_suffix::text;
-      end loop;
-    end if;
-
-    update public.job_sources
-    set external_id = candidate
-    where id = source_row.id;
-  end loop;
-end
-$$;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conrelid = 'public.job_sources'::regclass
-      and conname = 'job_sources_provider_external_id_check'
-  ) then
-    alter table public.job_sources
-      add constraint job_sources_provider_external_id_check
-      check (
-        btrim(provider) = provider
-        and btrim(provider) <> ''
-        and btrim(external_id) = external_id
-        and btrim(external_id) <> ''
-      );
-  end if;
-end
-$$;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conrelid = 'public.job_sources'::regclass
-      and conname = 'job_sources_provider_external_id_key'
-  ) then
-    alter table public.job_sources
-      add constraint job_sources_provider_external_id_key
-      unique (provider, external_id);
-  end if;
-end
-$$;
+update public.job_sources
+set external_id = 'legacy-' || id::text
+where btrim(external_id) = '';
 
 update public.sync_runs
 set provider = case
@@ -194,6 +106,26 @@ alter table public.sync_runs
 
 alter table public.sync_runs
   alter column source_key set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.job_sources'::regclass
+      and conname = 'job_sources_provider_external_id_check'
+  ) then
+    alter table public.job_sources
+      add constraint job_sources_provider_external_id_check
+      check (
+        btrim(provider) = provider
+        and btrim(provider) <> ''
+        and btrim(external_id) = external_id
+        and btrim(external_id) <> ''
+      );
+  end if;
+end
+$$;
 
 do $$
 begin
