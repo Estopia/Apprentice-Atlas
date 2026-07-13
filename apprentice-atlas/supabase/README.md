@@ -13,6 +13,25 @@ npx supabase db reset
 
 `db reset` applies the final pre-release chain: `supabase/migrations/20260713090000_initial_schema.sql`, `supabase/migrations/20260713091000_preflight_source_cleanup.sql`, the locked `20260713092000_harden_schema_integrity.sql` release-candidate baseline, then `20260713093000_preserve_source_identifiers.sql` as the sole post-release hardening migration, and finally `supabase/seed.sql`. The preflight is required before locked `20260713092000` for existing imports because it repairs legacy source whitespace/blanks and normalized collisions; it is guarded and harmless on clean data. `20260713093000` completes all remaining normalization-dependent source constraints, collision repair, audit protection, and compatibility hardening after the locked `20260713092000`; do not edit the locked migration or insert another migration before `20260713093000`. Databases already migrated through an earlier intermediate hardening migration should apply the guarded `20260713093000` after bringing the schema to this chain. To inspect or validate migration state, use `npx supabase migration list --local` and `npx supabase db lint --local` where supported. Docker (or another Docker-compatible runtime) is required for the local stack.
 
+Clean deployments use only these timestamp-prefixed migration files. The local-only [`preflight_source_provenance.sql`](fixtures/preflight_source_provenance.sql) fixture can be loaded after the initial schema and before preflight to exercise a non-null malformed `source_key` with a joinable `source_id`; it is not part of the normal reset seed.
+
+### One-time migration-history repair
+
+This repository has no deployed Supabase migration history. If an environment may have applied the former `001`/`002`/`003` filenames, do not run the initial schema blindly. First back up the database, inspect the actual schema, and compare history with:
+
+```sh
+npx supabase migration list --linked
+```
+
+For each old ID, repair the remote `supabase_migrations.schema_migrations` history according to what actually happened. If an old migration completed and its schema is equivalent to the corresponding timestamp migration, mark the old ID reverted and mark the timestamp ID applied—these commands change history only and do not run SQL:
+
+```sh
+npx supabase migration repair 001 --status reverted
+npx supabase migration repair 20260713090000 --status applied
+```
+
+Use the same paired procedure for old `002`/`003` and `20260713092000`/`20260713093000`, only after verifying each schema change is already present. If an old migration was recorded but did not complete, mark only that old ID reverted and leave the timestamp migration unapplied so `npx supabase db push --linked` can run it. For partial or uncertain upgrades, stop and inspect or pull the remote schema before repairing; never mark a migration applied without confirming its SQL is already represented. After repair, run `npx supabase migration list --linked`, then apply the timestamp chain. Supabase documents that `migration repair` updates history only; it does not apply or revert SQL.
+
 ## Production-source rule
 
 Production jobs may only be ingested by trusted Supabase Edge Functions or other server-side code using the service role. Those functions must use approved official-source adapters, retain the official source URL and external ID, and write provider payloads to `job_sources`. The client must never receive source payloads, sync-run records, provider credentials, or the service-role key. Do not load `seed.sql` into production.

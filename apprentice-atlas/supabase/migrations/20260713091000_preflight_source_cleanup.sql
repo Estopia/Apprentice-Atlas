@@ -151,19 +151,21 @@ begin
       where runs.source_id = sources.id
         and (runs.source_provider is null or btrim(runs.source_provider) = '');
 
-      -- A joined source is authoritative for malformed or non-empty legacy
-      -- keys. Only rows that cannot be joined receive the preflight fallback.
+      -- A joined source is authoritative whenever a legacy source_key is
+      -- present, including a NOT NULL malformed key. Derive the canonical key
+      -- before considering any fallback so listing provenance is not lost.
       update public.sync_runs as runs
       set source_key = runs.provider || ':' || btrim(sources.external_id)
       from public.job_sources as sources
       where runs.source_id = sources.id
-        and (
-          runs.source_key is null
-          or btrim(runs.source_key) = ''
-          or runs.source_key <> btrim(runs.source_key)
-          or left(runs.source_key, length(runs.provider) + 1) <> runs.provider || ':'
-          or length(runs.source_key) <= length(runs.provider) + 1
-        );
+        and runs.source_key is not null;
+
+      -- Null legacy keys are also derived when the old listing still joins.
+      update public.sync_runs as runs
+      set source_key = runs.provider || ':' || btrim(sources.external_id)
+      from public.job_sources as sources
+      where runs.source_id = sources.id
+        and runs.source_key is null;
     end if;
 
     update public.sync_runs
