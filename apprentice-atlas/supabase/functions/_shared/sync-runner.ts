@@ -1,12 +1,9 @@
 import { dedupeByExternalId, type NormalizedSourceRecord, type SourceAdapter } from './source-adapter.ts';
-import { jobInsertPayload, jobUpdatePayload, sourceUpsertPayload, syncRunInsertPayload } from './sync-helpers.ts';
+import { syncRunInsertPayload } from './sync-helpers.ts';
 
 export interface SyncRepository {
   startRun(payload: ReturnType<typeof syncRunInsertPayload>): Promise<{ id: string }>;
-  findSource(provider: string, externalId: string): Promise<{ jobId: string | null } | null>;
-  insertJob(payload: ReturnType<typeof jobInsertPayload>): Promise<void>;
-  updateJob(jobId: string, payload: ReturnType<typeof jobUpdatePayload>): Promise<void>;
-  upsertSource(payload: ReturnType<typeof sourceUpsertPayload>): Promise<void>;
+  upsertJobSource(item: NormalizedSourceRecord, provider: string, fetchedAt: string): Promise<{ inserted: boolean; jobId: string }>;
   expireStaleListings(provider: string, seenBefore: string): Promise<number>;
   finishRun(runId: string, payload: SyncRunCompletion): Promise<void>;
   failRun(runId: string, payload: SyncRunFailure): Promise<void>;
@@ -31,6 +28,15 @@ export interface SyncRunFailure {
   error_count: number;
   error_details: Array<{ code: string; message: string }>;
   finished_at: string;
+}
+
+export class SyncRunFailureError extends Error {
+  readonly code = 'SYNC_RUN_FAILURE';
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'SyncRunFailureError';
+  }
 }
 
 export interface SyncRunnerOptions {
@@ -59,16 +65,9 @@ export async function runSync(options: SyncRunnerOptions) {
       counts.fetched_count += result.records.length;
       const normalized = dedupeByExternalId(result.records.map((record) => options.adapter.normalize(record)).filter((record): record is NormalizedSourceRecord => record !== null));
       for (const item of normalized) {
-        const existing = await options.repository.findSource(options.provider, item.externalId);
-        const jobId = existing?.jobId ?? item.job.id;
-        if (existing?.jobId) {
-          await options.repository.updateJob(jobId, jobUpdatePayload(item, startedAt));
-          counts.updated_count += 1;
-        } else {
-          await options.repository.insertJob(jobInsertPayload(item, jobId, startedAt));
-          counts.inserted_count += 1;
-        }
-        await options.repository.upsertSource(sourceUpsertPayload(item, jobId, options.provider, startedAt));
+        const result = await options.repository.upsertJobSource(item, options.provider, startedAt);
+        if (result.inserted) counts.inserted_count += 1;
+        else counts.updated_count += 1;
       }
       cursor = result.nextCursor;
       complete = result.complete && cursor === null;
@@ -80,8 +79,14 @@ export async function runSync(options: SyncRunnerOptions) {
     await options.repository.finishRun(run.id, { ...counts, status: errors.length ? 'partial' : 'succeeded', error_count: errors.length, error_details: errors.length ? errors : null, finished_at: finishedAt() });
     return { provider: options.provider, status: errors.length ? 'partial' as const : 'succeeded' as const, ...counts, errors };
   } catch (error) {
-    const details = [{ code: 'SYNC_ERROR', message: error instanceof Error ? error.message : String(error) }];
-    await options.repository.failRun(run.id, { ...counts, error_count: counts.error_count + 1, error_details: details, finished_at: finishedAt() });
+    const errorCode = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'SYNC_ERROR';
+    const details = [{ code: errorCode, message: error instanceof Error ? error.message : String(error) }];
+    try {
+      await options.repository.failRun(run.id, { ...counts, error_count: counts.error_count + 1, error_details: details, finished_at: finishedAt() });
+    } catch (failureError) {
+      console.error('Unable to mark sync run failed', { runId: run.id, error: failureError });
+      throw new SyncRunFailureError(`Sync failed and run ${run.id} could not be marked failed: ${failureError instanceof Error ? failureError.message : String(failureError)}`, { cause: failureError });
+    }
     throw error;
   }
 }

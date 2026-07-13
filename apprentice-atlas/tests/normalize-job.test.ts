@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { normalizeJob } from '../supabase/functions/_shared/normalize-job';
 import { dedupeByExternalId } from '../supabase/functions/_shared/source-adapter';
 import { UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-apprenticeship-adapter';
-import { BaAdapter } from '../supabase/functions/_shared/ba-adapter';
+import { BA_OFFICIAL_CONTRACT_UNCONFIRMED, createBaAdapter } from '../supabase/functions/_shared/ba-adapter';
 
 const validRecord = {
   vacancyReference: ' uk-123 ',
   title: '  Software apprentice  ',
   employerName: '  Atlas Ltd  ',
+  vacancyUrl: 'https://example.test/vacancies/uk-123',
   applicationUrl: 'https://example.test/jobs/uk-123',
   addresses: [{ address: { town: '  London ', country: ' UK ' }, latitude: '51.5072', longitude: '-0.1276' }],
   description: 'Build useful things.',
@@ -28,9 +29,8 @@ describe('normalizeJob', () => {
   it.each([
     ['title', { ...validRecord, title: ' ' }],
     ['source ID', { ...validRecord, vacancyReference: undefined }],
-    ['source URL', { ...validRecord, applicationUrl: undefined }],
+    ['source URL', { ...validRecord, vacancyUrl: undefined, applicationUrl: undefined }],
     ['company', { ...validRecord, employerName: undefined }],
-    ['location', { ...validRecord, addresses: undefined }],
   ])('rejects records missing %s', (_, record) => {
     expect(normalizeJob(record, { provider: 'test' })).toBeNull();
   });
@@ -50,6 +50,13 @@ describe('normalizeJob', () => {
     const normalized = normalizeJob({ ...validRecord, addresses: [{ latitude: 52, longitude: 13 }] }, { provider: 'test', defaultCountry: 'Germany' });
     expect(normalized?.job.city).toBe('Unknown');
     expect(normalized?.job.country).toBe('Germany');
+  });
+
+  it('accepts nationwide listings without addresses or coordinates', () => {
+    const normalized = normalizeJob({ ...validRecord, addresses: undefined, vacancyUrl: undefined }, { provider: 'test', defaultCountry: 'United Kingdom' });
+    expect(normalized?.job.latitude).toBeNull();
+    expect(normalized?.job.longitude).toBeNull();
+    expect(normalized?.job.city).toBe('Unknown');
   });
 
   it('keeps the last occurrence of duplicate external IDs', () => {
@@ -75,7 +82,8 @@ describe('official source adapters', () => {
     expect(new Headers(init?.headers).get('Ocp-Apim-Subscription-Key')).toBe('secret');
     expect(new Headers(init?.headers).get('X-Version')).toBe('2');
     expect(normalized?.externalId).toBe('uk-123');
-    expect(normalized?.sourceUrl).toBe('https://example.test/jobs/uk-123');
+    expect(normalized?.sourceUrl).toBe('https://example.test/vacancies/uk-123');
+    expect(normalized?.rawRecord.applicationUrl).toBe('https://example.test/jobs/uk-123');
     expect(page.nextCursor).toBe('2');
     expect(page.complete).toBe(false);
   });
@@ -87,7 +95,14 @@ describe('official source adapters', () => {
     expect(page.complete).toBe(true);
   });
 
+  it('fails when UK totalPages metadata is missing or malformed', async () => {
+    for (const metadata of [{}, { totalPages: 0 }, { totalPages: 'not-a-number' }, { totalPages: 1.5 }]) {
+      const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], ...metadata }), { status: 200 }) });
+      await expect(adapter.fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
+    }
+  });
+
   it('fails BA ingestion clearly when its official read configuration is absent', async () => {
-    await expect(new BaAdapter({ endpoint: '', apiKey: '' }).fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_CONFIGURATION_ERROR' });
+    expect(() => createBaAdapter()).toThrowError(expect.objectContaining({ code: BA_OFFICIAL_CONTRACT_UNCONFIRMED }));
   });
 });

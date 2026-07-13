@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isSyncRequestAuthorized } from '../supabase/functions/_shared/sync-auth';
 import { runSync, type SyncRepository, type SyncRunCompletion, type SyncRunFailure } from '../supabase/functions/_shared/sync-runner';
 import type { NormalizedSourceRecord, SourceAdapter, SourceRecord } from '../supabase/functions/_shared/source-adapter';
+import { UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-apprenticeship-adapter';
 
 const makeItem = (externalId: string, createdAt = '2026-01-01T00:00:00.000Z'): NormalizedSourceRecord => ({
   externalId,
@@ -28,24 +29,25 @@ class MockRepository implements SyncRepository {
     return { id };
   }
 
-  async findSource(provider: string, externalId: string) {
-    const source = this.sources.get(`${provider}:${externalId}`);
-    return source ? { jobId: String(source.job_id) } : null;
-  }
-
-  async insertJob(payload: Record<string, unknown>) {
-    this.operations.push(`job:insert:${String(payload.id)}`);
-    this.jobs.set(String(payload.id), { ...payload });
-  }
-
-  async updateJob(jobId: string, payload: Record<string, unknown>) {
-    this.operations.push(`job:update:${jobId}`);
-    this.jobs.set(jobId, { ...this.jobs.get(jobId), ...payload });
-  }
-
-  async upsertSource(payload: Record<string, unknown>) {
-    this.operations.push(`source:upsert:${String(payload.external_id)}`);
-    this.sources.set(`${String(payload.provider)}:${String(payload.external_id)}`, { ...payload });
+  async upsertJobSource(item: NormalizedSourceRecord, provider: string, fetchedAt: string) {
+    const key = `${provider}:${item.externalId}`;
+    const existing = this.sources.get(key);
+    const jobId = existing?.job_id ? String(existing.job_id) : item.job.id;
+    if (existing) {
+      this.operations.push(`job:update:${jobId}`);
+      const update: Record<string, unknown> = {
+        id: jobId, title: item.job.title, company: item.job.company, country: item.job.country, city: item.job.city,
+        latitude: item.job.latitude, longitude: item.job.longitude, source_name: item.job.sourceName, status: item.job.status,
+        last_seen_at: fetchedAt, updated_at: fetchedAt,
+      };
+      this.jobs.set(jobId, { ...this.jobs.get(jobId), ...update });
+    } else {
+      this.operations.push(`job:insert:${jobId}`);
+      this.jobs.set(jobId, { id: jobId, created_at: item.job.createdAt, source_name: item.job.sourceName, status: item.job.status, last_seen_at: fetchedAt, updated_at: fetchedAt });
+    }
+    this.operations.push(`source:upsert:${item.externalId}`);
+    this.sources.set(key, { job_id: jobId, provider, external_id: item.externalId, status: 'active', fetched_at: fetchedAt });
+    return { jobId, inserted: !existing };
   }
 
   async expireStaleListings(provider: string, seenBefore: string) {
@@ -123,11 +125,43 @@ describe('sync-jobs lifecycle with a mocked repository', () => {
 
   it('records sync error and does not expire on adapter failure', async () => {
     const repository = new MockRepository();
+    await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });
     const adapter: SourceAdapter = { provider: 'find-apprenticeship', fetchPage: async () => { throw new Error('mock fetch failed'); }, normalize: () => null };
-    await expect(runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-01T00:00:00.000Z', pageDelayMs: 0 })).rejects.toThrow('mock fetch failed');
-    expect(repository.runs[0].status).toBe('failed');
-    expect(repository.operations).toContain('run:fail:run-1');
-    expect(repository.operations.some((operation) => operation.startsWith('expire:'))).toBe(false);
+    const expirationOperationsBeforeFailure = repository.operations.filter((operation) => operation.startsWith('expire:')).length;
+    await expect(runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-02T00:00:00.000Z', pageDelayMs: 0 })).rejects.toThrow('mock fetch failed');
+    expect(repository.runs[1].status).toBe('failed');
+    expect(repository.jobs.get('generated-old')?.status).toBe('active');
+    expect(repository.operations).toContain('run:fail:run-2');
+    expect(repository.operations.filter((operation) => operation.startsWith('expire:')).length).toBe(expirationOperationsBeforeFailure);
+  });
+
+  it('fails malformed UK pagination before expiration', async () => {
+    const repository = new MockRepository();
+    await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [] }), { status: 200 }) });
+    await expect(runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-02T00:00:00.000Z', pageDelayMs: 0 })).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
+    expect(repository.jobs.get('generated-old')?.status).toBe('active');
+    expect(repository.runs[1].status).toBe('failed');
+  });
+
+  it('atomically converges concurrent repeats to one canonical job and source', async () => {
+    const repository = new MockRepository();
+    const adapter = adapterFromIds([{ ids: ['same'], nextCursor: null, complete: true }]);
+    await Promise.all([
+      runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-01T00:00:00.000Z', pageDelayMs: 0 }),
+      runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-01T00:00:01.000Z', pageDelayMs: 0 }),
+    ]);
+    expect(repository.jobs.size).toBe(1);
+    expect(repository.sources.size).toBe(1);
+    expect(repository.operations.filter((operation) => operation.startsWith('job:insert:'))).toHaveLength(1);
+    expect(repository.operations.filter((operation) => operation.startsWith('job:update:'))).toHaveLength(1);
+  });
+
+  it('returns a meaningful failure when marking a run failed also fails', async () => {
+    const repository = new MockRepository();
+    repository.failRun = async () => { throw new Error('database update failed'); };
+    const adapter: SourceAdapter = { provider: 'find-apprenticeship', fetchPage: async () => { throw new Error('source failed'); }, normalize: () => null };
+    await expect(runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-01T00:00:00.000Z', pageDelayMs: 0 })).rejects.toMatchObject({ code: 'SYNC_RUN_FAILURE', message: expect.stringContaining('database update failed') });
   });
 });
 

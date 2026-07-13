@@ -23,7 +23,7 @@ const numberValue = (value: unknown): number | null => {
   return Number.isFinite(number) ? number : null;
 };
 
-const coordinatePair = (record: SourceRecord): { latitude: number; longitude: number } | null => {
+const coordinatePair = (record: SourceRecord): { latitude: number; longitude: number } | null | 'invalid' => {
   const candidates: SourceRecord[] = [record];
   if (Array.isArray(record.addresses)) {
     for (const address of record.addresses) {
@@ -34,14 +34,18 @@ const coordinatePair = (record: SourceRecord): { latitude: number; longitude: nu
       }
     }
   }
+  let sawCoordinate = false;
   for (const candidate of candidates) {
-    const latitude = numberValue(candidate.latitude ?? candidate.lat);
-    const longitude = numberValue(candidate.longitude ?? candidate.lng ?? candidate.lon);
+    const rawLatitude = candidate.latitude ?? candidate.lat;
+    const rawLongitude = candidate.longitude ?? candidate.lng ?? candidate.lon;
+    if (rawLatitude !== undefined || rawLongitude !== undefined) sawCoordinate = true;
+    const latitude = numberValue(rawLatitude);
+    const longitude = numberValue(rawLongitude);
     if (latitude !== null && longitude !== null && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
       return { latitude, longitude };
     }
   }
-  return null;
+  return sawCoordinate ? 'invalid' : null;
 };
 
 const pickNested = (record: SourceRecord, keys: string[]): string | null => {
@@ -59,7 +63,7 @@ const pickNested = (record: SourceRecord, keys: string[]): string | null => {
 
 export function normalizeJob(record: SourceRecord, options: NormalizeOptions): NormalizedSourceRecord | null {
   const externalId = firstString(record, ['externalId', 'external_id', 'id', 'vacancyId', 'vacancyReference', 'vacancyReferenceNumber', 'reference']);
-  const sourceUrl = firstString(record, ['sourceUrl', 'source_url', 'url', 'vacancyUrl', 'applicationUri', 'applicationUrl']);
+  const sourceUrl = firstString(record, ['sourceUrl', 'source_url', 'vacancyUrl', 'url', 'applicationUri', 'applicationUrl']);
   const title = firstString(record, ['title', 'jobTitle', 'vacancyTitle']);
   const company = pickNested(record, ['company', 'employer', 'employerName', 'organisation', 'organization']);
   const firstAddress = Array.isArray(record.addresses) && record.addresses[0] && typeof record.addresses[0] === 'object'
@@ -75,7 +79,7 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     ?? pickNested(firstAddress, ['country', 'countryName'])
     ?? pickNested(nestedAddress, ['country', 'countryName']);
   const coordinates = coordinatePair(record);
-  if (!externalId || !sourceUrl || !title || !company || !coordinates) return null;
+  if (!externalId || !sourceUrl || !title || !company || coordinates === 'invalid') return null;
 
   const now = new Date().toISOString();
   const normalizedCountry = country ?? options.defaultCountry ?? 'Unknown';
@@ -88,8 +92,8 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     company,
     country: normalizedCountry,
     city: normalizedCity,
-    latitude: coordinates.latitude,
-    longitude: coordinates.longitude,
+    latitude: coordinates?.latitude ?? null,
+    longitude: coordinates?.longitude ?? null,
     jobType: firstString(record, ['jobType', 'type', 'employmentType']) ?? options.defaultJobType ?? 'apprenticeship',
     level: firstString(record, ['level', 'educationLevel']) ?? options.defaultLevel ?? 'entry-level',
     category: firstString(record, ['category', 'sector', 'occupation']) ?? options.defaultCategory ?? 'general',

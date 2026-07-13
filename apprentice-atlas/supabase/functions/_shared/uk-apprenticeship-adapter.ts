@@ -1,5 +1,5 @@
 import { normalizeJob } from './normalize-job.ts';
-import { extractRecords, firstString, getEnv, SourceConfigurationError, SourceFetchError, type SourceAdapter, type SourceRecord, type SourcePage, type NormalizedSourceRecord } from './source-adapter.ts';
+import { extractRecords, firstString, getEnv, SourceConfigurationError, SourceFetchError, SourcePaginationError, type SourceAdapter, type SourceRecord, type SourcePage, type NormalizedSourceRecord } from './source-adapter.ts';
 
 export interface UkApprenticeshipRecord extends SourceRecord {}
 
@@ -31,16 +31,18 @@ export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRe
     try { payload = await response.json(); } catch (error) { throw new SourceFetchError('UK apprenticeship API returned invalid JSON', { cause: error }); }
     const records = extractRecords(payload) as UkApprenticeshipRecord[];
     const payloadObject = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as SourceRecord : {};
-    const totalPages = Number(payloadObject.totalPages ?? (payloadObject.pagination as SourceRecord | undefined)?.totalPages);
-    const nextCursor = Number.isInteger(totalPages) && totalPages >= pageNumber && pageNumber < totalPages ? String(pageNumber + 1) : null;
-    return { records, nextCursor, complete: nextCursor === null };
+    const rawTotalPages = payloadObject.totalPages ?? (payloadObject.pagination as SourceRecord | undefined)?.totalPages;
+    const totalPages = typeof rawTotalPages === 'number' ? rawTotalPages : typeof rawTotalPages === 'string' && /^\d+$/.test(rawTotalPages.trim()) ? Number(rawTotalPages) : NaN;
+    if (!Number.isInteger(totalPages) || totalPages < 1 || pageNumber > totalPages) throw new SourcePaginationError('UK apprenticeship API response is missing valid totalPages metadata');
+    const complete = pageNumber === totalPages;
+    return { records, nextCursor: complete ? null : String(pageNumber + 1), complete };
   }
 
   normalize(record: UkApprenticeshipRecord): NormalizedSourceRecord | null {
     const normalized = normalizeJob(record, { provider: this.provider, defaultCountry: 'United Kingdom' });
     if (!normalized) return null;
     const officialId = firstString(record, ['vacancyReference', 'vacancyReferenceNumber', 'vacancyId', 'id', 'externalId']);
-    const officialUrl = firstString(record, ['applicationUrl', 'applicationUri', 'vacancyUrl', 'url', 'sourceUrl']);
+    const officialUrl = firstString(record, ['vacancyUrl', 'applicationUrl', 'applicationUri', 'url', 'sourceUrl']);
     return officialId && officialUrl ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, job: { ...normalized.job, sourceUrl: officialUrl } } : null;
   }
 }

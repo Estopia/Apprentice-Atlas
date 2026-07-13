@@ -24,11 +24,21 @@ export interface SourceAdapter<TRecord extends SourceRecord = SourceRecord> {
 }
 
 export class SourceConfigurationError extends Error {
-  readonly code = 'SOURCE_CONFIGURATION_ERROR';
+  readonly code: string;
+
+  constructor(message: string, code = 'SOURCE_CONFIGURATION_ERROR') {
+    super(message);
+    this.name = 'SourceConfigurationError';
+    this.code = code;
+  }
+}
+
+export class SourcePaginationError extends Error {
+  readonly code = 'SOURCE_PAGINATION_ERROR';
 
   constructor(message: string) {
     super(message);
-    this.name = 'SourceConfigurationError';
+    this.name = 'SourcePaginationError';
   }
 }
 

@@ -1,10 +1,11 @@
 // @ts-ignore Supabase Edge Functions resolve npm: imports at runtime.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { BaAdapter } from '../_shared/ba-adapter.ts';
+import { createBaAdapter } from '../_shared/ba-adapter.ts';
 import { createUkApprenticeshipAdapter } from '../_shared/uk-apprenticeship-adapter.ts';
 import { SourceConfigurationError, type SourceAdapter } from '../_shared/source-adapter.ts';
 import { isSyncRequestAuthorized } from '../_shared/sync-auth.ts';
 import { runSync, type SyncRepository } from '../_shared/sync-runner.ts';
+import { jobInsertPayload } from '../_shared/sync-helpers.ts';
 
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Promise<Response>): void } | undefined;
 
@@ -13,12 +14,12 @@ const MAX_PAGES = Math.min(Math.max(Number(env('SYNC_MAX_PAGES') || 20), 1), 100
 const PAGE_DELAY_MS = Math.min(Math.max(Number(env('SYNC_PAGE_DELAY_MS') || 250), 0), 10_000);
 
 type Provider = 'find-apprenticeship' | 'bundesagentur-fuer-arbeit';
-type SupabaseLike = { from(table: string): any };
+type SupabaseLike = { from(table: string): any; rpc(name: string, params: Record<string, unknown>): any };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 function adapterFor(provider: Provider): SourceAdapter {
-  return provider === 'find-apprenticeship' ? createUkApprenticeshipAdapter() : new BaAdapter();
+  return provider === 'find-apprenticeship' ? createUkApprenticeshipAdapter() : createBaAdapter();
 }
 
 function createSupabaseRepository(supabase: SupabaseLike): SyncRepository {
@@ -28,22 +29,17 @@ function createSupabaseRepository(supabase: SupabaseLike): SyncRepository {
       if (result.error || !result.data) throw new Error(`Unable to create sync run: ${result.error?.message ?? 'missing run id'}`);
       return { id: result.data.id };
     },
-    async findSource(provider, externalId) {
-      const result = await supabase.from('job_sources').select('job_id').eq('provider', provider).eq('external_id', externalId).maybeSingle();
-      if (result.error) throw new Error(`Unable to read source ${externalId}: ${result.error.message}`);
-      return result.data ? { jobId: result.data.job_id } : null;
-    },
-    async insertJob(payload) {
-      const result = await supabase.from('jobs').insert(payload);
-      if (result.error) throw new Error(`Unable to insert job: ${result.error.message}`);
-    },
-    async updateJob(jobId, payload) {
-      const result = await supabase.from('jobs').update(payload).eq('id', jobId);
-      if (result.error) throw new Error(`Unable to update job ${jobId}: ${result.error.message}`);
-    },
-    async upsertSource(payload) {
-      const result = await supabase.from('job_sources').upsert(payload, { onConflict: 'provider,external_id' });
-      if (result.error) throw new Error(`Unable to upsert source ${payload.external_id}: ${result.error.message}`);
+    async upsertJobSource(item, provider, fetchedAt) {
+      const result = await supabase.rpc('upsert_job_source', {
+        p_provider: provider,
+        p_external_id: item.externalId,
+        p_source_url: item.sourceUrl,
+        p_raw_payload: item.rawRecord,
+        p_job: jobInsertPayload(item, item.job.id, fetchedAt),
+        p_fetched_at: fetchedAt,
+      });
+      if (result.error || !result.data?.[0]) throw new Error(`Unable to atomically upsert source ${item.externalId}: ${result.error?.message ?? 'missing canonical job'}`);
+      return { jobId: result.data[0].job_id, inserted: Boolean(result.data[0].inserted) };
     },
     async expireStaleListings(provider, seenBefore) {
       const sources = await supabase.from('job_sources').update({ status: 'retired' }).eq('provider', provider).eq('status', 'active').lt('fetched_at', seenBefore).select('job_id');
@@ -57,7 +53,11 @@ function createSupabaseRepository(supabase: SupabaseLike): SyncRepository {
       if (result.error) throw new Error(`Unable to complete sync run: ${result.error.message}`);
     },
     async failRun(runId, payload) {
-      await supabase.from('sync_runs').update({ status: 'failed', ...payload }).eq('id', runId);
+      const result = await supabase.from('sync_runs').update({ status: 'failed', ...payload }).eq('id', runId);
+      if (result.error) {
+        console.error('Unable to mark sync run failed', { runId, error: result.error });
+        throw new Error(`Unable to mark sync run ${runId} failed: ${result.error.message}`);
+      }
     },
   };
 }
@@ -75,8 +75,8 @@ export async function handleSyncRequest(request: Request): Promise<Response> {
     const result = await runSync({ provider, sourceKey: `${provider}:${env('SYNC_SOURCE_CONFIGURATION') || 'default'}`, adapter: adapterFor(provider), repository: createSupabaseRepository(createClient(supabaseUrl, serviceRoleKey)), maxPages: MAX_PAGES, pageDelayMs: PAGE_DELAY_MS });
     return json(result);
   } catch (error) {
-    const code = error instanceof SourceConfigurationError ? error.code : 'SYNC_ERROR';
-    return json({ error: { code, message: error instanceof Error ? error.message : String(error) } }, code === 'SOURCE_CONFIGURATION_ERROR' ? 503 : 500);
+    const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'SYNC_ERROR';
+    return json({ error: { code, message: error instanceof Error ? error.message : String(error) } }, error instanceof SourceConfigurationError ? 503 : 500);
   }
 }
 
