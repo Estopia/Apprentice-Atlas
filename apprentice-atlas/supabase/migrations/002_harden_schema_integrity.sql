@@ -10,7 +10,12 @@ alter table public.sync_runs
   add column if not exists source_provider text;
 
 -- Source identifiers are part of the provenance key. Normalize old blank
--- values before installing the permanent integrity constraint.
+-- provider and external ID values before installing the permanent integrity
+-- constraint. Nonblank provider values are preserved byte-for-byte.
+update public.job_sources
+set provider = 'legacy-source-' || id::text
+where btrim(provider) = '';
+
 update public.job_sources
 set external_id = 'legacy-' || id::text
 where btrim(external_id) = '';
