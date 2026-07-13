@@ -1,5 +1,6 @@
 -- Preflight cleanup for legacy imports.
--- This migration runs after 001_initial_schema.sql and before the locked 002
+-- This migration runs after 20260713090000_initial_schema.sql and before the
+-- locked 20260713092000_harden_schema_integrity.sql
 -- baseline. It is harmless on clean data and makes older source metadata safe
 -- for 002's exact integrity checks.
 
@@ -12,6 +13,11 @@ alter table public.job_sources
   drop constraint if exists job_sources_provider_external_id_key;
 
 drop index if exists public.job_sources_provider_external_id_key;
+
+-- Keep listing-provider provenance available to the locked 002 backfill even
+-- when an intermediate schema has not added it yet.
+alter table public.sync_runs
+  add column if not exists source_provider text;
 
 update public.job_sources
 set provider = case
@@ -96,7 +102,6 @@ do $$
 declare
   has_source_key boolean;
   has_source_id boolean;
-  source_key_not_null boolean;
 begin
   select exists (
     select 1 from information_schema.columns
@@ -137,33 +142,37 @@ begin
         and column_name = 'source_id'
     ) into has_source_id;
 
-    select is_nullable = 'NO'
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'sync_runs'
-      and column_name = 'source_key'
-    into source_key_not_null;
+    if has_source_id then
+      -- Preserve a provider mismatch: source_provider describes the joined
+      -- listing, while provider remains the sync adapter and source-key prefix.
+      update public.sync_runs as runs
+      set source_provider = btrim(sources.provider)
+      from public.job_sources as sources
+      where runs.source_id = sources.id
+        and (runs.source_provider is null or btrim(runs.source_provider) = '');
 
-    if has_source_id and not source_key_not_null then
-      -- Leave an invalid key empty when its old source_id can still provide
-      -- provenance; locked 002 will derive the provider-prefixed key before
-      -- dropping that legacy foreign key.
-      update public.sync_runs
-      set source_key = null
-      where source_key is null
-         or btrim(source_key) = ''
-         or source_key <> btrim(source_key)
-         or left(source_key, length(provider) + 1) <> provider || ':'
-         or length(source_key) <= length(provider) + 1;
-    else
-      update public.sync_runs
-      set source_key = provider || ':legacy-preflight-' || id::text
-      where source_key is null
-         or btrim(source_key) = ''
-         or source_key <> btrim(source_key)
-         or left(source_key, length(provider) + 1) <> provider || ':'
-         or length(source_key) <= length(provider) + 1;
+      -- A joined source is authoritative for malformed or non-empty legacy
+      -- keys. Only rows that cannot be joined receive the preflight fallback.
+      update public.sync_runs as runs
+      set source_key = runs.provider || ':' || btrim(sources.external_id)
+      from public.job_sources as sources
+      where runs.source_id = sources.id
+        and (
+          runs.source_key is null
+          or btrim(runs.source_key) = ''
+          or runs.source_key <> btrim(runs.source_key)
+          or left(runs.source_key, length(runs.provider) + 1) <> runs.provider || ':'
+          or length(runs.source_key) <= length(runs.provider) + 1
+        );
     end if;
+
+    update public.sync_runs
+    set source_key = provider || ':legacy-preflight-' || id::text
+    where source_key is null
+       or btrim(source_key) = ''
+       or source_key <> btrim(source_key)
+       or left(source_key, length(provider) + 1) <> provider || ':'
+       or length(source_key) <= length(provider) + 1;
   else
     -- Fresh 001 does not have source_key yet; 002 adds and backfills it.
     update public.sync_runs
