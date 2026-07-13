@@ -60,6 +60,8 @@ export async function runSync(options: SyncRunnerOptions) {
   let cursor: string | null = null;
   let complete = false;
   try {
+    // Atomicity is per listing/source claim, not whole-run: successful prior
+    // claims remain committed if a later page or item fails.
     for (let page = 0; page < maxPages; page += 1) {
       const result = await options.adapter.fetchPage(cursor);
       counts.fetched_count += result.records.length;
@@ -75,6 +77,8 @@ export async function runSync(options: SyncRunnerOptions) {
       if (options.pageDelayMs) await new Promise((resolve) => setTimeout(resolve, options.pageDelayMs));
     }
     if (!complete) errors.push({ code: 'PAGE_BOUND_REACHED', message: `Stopped after ${maxPages} pages before the source reported completion` });
+    // Expiration is reached only by a complete run and is itself one RPC
+    // transaction across source retirement and related job expiration.
     if (complete) counts.expired_count = await options.repository.expireStaleListings(options.provider, startedAt);
     await options.repository.finishRun(run.id, { ...counts, status: errors.length ? 'partial' : 'succeeded', error_count: errors.length, error_details: errors.length ? errors : null, finished_at: finishedAt() });
     return { provider: options.provider, status: errors.length ? 'partial' as const : 'succeeded' as const, ...counts, errors };

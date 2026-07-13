@@ -146,6 +146,24 @@ describe('sync-jobs lifecycle with a mocked repository', () => {
     expect(repository.operations.filter((operation) => operation.startsWith('expire:')).length).toBe(expirationOperationsBeforeFailure);
   });
 
+  it('keeps earlier per-listing commits when a later page fails', async () => {
+    const repository = new MockRepository();
+    let page = 0;
+    const adapter: SourceAdapter = {
+      provider: 'find-apprenticeship',
+      fetchPage: async () => {
+        if (page++ === 0) return { records: [{ id: 'committed-first' }], nextCursor: '1', complete: false };
+        throw new Error('later page failed');
+      },
+      normalize(record) { return makeItem(String(record.id)); },
+    };
+    await expect(runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-02T00:00:00.000Z', pageDelayMs: 0 })).rejects.toThrow('later page failed');
+    expect(repository.sources.has('find-apprenticeship:committed-first')).toBe(true);
+    expect(repository.jobs.has('generated-committed-first')).toBe(true);
+    expect(repository.runs[0].status).toBe('failed');
+    expect(repository.operations.some((operation) => operation.startsWith('expire:'))).toBe(false);
+  });
+
   it('fails malformed UK pagination before expiration', async () => {
     const repository = new MockRepository();
     await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });
