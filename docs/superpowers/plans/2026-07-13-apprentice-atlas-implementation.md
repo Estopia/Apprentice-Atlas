@@ -70,7 +70,7 @@ Existing starter components in `src/components/` may be retained only where they
 - [ ] Create `job_sources` with provider, external ID, source URL, raw payload JSON, and a unique `(provider, external_id)` constraint.
 - [ ] Create `sync_runs` with source, status, counts, error details, and start/end timestamps.
 - [ ] Create `job_translations`, `favorites`, and `job_ai_content`, including unique `(job_id, language)` constraints where applicable.
-- [ ] Add indexes for `country`, `city`, `status`, `category`, `job_type`, and a geographic lookup strategy appropriate to the selected map query implementation.
+- [ ] Add indexes for `country`, `city`, `status`, `category`, and `job_type`; use a latitude/longitude bounding-box filter for the first map query so the MVP does not require PostGIS.
 - [ ] Enable RLS on user-owned tables. Allow a user to select/insert/delete only their own favorites; allow public read access only to active jobs and published translations; keep raw source payloads server-side.
 - [ ] Add seed fixtures only for local development and tests, clearly marked as fixtures rather than production source data.
 - [ ] Apply the migration in a local or staging Supabase project and verify the RLS policies with an anonymous client and an authenticated test user.
