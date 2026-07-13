@@ -99,4 +99,34 @@ begin
 end;
 $$;
 
+-- Function execution is server-only. REVOKE/GRANT are idempotent and keep the
+-- privilege boundary explicit even if a prior deployment granted PUBLIC.
+revoke execute on function public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz) from public;
+revoke execute on function public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz) from anon;
+revoke execute on function public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz) from authenticated;
 grant execute on function public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz) to service_role;
+
+do $$
+begin
+  if exists (
+    select 1
+    from aclexplode((
+      select proacl
+      from pg_proc
+      where oid = 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)'::regprocedure
+    ))
+    where grantee = 0 and privilege_type = 'EXECUTE'
+  ) then
+    raise exception 'upsert_job_source must not be executable by PUBLIC';
+  end if;
+  if has_function_privilege('anon', 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)', 'execute') then
+    raise exception 'upsert_job_source must not be executable by anon';
+  end if;
+  if has_function_privilege('authenticated', 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)', 'execute') then
+    raise exception 'upsert_job_source must not be executable by authenticated';
+  end if;
+  if not has_function_privilege('service_role', 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)', 'execute') then
+    raise exception 'upsert_job_source must be executable by service_role';
+  end if;
+end;
+$$;
