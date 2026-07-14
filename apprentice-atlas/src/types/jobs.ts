@@ -1,4 +1,5 @@
 export type JobStatus = 'active' | 'expired' | 'invalid';
+export type ApplicationStatus = 'interested' | 'preparing' | 'applied' | 'interview' | 'offer' | 'closed';
 
 export interface Job {
   id: string;
@@ -67,5 +68,16 @@ export interface FavoriteJob {
   userId: string;
   jobId: string;
   createdAt: string;
+  job?: Job;
+}
+
+export interface TrackedApplication {
+  id: string;
+  userId: string;
+  jobId: string;
+  status: ApplicationStatus;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
   job?: Job;
 }
