@@ -63,7 +63,7 @@ const pickNested = (record: SourceRecord, keys: string[]): string | null => {
 
 export function normalizeJob(record: SourceRecord, options: NormalizeOptions): NormalizedSourceRecord | null {
   const externalId = firstString(record, ['externalId', 'external_id', 'id', 'vacancyId', 'vacancyReference', 'vacancyReferenceNumber', 'reference']);
-  const sourceUrl = firstString(record, ['vacancyUrl', 'sourceUrl', 'source_url', 'url', 'applicationUri', 'applicationUrl']);
+  const sourceUrl = firstString(record, ['vacancyUrl', 'sourceUrl', 'source_url']);
   const applicationUrl = firstString(record, ['applicationUrl', 'applicationUri', 'applyUrl', 'apply_url']);
   const title = firstString(record, ['title', 'jobTitle', 'vacancyTitle']);
   const company = pickNested(record, ['company', 'employer', 'employerName', 'organisation', 'organization']);
@@ -80,7 +80,7 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     ?? pickNested(firstAddress, ['country', 'countryName'])
     ?? pickNested(nestedAddress, ['country', 'countryName']);
   const coordinates = coordinatePair(record);
-  if (!externalId || !sourceUrl || !title || !company || coordinates === 'invalid') return null;
+  if (!externalId || !title || !company || coordinates === 'invalid') return null;
 
   const now = new Date().toISOString();
   const normalizedCountry = country ?? options.defaultCountry ?? 'Unknown';

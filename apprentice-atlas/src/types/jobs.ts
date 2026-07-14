@@ -14,7 +14,7 @@ export interface Job {
   tags: string[];
   rawDescription: string;
   requirements: string[];
-  sourceUrl: string;
+  sourceUrl: string | null;
   applicationUrl?: string | null;
   sourceName: string;
   status: JobStatus;
@@ -56,6 +56,7 @@ export interface JobQuestionAnswer {
   answer: string;
   knownFromPosting: boolean;
   notSpecified: boolean;
+  status: 'grounded' | 'unknown';
   grounded?: boolean;
   generatedAt: string;
 }

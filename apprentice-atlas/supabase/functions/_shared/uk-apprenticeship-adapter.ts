@@ -43,8 +43,8 @@ export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRe
     const normalized = normalizeJob(record, { provider: this.provider, defaultCountry: 'United Kingdom' });
     if (!normalized) return null;
     const officialId = firstString(record, ['vacancyReference', 'vacancyReferenceNumber', 'vacancyId', 'id', 'externalId']);
-    const officialUrl = firstString(record, ['vacancyUrl', 'applicationUrl', 'applicationUri', 'url', 'sourceUrl']);
-    return officialId && officialUrl ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, job: { ...normalized.job, sourceUrl: officialUrl } } : null;
+    const officialUrl = firstString(record, ['vacancyUrl', 'sourceUrl', 'source_url']);
+    return officialId ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, job: { ...normalized.job, sourceUrl: officialUrl } } : null;
   }
 }
 

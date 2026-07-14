@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { getSupabaseClient } from './supabase';
 import type { Job, JobFilter } from '../types/jobs';
 import { isWithinRadius, mergeJobs, serializeBoundingBox, serializeJobFilters } from './job-filters';
 
@@ -13,7 +12,7 @@ type JobRow = {
   id: string; title: string; company: string; country: string; city: string;
   latitude: number | null; longitude: number | null; job_type: string; level: string;
   category: string; tags: string[] | null; raw_description: string; requirements: string[] | null;
-  source_url: string; application_url: string | null; source_name: string; status: Job['status']; last_seen_at: string;
+  source_url: string | null; application_url: string | null; source_name: string; status: Job['status']; last_seen_at: string;
   expires_at: string | null; created_at: string; updated_at: string;
 };
 
@@ -31,7 +30,8 @@ function fromRow(row: JobRow): Job {
 export async function getJob(id: string, client?: SupabaseClient): Promise<{ data: Job | null; error: JobsError | null }> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { data: null, error: { code: 'query', message: 'Invalid job identifier.' } };
   try {
-    const result = await (client ?? getSupabaseClient()).from('jobs').select('*').eq('id', id).eq('status', 'active').maybeSingle();
+    const supabase = client ?? (await import('./supabase')).getSupabaseClient();
+    const result = await supabase.from('jobs').select('*').eq('id', id).eq('status', 'active').maybeSingle();
     if (result.error) return { data: null, error: { code: 'query', message: result.error.message || 'Could not load the job.' } };
     return { data: result.data ? fromRow(result.data as JobRow) : null, error: null };
   } catch (error) {
@@ -45,7 +45,7 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient,
     return { data: [], error: { code: 'invalid-filter', message: 'A distance filter needs a location.' } };
   }
   try {
-    const supabase = client ?? getSupabaseClient();
+    const supabase = client ?? (await import('./supabase')).getSupabaseClient();
     const buildQuery = () => {
       let query = supabase.from('jobs').select('*').eq('status', 'active').order('updated_at', { ascending: false });
       if (signal) query = query.abortSignal(signal);

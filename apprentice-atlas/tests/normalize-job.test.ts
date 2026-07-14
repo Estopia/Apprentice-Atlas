@@ -31,7 +31,6 @@ describe('normalizeJob', () => {
   it.each([
     ['title', { ...validRecord, title: ' ' }],
     ['source ID', { ...validRecord, vacancyReference: undefined }],
-    ['source URL', { ...validRecord, vacancyUrl: undefined, applicationUrl: undefined }],
     ['company', { ...validRecord, employerName: undefined }],
   ])('rejects records missing %s', (_, record) => {
     expect(normalizeJob(record, { provider: 'test' })).toBeNull();
@@ -59,6 +58,15 @@ describe('normalizeJob', () => {
     expect(normalized?.job.latitude).toBeNull();
     expect(normalized?.job.longitude).toBeNull();
     expect(normalized?.job.city).toBe('Unknown');
+  });
+
+  it('never copies an application destination into the official source URL', () => {
+    const applicationOnly = normalizeJob({ ...validRecord, vacancyUrl: undefined, sourceUrl: undefined, applicationUrl: 'https://example.test/apply-only' }, { provider: 'test' });
+    expect(applicationOnly?.job.sourceUrl).toBeNull();
+    expect(applicationOnly?.job.applicationUrl).toBe('https://example.test/apply-only');
+    const missingBoth = normalizeJob({ ...validRecord, vacancyUrl: undefined, sourceUrl: undefined, applicationUrl: undefined }, { provider: 'test' });
+    expect(missingBoth?.job.sourceUrl).toBeNull();
+    expect(missingBoth?.job.applicationUrl).toBeNull();
   });
 
   it('keeps the last occurrence of duplicate external IDs', () => {

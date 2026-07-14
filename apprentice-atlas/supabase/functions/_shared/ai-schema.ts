@@ -10,6 +10,7 @@ export interface QaOutput {
   answer: string;
   knownFromPosting: boolean;
   notSpecified: boolean;
+  status: 'grounded' | 'unknown';
 }
 
 const text = (value: unknown, max = 1200): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
@@ -23,8 +24,8 @@ export const explanationJsonSchema = {
 
 export const qaJsonSchema = {
   type: 'object', additionalProperties: false,
-  properties: { answer: { type: 'string' }, knownFromPosting: { type: 'boolean' }, notSpecified: { type: 'boolean' } },
-  required: ['answer', 'knownFromPosting', 'notSpecified'],
+  properties: { answer: { type: 'string' }, status: { type: 'string', enum: ['grounded', 'unknown'] } },
+  required: ['answer', 'status'],
 };
 
 export function parseExplanation(value: unknown): ExplanationOutput | null {
@@ -36,9 +37,14 @@ export function parseExplanation(value: unknown): ExplanationOutput | null {
 export function parseQa(value: unknown): QaOutput | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
-  return text(item.answer, 900) && typeof item.knownFromPosting === 'boolean' && typeof item.notSpecified === 'boolean'
-    ? { answer: item.answer.trim(), knownFromPosting: item.knownFromPosting, notSpecified: item.notSpecified }
-    : null;
+  if (!text(item.answer, 900) || (item.status !== 'grounded' && item.status !== 'unknown')) return null;
+  const answer = item.answer.trim();
+  const disclosure = /(not specified|not mentioned|not provided|not stated|unknown|not available|nicht angegeben|nicht genannt|nicht erwähnt|nicht spezifiziert|keine information|nicht ersichtlich|steht nicht)/i.test(answer);
+  if (item.status === 'unknown' && !disclosure) return null;
+  if (item.status === 'grounded' && disclosure) return null;
+  return item.status === 'grounded'
+    ? { answer, knownFromPosting: true, notSpecified: false, status: 'grounded' }
+    : { answer, knownFromPosting: false, notSpecified: true, status: 'unknown' };
 }
 
 export function validateLanguage(value: unknown): value is Language { return value === 'de' || value === 'en'; }

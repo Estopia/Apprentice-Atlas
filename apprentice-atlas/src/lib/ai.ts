@@ -28,8 +28,8 @@ const isExplanation = (value: unknown): value is JobExplanation => {
 const isAnswer = (value: unknown): value is JobQuestionAnswer => {
   if (!value || typeof value !== 'object') return false;
   const item = value as Record<string, unknown>;
-  return typeof item.jobId === 'string' && (item.language === 'de' || item.language === 'en') && typeof item.question === 'string' && typeof item.answer === 'string' && typeof item.knownFromPosting === 'boolean' && typeof item.notSpecified === 'boolean' && typeof item.generatedAt === 'string';
+  return typeof item.jobId === 'string' && (item.language === 'de' || item.language === 'en') && typeof item.question === 'string' && typeof item.answer === 'string' && typeof item.knownFromPosting === 'boolean' && typeof item.notSpecified === 'boolean' && (item.status === 'grounded' || item.status === 'unknown') && typeof item.generatedAt === 'string';
 };
 
 export function explainJob(jobId: string, language: Locale, client?: FunctionsClient) { return invoke<JobExplanation>('ai-explain', { jobId, language }, isExplanation, client); }
-export function askJobQuestion(jobId: string, language: Locale, question: string, questionCount: number, client?: FunctionsClient) { return invoke<JobQuestionAnswer>('ai-qa', { jobId, language, question, questionCount }, isAnswer, client); }
+export function askJobQuestion(jobId: string, language: Locale, question: string, questionCount: number, sessionId: string, client?: FunctionsClient) { return invoke<JobQuestionAnswer>('ai-qa', { jobId, language, question, questionCount, sessionId }, isAnswer, client); }
