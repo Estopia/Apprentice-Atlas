@@ -4,7 +4,7 @@ import { explanationPrompt, PROMPT_VERSION, type PromptJob } from '../_shared/pr
 
 export type ExplainDeps = { env: (name: string) => string; createAdmin: (url: string, key: string) => { from(table: string): any }; fetcher: typeof fetch };
 const MODEL = (deps: ExplainDeps) => deps.env('OPENAI_MODEL') || 'gpt-5.6';
-const jobColumns = 'id,title,company,country,city,job_type,level,category,tags,raw_description,requirements,updated_at';
+const jobColumns = 'id,title,company,country,city,job_type,level,category,tags,raw_description,requirements,updated_at,expires_at';
 const toPromptJob = (job: Record<string, any>): PromptJob => ({ title: job.title, company: job.company, country: job.country, city: job.city, jobType: job.job_type, level: job.level, category: job.category, tags: job.tags ?? [], rawDescription: job.raw_description ?? '', requirements: job.requirements ?? [] });
 async function contentHash(job: Record<string, unknown>, language: Language) { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ job, language, version: PROMPT_VERSION }))); return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, '0')).join(''); }
 async function callOpenAi(prompt: ReturnType<typeof explanationPrompt>, deps: ExplainDeps) {
@@ -31,7 +31,7 @@ export function createExplainHandler(deps: ExplainDeps) {
     if (!url || !serviceKey) return errorResponse('AI_CONFIGURATION_ERROR', 'AI service is not configured.', 503);
     try {
       const db = deps.createAdmin(url, serviceKey);
-      const jobResult = await db.from('jobs').select(jobColumns).eq('id', body.jobId).eq('status', 'active').maybeSingle();
+      const jobResult = await db.from('jobs').select(jobColumns).eq('id', body.jobId).eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).maybeSingle();
       if (jobResult.error) throw new Error('Unable to load job data.');
       if (!jobResult.data) return errorResponse('JOB_NOT_FOUND', 'This active job could not be found.', 404);
       const hash = await contentHash(jobResult.data, body.language);

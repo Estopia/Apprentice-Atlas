@@ -4,7 +4,7 @@ import { qaPrompt, serializePromptJob, type PromptJob } from '../_shared/prompts
 
 export type QaDeps = { env: (name: string) => string; createAdmin: (url: string, key: string) => { from(table: string): any; rpc(name: string, params: Record<string, unknown>): any }; fetcher: typeof fetch };
 const MODEL = (deps: QaDeps) => deps.env('OPENAI_MODEL') || 'gpt-5.6';
-const jobColumns = 'id,title,company,country,city,job_type,level,category,tags,raw_description,requirements';
+const jobColumns = 'id,title,company,country,city,job_type,level,category,tags,raw_description,requirements,expires_at';
 const toPromptJob = (job: Record<string, any>): PromptJob => ({ title: job.title, company: job.company, country: job.country, city: job.city, jobType: job.job_type, level: job.level, category: job.category, tags: job.tags ?? [], rawDescription: job.raw_description ?? '', requirements: job.requirements ?? [] });
 
 export function createQaHandler(deps: QaDeps) {
@@ -19,13 +19,18 @@ export function createQaHandler(deps: QaDeps) {
     const url = deps.env('SUPABASE_URL'); const serviceKey = deps.env('SUPABASE_SERVICE_ROLE_KEY'); const key = deps.env('OPENAI_API_KEY');
     if (!url || !serviceKey || !key) return errorResponse('AI_CONFIGURATION_ERROR', 'AI service is not configured.', 503);
     try {
-      const db = deps.createAdmin(url, serviceKey); const result = await db.from('jobs').select(jobColumns).eq('id', jobId).eq('status', 'active').maybeSingle();
+      const db = deps.createAdmin(url, serviceKey); const result = await db.from('jobs').select(jobColumns).eq('id', jobId).eq('status', 'active').or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).maybeSingle();
       if (result.error) throw new Error('Unable to load job data.'); if (!result.data) return errorResponse('JOB_NOT_FOUND', 'This active job could not be found.', 404);
       const consumed = await db.rpc('consume_job_ai_question', { p_job_id: jobId, p_session_id: sessionId });
       if (consumed.error) throw new Error('Unable to check the question limit.'); if (consumed.data === null || consumed.data === undefined) return errorResponse('QUESTION_LIMIT', 'This job allows two questions per session.', 429);
-      const promptJob = toPromptJob(result.data); const prompt = qaPrompt(promptJob, language, question); const response = await deps.fetcher('https://api.openai.com/v1/responses', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: MODEL(deps), store: false, instructions: prompt.instructions, input: prompt.input, text: { format: { type: 'json_schema', name: 'job_answer', strict: true, schema: qaJsonSchema } } }) });
-      if (!response.ok) throw new Error(`AI provider request failed (${response.status}).`); const payload = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> }; const text = payload.output_text ?? payload.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? '').join(''); const output = text ? parseQa(JSON.parse(text), serializePromptJob(promptJob)) : null;
-      if (!output) throw new Error('AI provider returned invalid structured content.'); return json({ jobId, language, question, ...output, model: MODEL(deps), generatedAt: new Date().toISOString() });
+      let reserved = true;
+      try {
+        const promptJob = toPromptJob(result.data); const prompt = qaPrompt(promptJob, language, question); const response = await deps.fetcher('https://api.openai.com/v1/responses', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: MODEL(deps), store: false, instructions: prompt.instructions, input: prompt.input, text: { format: { type: 'json_schema', name: 'job_answer', strict: true, schema: qaJsonSchema } } }) });
+        if (!response.ok) throw new Error(`AI provider request failed (${response.status}).`); const payload = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> }; const text = payload.output_text ?? payload.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? '').join(''); const output = text ? parseQa(JSON.parse(text), serializePromptJob(promptJob)) : null;
+        if (!output) throw new Error('AI provider returned invalid structured content.'); reserved = false; return json({ jobId, language, question, ...output, model: MODEL(deps), generatedAt: new Date().toISOString() });
+      } finally {
+        if (reserved) await db.rpc('release_job_ai_question', { p_job_id: jobId, p_session_id: sessionId });
+      }
     } catch (error) { return errorResponse('AI_ERROR', error instanceof Error ? error.message : 'Unable to answer this question.', 500); }
   };
 }

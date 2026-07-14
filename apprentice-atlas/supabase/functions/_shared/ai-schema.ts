@@ -40,8 +40,7 @@ export function parseQa(value: unknown, serializedJobData: string): QaOutput | n
   const item = value as Record<string, unknown>;
   if (!text(item.answer, 900) || (item.status !== 'grounded' && item.status !== 'unknown') || !list(item.evidence) || item.evidence.length > 4 || item.evidence.some((item) => item.length > 120)) return null;
   const evidence = item.evidence.map((item) => item.trim());
-  const serialized = serializedJobData.toLocaleLowerCase();
-  if (evidence.some((item) => !item || !serialized.includes(item.toLocaleLowerCase()))) return null;
+  if (evidence.some((item) => !item || !serializedJobData.includes(item))) return null;
   const answer = item.answer.trim();
   const disclosure = /(not specified|not mentioned|not provided|not stated|unknown|not available|nicht angegeben|nicht genannt|nicht erwähnt|nicht spezifiziert|keine information|nicht ersichtlich|steht nicht)/i.test(answer);
   if (item.status === 'unknown' && !disclosure) return null;

@@ -46,5 +46,8 @@ describe('atomic sync RPC permissions', () => {
     expect(qaMigration).toContain(`grant execute on function ${signature} to service_role;`);
     expect(qaMigration).toMatch(/on conflict \(job_id, session_id\) do update/i);
     expect(qaMigration).toContain('question_count < 2');
+    expect(qaMigration).toContain('public.release_job_ai_question(uuid, uuid)');
+    expect(qaMigration).toContain('revoke execute on function public.release_job_ai_question(uuid, uuid) from public, anon, authenticated;');
+    expect(qaMigration).toContain('grant execute on function public.release_job_ai_question(uuid, uuid) to service_role;');
   });
 });

@@ -32,3 +32,23 @@ $$;
 
 revoke execute on function public.consume_job_ai_question(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.consume_job_ai_question(uuid, uuid) to service_role;
+
+create or replace function public.release_job_ai_question(p_job_id uuid, p_session_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  next_count integer;
+begin
+  update public.job_ai_qa_sessions
+  set question_count = question_count - 1, updated_at = now()
+  where job_id = p_job_id and session_id = p_session_id and question_count > 0
+  returning question_count into next_count;
+  return next_count;
+end;
+$$;
+
+revoke execute on function public.release_job_ai_question(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.release_job_ai_question(uuid, uuid) to service_role;

@@ -27,6 +27,12 @@ describe('grounded AI prompt and schemas', () => {
     expect(validateQuestion('What requirements are listed?')).toBe(true);
   });
 
+  it('requires evidence to be an exact, case-sensitive substring', () => {
+    const serialized = JSON.stringify({ rawDescription: 'Learn web development.' });
+    expect(parseQa({ answer: 'The posting lists web development.', status: 'grounded', evidence: ['Learn web development.'] }, serialized)).not.toBeNull();
+    expect(parseQa({ answer: 'The posting lists web development.', status: 'grounded', evidence: ['learn web development.'] }, serialized)).toBeNull();
+  });
+
   it('handles typed function responses without calling OpenAI from the client', async () => {
     const calls: string[] = [];
     const client = { functions: { invoke: async (name: string) => { calls.push(name); return { data: name === 'ai-explain' ? { jobId: '1', language: 'de', summary: 'Kurz', goodIf: [], notSoGoodIf: [], generatedAt: 'now' } : { jobId: '1', language: 'de', question: 'Q', answer: 'A', knownFromPosting: true, notSpecified: false, status: 'grounded', evidence: ['A'], generatedAt: 'now' }, error: null }; } } };
