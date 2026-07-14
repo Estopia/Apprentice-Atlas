@@ -3,12 +3,20 @@
 -- and updates; validation is intentionally deferred for existing data.
 alter table public.jobs
   add constraint jobs_source_url_http_check
-  check (source_url is not null and source_url ~* '^https?://[^[:space:]]+$')
+  check (
+    source_url is not null
+    and source_url ~* '^https?://[^[:space:]/?#]+([/?#][^[:space:]]*)?$'
+    and nullif(split_part(split_part(split_part(source_url, '/', 3), '?', 1), '#', 1), '') is not null
+  )
   not valid;
 
 alter table public.job_sources
   add constraint job_sources_source_url_http_check
-  check (source_url is not null and source_url ~* '^https?://[^[:space:]]+$')
+  check (
+    source_url is not null
+    and source_url ~* '^https?://[^[:space:]/?#]+([/?#][^[:space:]]*)?$'
+    and nullif(split_part(split_part(split_part(source_url, '/', 3), '?', 1), '#', 1), '') is not null
+  )
   not valid;
 
 create or replace function public.upsert_job_source(
@@ -32,10 +40,14 @@ declare
   job_source_url text := nullif(btrim(p_job->>'source_url'), '');
   normalized_source_url text := nullif(btrim(p_source_url), '');
 begin
-  if normalized_source_url is null or normalized_source_url !~* '^https?://[^[:space:]]+$' then
+  if normalized_source_url is null
+    or normalized_source_url !~* '^https?://[^[:space:]/?#]+([/?#][^[:space:]]*)?$'
+    or nullif(split_part(split_part(split_part(normalized_source_url, '/', 3), '?', 1), '#', 1), '') is null then
     raise exception 'upsert_job_source requires a valid http or https source URL' using errcode = '22023';
   end if;
-  if job_source_url is null or job_source_url !~* '^https?://[^[:space:]]+$' then
+  if job_source_url is null
+    or job_source_url !~* '^https?://[^[:space:]/?#]+([/?#][^[:space:]]*)?$'
+    or nullif(split_part(split_part(split_part(job_source_url, '/', 3), '?', 1), '#', 1), '') is null then
     raise exception 'upsert_job_source requires job.source_url to be a valid http or https URL' using errcode = '22023';
   end if;
   if job_source_url <> normalized_source_url then

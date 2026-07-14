@@ -10,8 +10,12 @@ describe('job detail route state', () => {
 
   it('normalizes valid listing URLs and safely hides legacy invalid values', () => {
     expect(getOriginalListingUrl({ sourceUrl: ' https://official.example/listing/1 ' })).toBe('https://official.example/listing/1');
+    expect(getOriginalListingUrl({ sourceUrl: 'http://official.example/listing/1' })).toBe('http://official.example/listing/1');
     expect(getOriginalListingUrl({ sourceUrl: null })).toBeNull();
     expect(getOriginalListingUrl({ sourceUrl: '' })).toBeNull();
+    for (const sourceUrl of ['https://?', 'https://', 'http:///', ' javascript:alert(1) ', 'https://official.example/listing/1 junk']) {
+      expect(getOriginalListingUrl({ sourceUrl })).toBeNull();
+    }
   });
 
   it('renders the original-link action only for a safe normalized URL', () => {

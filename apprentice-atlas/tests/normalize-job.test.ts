@@ -68,8 +68,17 @@ describe('normalizeJob', () => {
   });
 
   it('rejects a blank or malformed official listing URL without copying applicationUrl', () => {
-    expect(normalizeJob({ ...validRecord, vacancyUrl: ' ', sourceUrl: undefined }, { provider: 'test' })).toBeNull();
-    expect(normalizeJob({ ...validRecord, vacancyUrl: 'not-a-url', sourceUrl: undefined }, { provider: 'test' })).toBeNull();
+    for (const sourceUrl of [' ', 'not-a-url', 'https://?', 'https://', 'http:///', ' https://example.test/listing/1 junk', 'javascript:alert(1)']) {
+      expect(normalizeJob({ ...validRecord, vacancyUrl: sourceUrl, sourceUrl: undefined }, { provider: 'test' })).toBeNull();
+    }
+  });
+
+  it('accepts http and https listing URLs with a hostname', () => {
+    for (const sourceUrl of ['http://example.test/listing/1', 'https://example.test/listing/1?source=official']) {
+      const normalized = normalizeJob({ ...validRecord, vacancyUrl: sourceUrl }, { provider: 'test' });
+      expect(normalized?.sourceUrl).toBe(sourceUrl);
+      expect(normalized?.job.sourceUrl).toBe(sourceUrl);
+    }
   });
 
   it('keeps the last occurrence of duplicate external IDs', () => {

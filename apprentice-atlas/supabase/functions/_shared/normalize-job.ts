@@ -1,4 +1,5 @@
 import type { Job } from '../../../src/types/jobs.ts';
+import { getValidHttpUrl } from '../../../src/lib/official-listing-url.ts';
 import type { NormalizedSourceRecord, SourceRecord } from './source-adapter.ts';
 import { asString, firstString } from './source-adapter.ts';
 
@@ -82,7 +83,8 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
   const coordinates = coordinatePair(record);
   // Ingested listings must retain a link to the official listing itself. An
   // application destination is deliberately independent and may be absent.
-  if (!externalId || !sourceUrl || !/^https?:\/\/\S+$/i.test(sourceUrl) || !title || !company || coordinates === 'invalid') return null;
+  const validSourceUrl = getValidHttpUrl(sourceUrl);
+  if (!externalId || !validSourceUrl || !title || !company || coordinates === 'invalid') return null;
 
   const now = new Date().toISOString();
   const normalizedCountry = country ?? options.defaultCountry ?? 'Unknown';
@@ -103,7 +105,7 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     tags: textList(record.tags ?? record.keywords),
     rawDescription: description,
     requirements: textList(record.requirements ?? record.skills),
-    sourceUrl,
+    sourceUrl: validSourceUrl,
     applicationUrl,
     sourceName: options.provider,
     status: 'active',
@@ -112,5 +114,5 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     createdAt: now,
     updatedAt: now,
   };
-  return { externalId, sourceUrl, job, rawRecord: record };
+  return { externalId, sourceUrl: validSourceUrl, job, rawRecord: record };
 }

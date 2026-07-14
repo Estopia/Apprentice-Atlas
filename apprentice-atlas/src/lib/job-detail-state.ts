@@ -1,4 +1,5 @@
 import type { Job, JobExplanation } from '@/types/jobs';
+import { getValidHttpUrl } from './official-listing-url';
 
 export type JobDetailState = {
   job: Job | null;
@@ -14,6 +15,5 @@ export function resetJobDetailState(state: JobDetailState): JobDetailState {
 }
 
 export function getOriginalListingUrl(job: Pick<Job, 'sourceUrl'>): string | null {
-  if (!job.sourceUrl || !/^https?:\/\/\S+$/i.test(job.sourceUrl.trim())) return null;
-  return job.sourceUrl.trim();
+  return getValidHttpUrl(job.sourceUrl);
 }

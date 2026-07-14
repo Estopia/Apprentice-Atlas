@@ -82,8 +82,17 @@ describe('upsert_job_source PostgreSQL integration', () => {
     const payload = (sourceUrl: string, externalId: string) => `select * from public.upsert_job_source(
       'find-apprenticeship', '${externalId}', '${sourceUrl}', '{}'::jsonb,
       jsonb_build_object('id', '${jobId}', 'title', 'RPC apprentice', 'company', 'Atlas', 'country', 'GB', 'city', 'Nationwide', 'job_type', 'apprenticeship', 'level', 'entry-level', 'category', 'general', 'tags', '[]'::jsonb, 'raw_description', '', 'requirements', '[]'::jsonb, 'source_url', '${sourceUrl}', 'source_name', 'find-apprenticeship', 'status', 'active'), now());`;
-    await expect(runPsql(payload('', 'missing-source-rpc'))).rejects.toThrow(/source URL/i);
-    await expect(runPsql(payload('not-a-url', 'malformed-source-rpc'))).rejects.toThrow(/source URL/i);
+    for (const [sourceUrl, externalId] of [
+      ['', 'missing-source-rpc'],
+      ['not-a-url', 'malformed-source-rpc'],
+      ['https://?', 'hostless-query-rpc'],
+      ['https://', 'hostless-rpc'],
+      ['http:///', 'hostless-path-rpc'],
+      [' https://example.test/listing/1 junk', 'whitespace-rpc'],
+      ['javascript:alert(1)', 'scheme-rpc'],
+    ]) {
+      await expect(runPsql(payload(sourceUrl, externalId))).rejects.toThrow(/source URL/i);
+    }
     expect(execFileSync('psql', ['-X', '-q', '-At', databaseUrl!], { input: `select count(*) from public.jobs where id = '${jobId}';`, encoding: 'utf8' }).trim()).toBe('0');
   });
 });
