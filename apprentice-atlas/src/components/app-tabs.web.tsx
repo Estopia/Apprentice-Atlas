@@ -29,8 +29,8 @@ function TabButton({ children, isFocused, icon, ...props }: TabTriggerSlotProps 
       : { ios: 'person.crop.circle.fill', android: 'person', web: 'person' } as const;
   return (
     <Pressable {...props} accessibilityRole="tab" accessibilityState={{ selected: Boolean(isFocused) }} style={({ pressed }) => [styles.tabButton, isFocused && styles.tabButtonActive, pressed && styles.pressed]}>
-      <AppIcon name={iconName} size={18} tintColor={isFocused ? Palette.white : Palette.textSecondary} />
-      <Text style={[styles.tabText, isFocused && styles.tabTextActive]}>{children}</Text>
+      <AppIcon name={iconName} size={17} tintColor={isFocused ? Palette.white : Palette.textSecondary} />
+      <Text numberOfLines={1} style={[styles.tabText, isFocused && styles.tabTextActive]}>{children}</Text>
     </Pressable>
   );
 }
@@ -40,11 +40,11 @@ function CustomTabList(props: TabListProps) {
 }
 
 const styles = StyleSheet.create({
-  tabListContainer: { position: 'absolute', left: 0, right: 0, bottom: 18, zIndex: 50, alignItems: 'center', pointerEvents: 'box-none' },
-  innerContainer: { flexDirection: 'row', padding: 5, gap: 4, borderRadius: Radius.pill, backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
-  tabButton: { height: 46, minHeight: 44, width: 108, minWidth: 44, paddingHorizontal: 12, borderRadius: Radius.pill, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
+  tabListContainer: { position: 'absolute', left: 0, right: 0, bottom: 18, zIndex: 50, alignItems: 'center', paddingHorizontal: 8, pointerEvents: 'box-none' },
+  innerContainer: { width: '100%', maxWidth: 380, flexDirection: 'row', padding: 4, gap: 3, borderRadius: Radius.pill, backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
+  tabButton: { height: 46, minHeight: 44, flex: 1, minWidth: 0, paddingHorizontal: 6, borderRadius: Radius.pill, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' },
   tabButtonActive: { backgroundColor: Palette.blue },
-  tabText: { color: Palette.textSecondary, fontSize: 13, fontWeight: '800' },
+  tabText: { flexShrink: 1, color: Palette.textSecondary, fontSize: 12, fontWeight: '800' },
   tabTextActive: { color: Palette.white },
   pressed: { opacity: 0.72 },
 });

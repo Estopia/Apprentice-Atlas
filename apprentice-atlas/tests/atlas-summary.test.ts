@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupApplications, summarizeApplications } from '../src/lib/atlas';
+import * as atlas from '../src/lib/atlas';
 import type { ApplicationStatus, TrackedApplication } from '../src/types/jobs';
+
+const { groupApplications, summarizeApplications } = atlas;
 
 function application(id: string, status: ApplicationStatus, updatedAt: string): TrackedApplication {
   return {
@@ -58,5 +60,24 @@ describe('Atlas application summary', () => {
     expect(grouped.active.map(({ id }) => id)).toEqual(['6', '4', '5', '2']);
     expect(grouped.finished.map(({ id }) => id)).toEqual(['3', '1']);
     expect(applications.map(({ id }) => id)).toEqual(originalOrder);
+  });
+
+  it('returns a finite timestamp only for valid dates', () => {
+    const safeTimestamp = (atlas as unknown as { safeTimestamp?: (value: string) => number | null }).safeTimestamp;
+
+    expect(safeTimestamp).toBeTypeOf('function');
+    expect(safeTimestamp?.('2026-07-14T12:00:00.000Z')).toBe(Date.parse('2026-07-14T12:00:00.000Z'));
+    expect(safeTimestamp?.('not-a-date')).toBeNull();
+  });
+
+  it('sorts malformed update dates last with deterministic ties', () => {
+    const applications = [
+      application('9', 'interested', 'not-a-date'),
+      application('2', 'applied', '2026-07-12T12:00:00.000Z'),
+      application('1', 'interview', '2026-07-14T12:00:00.000Z'),
+      application('7', 'preparing', ''),
+    ];
+
+    expect(groupApplications(applications).active.map(({ id }) => id)).toEqual(['1', '2', '7', '9']);
   });
 });

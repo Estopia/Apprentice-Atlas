@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { Palette, Radius, Shadows } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { usePreferences } from '@/hooks/use-preferences';
-import { groupApplications, summarizeApplications, type ApplicationSummary } from '@/lib/atlas';
+import { groupApplications, safeTimestamp, summarizeApplications, type ApplicationSummary } from '@/lib/atlas';
 import { listApplications, type ApplicationsError } from '@/lib/applications';
 import { getReadableAuthError, type AuthError } from '@/lib/auth';
 import { localizeApplicationStatus, localizeCategory, localizeCountry, t, useLocale, type Locale } from '@/lib/i18n';
@@ -18,37 +18,43 @@ export default function AtlasScreen() {
   const auth = useAuth();
   const { preferences, isHydrated } = usePreferences();
   const [applications, setApplications] = useState<TrackedApplication[]>([]);
-  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
+  const [loadedForSessionKey, setLoadedForSessionKey] = useState<string | null>(null);
   const [applicationsError, setApplicationsError] = useState<ApplicationsError | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const latestLoadAttempt = useRef(0);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState<AuthError | null>(null);
   const userId = auth.session?.user.id ?? null;
+  const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
 
-  useEffect(() => {
-    if (auth.loading || !userId) return;
+  const loadApplications = useCallback(() => {
+    if (auth.loading || !userId || !sessionKey) return undefined;
     let active = true;
+    const requestedAttempt = loadAttempt;
     void listApplications().then((result) => {
-      if (!active) return;
+      if (!active || requestedAttempt !== latestLoadAttempt.current) return;
       setApplications(result.data ?? []);
       setApplicationsError(result.error);
-      setLoadedForUserId(userId);
+      setLoadedForSessionKey(sessionKey);
     });
     return () => { active = false; };
-  }, [auth.loading, loadAttempt, userId]);
+  }, [auth.loading, loadAttempt, sessionKey, userId]);
+
+  useFocusEffect(loadApplications);
 
   const currentApplications = useMemo(
-    () => loadedForUserId === userId ? applications : [],
-    [applications, loadedForUserId, userId],
+    () => loadedForSessionKey === sessionKey ? applications : [],
+    [applications, loadedForSessionKey, sessionKey],
   );
-  const currentError = loadedForUserId === userId ? applicationsError : null;
-  const loading = auth.loading || !isHydrated || Boolean(userId && loadedForUserId !== userId);
+  const currentError = loadedForSessionKey === sessionKey ? applicationsError : null;
+  const loading = auth.loading || !isHydrated || Boolean(sessionKey && loadedForSessionKey !== sessionKey);
   const summary = useMemo(() => summarizeApplications(currentApplications), [currentApplications]);
   const groups = useMemo(() => groupApplications(currentApplications), [currentApplications]);
 
   const retry = () => {
-    setLoadedForUserId(null);
-    setLoadAttempt((attempt) => attempt + 1);
+    setLoadedForSessionKey(null);
+    latestLoadAttempt.current += 1;
+    setLoadAttempt(latestLoadAttempt.current);
   };
 
   const signOut = async () => {
@@ -212,11 +218,14 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
   const router = useRouter();
   const job = application.job;
   const status = localizeApplicationStatus(locale, application.status);
-  const updated = new Date(application.updatedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const updatedTimestamp = safeTimestamp(application.updatedAt);
+  const updated = updatedTimestamp === null
+    ? t(locale, 'atlas.updatedFallback')
+    : `${t(locale, 'atlas.updated')} ${new Date(updatedTimestamp).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })}`;
   const title = job?.title ?? t(locale, 'atlas.unavailable');
   return (
     <Pressable
@@ -233,7 +242,7 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
       <View style={styles.applicationCopy}>
         <Text selectable numberOfLines={2} style={styles.applicationTitle}>{title}</Text>
         {job && <Text selectable numberOfLines={1} style={styles.applicationCompany}>{job.company} · {job.city}</Text>}
-        <Text style={styles.updated}>{t(locale, 'atlas.updated')} {updated}</Text>
+        <Text style={styles.updated}>{updated}</Text>
       </View>
       <View style={[styles.statusPill, application.status === 'offer' && styles.statusSuccess, application.status === 'closed' && styles.statusMuted]}>
         <Text style={[styles.statusText, application.status === 'offer' && styles.statusSuccessText, application.status === 'closed' && styles.statusMutedText]}>{status}</Text>

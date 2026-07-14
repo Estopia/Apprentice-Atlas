@@ -20,6 +20,11 @@ export type ApplicationGroups = {
   finished: TrackedApplication[];
 };
 
+export function safeTimestamp(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 export function summarizeApplications(applications: readonly TrackedApplication[]): ApplicationSummary {
   return applications.reduce<ApplicationSummary>((summary, application) => {
     summary.total += 1;
@@ -32,9 +37,17 @@ export function summarizeApplications(applications: readonly TrackedApplication[
 }
 
 export function groupApplications(applications: readonly TrackedApplication[]): ApplicationGroups {
-  const newestFirst = [...applications].sort(
-    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-  );
+  const newestFirst = [...applications].sort((left, right) => {
+    const leftTimestamp = safeTimestamp(left.updatedAt);
+    const rightTimestamp = safeTimestamp(right.updatedAt);
+    if (leftTimestamp === null && rightTimestamp !== null) return 1;
+    if (leftTimestamp !== null && rightTimestamp === null) return -1;
+    if (leftTimestamp !== null && rightTimestamp !== null && leftTimestamp !== rightTimestamp) {
+      return rightTimestamp - leftTimestamp;
+    }
+    if (left.id === right.id) return 0;
+    return left.id < right.id ? -1 : 1;
+  });
   return {
     active: newestFirst.filter((application) => ACTIVE_STATUSES.has(application.status)),
     finished: newestFirst.filter((application) => !ACTIVE_STATUSES.has(application.status)),
