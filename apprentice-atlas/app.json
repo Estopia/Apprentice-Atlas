@@ -10,6 +10,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.estopiaengineering.apprenticeatlas",
+      "icon": "./assets/Apprentice Atlas.icon",
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Apprentice Atlas uses your location to find nearby apprenticeship opportunities.",
