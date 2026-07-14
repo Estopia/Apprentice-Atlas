@@ -43,7 +43,8 @@ using ((select auth.uid()) = user_id);
 
 revoke all on public.applications from public;
 revoke all on public.applications from anon;
-grant select, update, delete on public.applications to authenticated;
+grant select, delete on public.applications to authenticated;
+grant update (status, note) on public.applications to authenticated;
 grant all on public.applications to service_role;
 
 -- Keep ownership and job availability inside the database boundary. Existing

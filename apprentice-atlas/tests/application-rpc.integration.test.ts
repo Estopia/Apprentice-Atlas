@@ -38,6 +38,18 @@ select status from public.upsert_application('${activeJob}', 'applied', 'First a
 do $$
 begin
   begin
+    update public.applications
+    set job_id = '${expiredJob}'
+    where user_id = '${userOne}' and job_id = '${activeJob}';
+    raise exception 'job_id was directly mutable';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+do $$
+begin
+  begin
     perform public.upsert_application('${expiredJob}', 'interested', null);
     raise exception 'expired job was accepted';
   exception when sqlstate 'P0002' then null;

@@ -42,7 +42,9 @@ describe('application tracker schema and permissions', () => {
 
   it('routes inserts through an authenticated RPC without anonymous access', () => {
     const sql = migration();
-    expect(sql).toContain('grant select, update, delete on public.applications to authenticated;');
+    expect(sql).toContain('grant select, delete on public.applications to authenticated;');
+    expect(sql).toContain('grant update (status, note) on public.applications to authenticated;');
+    expect(sql).not.toMatch(/grant update\s+on public\.applications to authenticated/i);
     expect(sql).toContain('revoke insert on public.applications from authenticated;');
     expect(sql).toContain('grant all on public.applications to service_role;');
     expect(sql).toContain('revoke all on public.applications from anon;');
