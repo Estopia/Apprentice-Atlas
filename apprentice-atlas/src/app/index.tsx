@@ -8,6 +8,7 @@ import { JobFilters } from '@/components/jobs/job-filters';
 import { useJobs } from '@/hooks/use-jobs';
 import { useLocation } from '@/hooks/use-location';
 import { localizeJobError, useLocale, setLocale, t, type Locale } from '@/lib/i18n';
+import { applyManualLocationFilters } from '@/lib/location';
 import { hasMapPosition } from '@/lib/jobs';
 import type { JobFilter } from '@/types/jobs';
 
@@ -26,7 +27,8 @@ export default function DiscoveryScreen() {
     if (next && 'latitude' in next) setFilters((current) => ({ ...current, latitude: next.latitude, longitude: next.longitude, radiusKm: current.radiusKm ?? 50 }));
   };
   const useManual = () => {
-    if (location.setManualLocation(manualCity, manualCountry)) setFilters((current) => ({ ...current, city: manualCity.trim(), country: manualCountry.trim(), latitude: undefined, longitude: undefined }));
+    const nextFilters = applyManualLocationFilters(filters, manualCity, manualCountry);
+    if (nextFilters && location.setManualLocation(manualCity, manualCountry)) setFilters(nextFilters);
   };
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}><View style={styles.header}><View style={styles.heading}><Text style={styles.eyebrow}>APPRENTICE ATLAS</Text><Text style={styles.title}>{t(locale, 'discovery.title')}</Text><Text style={styles.subtitle}>{t(locale, 'discovery.subtitle')}</Text></View><LanguageSwitcher locale={locale} /></View><View style={styles.locationPanel}><Text style={styles.panelTitle}>{t(locale, 'discovery.location')}</Text><View style={styles.locationActions}><Pressable onPress={useDeviceLocation} style={styles.primaryButton}><Text style={styles.primaryText}>{t(locale, 'location.useLocation')}</Text></Pressable><View style={styles.manualInputs}><TextInputLike value={manualCity} onChange={setManualCity} placeholder={t(locale, 'discovery.city')} /><TextInputLike value={manualCountry} onChange={setManualCountry} placeholder={t(locale, 'discovery.country')} /><Pressable onPress={useManual} style={styles.secondaryButton}><Text style={styles.secondaryText}>{t(locale, 'discovery.useManual')}</Text></Pressable></View></View><Text style={styles.status}>{location.status === 'denied' || location.status === 'unavailable' ? `${t(locale, 'location.fallback')} ${t(locale, 'location.denied')}` : location.status === 'requesting' ? t(locale, 'loading.jobs') : ''}</Text></View><JobFilters value={filters} onChange={setFilters} /><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{t(locale, 'discovery.jobs')} {jobs.length ? `(${jobs.length})` : ''}</Text><Text style={styles.mapCount}>{jobs.filter(hasMapPosition).length} {t(locale, 'discovery.markers')}</Text></View>{loading ? <StatePanel text={t(locale, 'loading.jobs')} /> : error ? <StatePanel text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : !jobs.length ? <StatePanel text={t(locale, 'discovery.noResults')} /> : <><View style={styles.mapWrap}><JobMap jobs={jobs} selectedJobId={selectedJobId} onSelect={(job) => setSelectedJobId(job.id)} /></View>{selectedJob && <Text style={styles.selectedHint}>{t(locale, 'discovery.selectJob')}: {selectedJob.title}</Text>}<View style={styles.list}>{jobs.map((job) => <JobCard key={job.id} job={job} selected={job.id === selectedJobId} onPress={() => setSelectedJobId(job.id)} />)}</View></>}</ScrollView></SafeAreaView>;
