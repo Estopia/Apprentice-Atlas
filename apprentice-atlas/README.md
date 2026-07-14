@@ -114,7 +114,7 @@ npx expo-doctor
 npx expo config --type public
 ```
 
-The product-layer handoff passed 137 automated tests with 6 environment-gated integration tests skipped, Expo lint, TypeScript, Expo Doctor (20/20), static web export, static iOS export, and interactive checks at 320×844 and 390×844. The native development profiles should still be validated with `npx eas build:configure`/`npx eas build --profile development --platform <ios|android>` when EAS credentials and a device are available.
+The product-layer handoff passed 141 automated tests with 6 environment-gated integration tests skipped, Expo lint, TypeScript, Expo Doctor (20/20), static web export, static iOS export, and interactive checks at 320×844 and 390×844. The application RPC integration test was additionally run successfully against a disposable PostgreSQL database with every timestamped migration applied. The native development profiles should still be validated with `npx eas build:configure`/`npx eas build --profile development --platform <ios|android>` when EAS credentials and a device are available.
 
 ## Known limitations
 
