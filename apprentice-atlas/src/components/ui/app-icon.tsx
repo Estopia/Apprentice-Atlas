@@ -1,6 +1,8 @@
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
 
+export type AppIconName = SymbolViewProps['name'];
+
 type AppIconProps = Pick<SymbolViewProps, 'name' | 'size' | 'tintColor'> & {
   accessibilityLabel?: string;
 };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { JobCard } from '@/components/jobs/job-card';
@@ -11,7 +12,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useJobs } from '@/hooks/use-jobs';
 import { getDiscoveryState, updateDiscoveryFilters, useDiscoveryState } from '@/lib/discovery-state';
 import { addFavorite, getFavoriteForJob, removeFavorite } from '@/lib/favorites';
-import { localizeCountry, localizeJobError, localizeJobType, t, useLocale } from '@/lib/i18n';
+import { localizeCategory, localizeCountry, localizeJobError, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import type { FavoriteJob, Job } from '@/types/jobs';
 
 type ViewMode = 'map' | 'list';
@@ -40,7 +41,7 @@ export default function DiscoveryScreen() {
   }, [search]);
 
   const sortedJobs = useMemo(() => sortJobs(jobs, sort, filters.latitude, filters.longitude), [filters.latitude, filters.longitude, jobs, sort]);
-  const mapJobs = useMemo(() => sortedJobs.slice(0, 120), [sortedJobs]);
+  const mapJobs = useMemo(() => sortedJobs.slice(0, 400), [sortedJobs]);
   const selectedJob = useMemo(() => sortedJobs.find((job) => job.id === selectedJobId) ?? sortedJobs[0], [selectedJobId, sortedJobs]);
 
   useEffect(() => {
@@ -140,7 +141,7 @@ export default function DiscoveryScreen() {
       {viewMode === 'map' && (
         <View pointerEvents="box-none" style={[styles.bottom, { bottom: Math.max(insets.bottom, 10) + 66 }]}>
           <View style={styles.mapActions}>
-            <View style={styles.resultLabel}><Text style={styles.resultLabelText}>{loading ? t(locale, 'loading.jobs') : `${sortedJobs.length} ${t(locale, 'discovery.results').toLowerCase()}`}</Text></View>
+            <View style={styles.resultLabel}><Text style={styles.resultLabelText}>{loading ? t(locale, 'loading.jobs') : `${new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB').format(sortedJobs.length)} ${t(locale, 'discovery.results').toLowerCase()}`}</Text></View>
             <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'location.chooseLocation')} onPress={() => router.push('/location')} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}><AppIcon name={{ ios: 'location.fill', android: 'my_location', web: 'my_location' }} size={21} tintColor={Palette.blue} /></Pressable>
           </View>
           {loading && !selectedJob ? <StatePanel compact loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel compact text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : selectedJob ? <JobPreview favorite={Boolean(activeFavorite)} favoriteBusy={favoriteBusy} job={selectedJob} locale={locale} onDetails={() => openJob(selectedJob)} onFavorite={() => void toggleFavorite()} /> : <StatePanel compact text={t(locale, 'discovery.noResults')} />}
@@ -156,17 +157,28 @@ function ControlButton({ badge, icon, label, onPress }: { badge?: number; icon: 
 
 function JobPreview({ favorite, favoriteBusy, job, locale, onDetails, onFavorite }: { favorite: boolean; favoriteBusy: boolean; job: Job; locale: 'de' | 'en'; onDetails: () => void; onFavorite: () => void }) {
   return (
-    <View style={styles.sheet}>
+    <Animated.View key={job.id} entering={FadeInUp.duration(180)} exiting={FadeOut.duration(120)} style={styles.sheet}>
       <View style={styles.grabber} />
-      <Text style={styles.previewTitle} numberOfLines={2}>{job.title}</Text>
-      <Text style={styles.previewCompany} numberOfLines={1}>{job.company}</Text>
-      <Text style={styles.previewMeta} numberOfLines={1}>{job.city}, {localizeCountry(locale, job.country)} · {localizeJobType(locale, job.jobType)}</Text>
+      <View style={styles.previewHeader}>
+        <View style={styles.previewLogo}><Text style={styles.previewLogoText}>{job.company.slice(0, 1).toUpperCase()}</Text></View>
+        <View style={styles.previewCopy}><Text style={styles.previewTitle} numberOfLines={2}>{job.title}</Text><Text style={styles.previewCompany} numberOfLines={1}>{job.company}</Text></View>
+      </View>
+      <View style={styles.previewMetaRow}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={14} tintColor={Palette.textSecondary} /><Text style={styles.previewMeta} numberOfLines={1}>{job.city}, {localizeCountry(locale, job.country)} · {localizeJobType(locale, job.jobType)}</Text></View>
+      <View style={styles.previewFacts}>
+        <PreviewFact icon={{ ios: 'square.grid.2x2', android: 'category', web: 'category' }} label={localizeCategory(locale, job.category)} />
+        <PreviewFact icon={{ ios: 'figure.walk', android: 'school', web: 'school' }} label={localizeJobLevel(locale, job.level)} />
+        {job.expiresAt && <PreviewFact icon={{ ios: 'calendar', android: 'event', web: 'event' }} label={new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short' })} />}
+      </View>
       <View style={styles.previewActions}>
         <Pressable accessibilityRole="button" accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy} onPress={onFavorite} style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>{favoriteBusy ? <ActivityIndicator color={Palette.blue} /> : <AppIcon name={favorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={20} tintColor={Palette.blue} />}<Text style={styles.saveButtonText}>{favorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')}</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={onDetails} style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}><Text style={styles.detailsButtonText}>{t(locale, 'discovery.details')}</Text></Pressable>
       </View>
-    </View>
+    </Animated.View>
   );
+}
+
+function PreviewFact({ icon, label }: { icon: { ios: string; android: string; web: string }; label: string }) {
+  return <View style={styles.previewFact}><AppIcon name={icon as never} size={13} tintColor={Palette.blue} /><Text style={styles.previewFactText} numberOfLines={2}>{label}</Text></View>;
 }
 
 function StatePanel({ text, action, onPress, loading, compact }: { text: string; action?: string; onPress?: () => void; loading?: boolean; compact?: boolean }) {
@@ -214,9 +226,17 @@ const styles = StyleSheet.create({
   roundButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(15, 23, 42, 0.16)' },
   sheet: { backgroundColor: Palette.white, borderRadius: 22, borderCurve: 'continuous', paddingHorizontal: 18, paddingTop: 9, paddingBottom: 16, boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)' },
   grabber: { width: 36, height: 5, borderRadius: 3, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 10 },
-  previewTitle: { color: Palette.text, fontSize: 20, lineHeight: 24, fontWeight: '700', letterSpacing: -0.25 },
-  previewCompany: { color: Palette.text, fontSize: 14, fontWeight: '500', marginTop: 4 },
-  previewMeta: { color: Palette.textSecondary, fontSize: 13, marginTop: 4 },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  previewLogo: { width: 46, height: 46, borderRadius: 13, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  previewLogoText: { color: Palette.blue, fontSize: 18, fontWeight: '800' },
+  previewCopy: { flex: 1, minWidth: 0 },
+  previewTitle: { color: Palette.text, fontSize: 19, lineHeight: 23, fontWeight: '700', letterSpacing: -0.25 },
+  previewCompany: { color: Palette.text, fontSize: 13, fontWeight: '500', marginTop: 3 },
+  previewMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
+  previewMeta: { flex: 1, color: Palette.textSecondary, fontSize: 12 },
+  previewFacts: { flexDirection: 'row', gap: 6, marginTop: 10 },
+  previewFact: { flex: 1, minWidth: 0, minHeight: 34, borderRadius: 9, borderCurve: 'continuous', backgroundColor: Palette.surface, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  previewFactText: { flexShrink: 1, color: Palette.text, fontSize: 10, lineHeight: 12, fontWeight: '600' },
   previewActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
   saveButton: { minHeight: 46, minWidth: 112, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   saveButtonText: { color: Palette.blue, fontSize: 15, fontWeight: '700' },

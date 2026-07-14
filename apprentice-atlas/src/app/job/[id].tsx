@@ -4,12 +4,12 @@ import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'r
 
 import { AiExplanation } from '@/components/jobs/ai-explanation';
 import { JobQa } from '@/components/jobs/job-qa';
-import { AppIcon } from '@/components/ui/app-icon';
+import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
 import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
-import { localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
+import { localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
 import { getJob } from '@/lib/jobs';
 import { getValidHttpUrl } from '@/lib/official-listing-url';
@@ -89,6 +89,12 @@ export default function JobDetailScreen() {
           <View style={styles.heroLocation}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={16} tintColor={Palette.textSecondary} /><Text style={styles.heroLocationText}>{job.city}, {localizeCountry(locale, job.country)}</Text></View>
         </View>
 
+        <View style={styles.facts}>
+          <JobFact icon={{ ios: 'square.grid.2x2.fill', android: 'category', web: 'category' }} value={localizeCategory(locale, job.category)} />
+          <JobFact icon={{ ios: 'figure.wave', android: 'school', web: 'school' }} value={localizeJobLevel(locale, job.level)} />
+          {job.expiresAt && <JobFact icon={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }} label={t(locale, 'job.closingDate')} value={new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short' })} />}
+        </View>
+
         {favoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(favoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
 
         {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel={activeFavorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')} onPress={() => void toggleFavorite()} style={styles.utilityButton}><AppIcon name={activeFavorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
@@ -102,13 +108,17 @@ export default function JobDetailScreen() {
 
         <AiExplanation explanation={explanation} loading={aiLoading} error={aiError} />
         <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.description')}</Text><Text style={styles.body}>{job.rawDescription || t(locale, 'ai.unknown')}</Text></View>
-        <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.requirements')}</Text>{job.requirements.length ? job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>) : <Text style={styles.body}>{t(locale, 'ai.unknown')}</Text>}</View>
+        {job.requirements.length > 0 && <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.requirements')}</Text>{job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>)}</View>}
         <JobQa jobId={job.id} />
       </ScrollView>
       <Stack.Screen options={{ title: '', headerShown: true, headerTransparent: true, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }} />
       {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={shareJob} /><Stack.Toolbar.Button icon={activeFavorite ? 'bookmark.fill' : 'bookmark'} selected={Boolean(activeFavorite)} disabled={favoriteBusy} onPress={() => void toggleFavorite()} /></Stack.Toolbar>}
     </>
   );
+}
+
+function JobFact({ icon, label, value }: { icon: AppIconName; label?: string; value: string }) {
+  return <View style={styles.fact}><AppIcon name={icon} size={17} tintColor={Palette.blue} /><View style={styles.factCopy}>{label && <Text style={styles.factLabel}>{label}</Text>}<Text style={styles.factValue} numberOfLines={2}>{value}</Text></View></View>;
 }
 
 function State({ text, back, locale }: { text: string; back?: () => void; locale: 'de' | 'en' }) {
@@ -124,6 +134,11 @@ const styles = StyleSheet.create({
   company: { color: Palette.text, fontSize: 17, fontWeight: '600', marginTop: 9 },
   heroLocation: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 },
   heroLocationText: { color: Palette.textSecondary, fontSize: 14 },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 14 },
+  fact: { flexGrow: 1, flexBasis: 100, minHeight: 62, minWidth: 100, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.surface },
+  factCopy: { flex: 1, minWidth: 0 },
+  factLabel: { color: Palette.textSecondary, fontSize: 9, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 },
+  factValue: { color: Palette.text, fontSize: 12, lineHeight: 15, fontWeight: '600' },
   error: { color: Palette.danger, marginTop: 12, fontWeight: '700' },
   utilityRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 12 },
   utilityButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },

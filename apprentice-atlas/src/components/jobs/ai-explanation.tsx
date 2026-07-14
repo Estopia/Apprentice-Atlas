@@ -6,10 +6,12 @@ import type { JobExplanation } from '@/types/jobs';
 
 export function AiExplanation({ explanation, loading, error }: { explanation: JobExplanation | null; loading?: boolean; error?: string | null }) {
   const [locale] = useLocale();
+  if (error || (!loading && !explanation)) return null;
+
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>{t(locale, 'ai.simpleWords')}</Text>
-      {loading ? <View style={styles.loading}><ActivityIndicator color={Palette.blue} /><Text style={styles.muted}>{t(locale, 'loading.ai')}</Text></View> : error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : explanation ? <View style={styles.grouped}>
+      {loading ? <View style={styles.loading}><ActivityIndicator color={Palette.blue} /><Text style={styles.muted}>{t(locale, 'loading.ai')}</Text></View> : explanation ? <View style={styles.grouped}>
         <Text selectable style={styles.summary}>{explanation.summary}</Text>
         <View style={styles.separator} />
         <Text style={styles.goodLabel}>{t(locale, 'ai.goodIf')}</Text>
@@ -40,5 +42,4 @@ const styles = StyleSheet.create({
   item: { flex: 1, color: Palette.text, fontSize: 14, lineHeight: 20 },
   loading: { minHeight: 90, borderRadius: 14, backgroundColor: Palette.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   muted: { color: Palette.textSecondary },
-  error: { color: Palette.danger, lineHeight: 20 },
 });

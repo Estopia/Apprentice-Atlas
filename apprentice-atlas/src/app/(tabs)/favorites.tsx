@@ -55,7 +55,7 @@ export default function FavoritesScreen() {
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         <View style={styles.header}>
           <Text style={styles.title}>{t(locale, 'saved.title')}</Text>
-          <Text style={styles.savedCountText}>{currentFavorites.length}</Text>
+          {currentFavorites.length > 0 && <Text style={styles.savedCountText}>{currentFavorites.length}</Text>}
         </View>
         <View style={styles.account}>
           <View style={styles.avatar}><Text style={styles.avatarText}>{(auth.user?.email ?? 'A').slice(0, 1).toUpperCase()}</Text></View>
@@ -64,7 +64,7 @@ export default function FavoritesScreen() {
         </View>
         {signOutError && <Text accessibilityRole="alert" style={styles.error}>{getReadableAuthError(signOutError, locale)}</Text>}
         {mappedError && <Text accessibilityRole="alert" style={styles.error}>{mappedError}</Text>}
-        {!currentFavorites.length && currentError ? <State text={mappedError ?? t(locale, 'saved.errorLoad')} action={t(locale, 'discovery.retry')} onPress={() => router.replace('/favorites')} /> : !currentFavorites.length ? <State text={t(locale, 'saved.empty')} /> : <View style={styles.cards}>{currentFavorites.map((favorite) => <FavoriteCard key={favorite.id} favorite={favorite} onRemove={() => void remove(favorite)} onOpen={() => favorite.job && router.push(`/job/${favorite.job.id}`)} locale={locale} />)}</View>}
+        {!currentFavorites.length && currentError ? <State text={mappedError ?? t(locale, 'saved.errorLoad')} action={t(locale, 'discovery.retry')} onPress={() => router.replace('/favorites')} /> : !currentFavorites.length ? <EmptySaved locale={locale} onPress={() => router.push('/')} /> : <View style={styles.cards}>{currentFavorites.map((favorite) => <FavoriteCard key={favorite.id} favorite={favorite} onRemove={() => void remove(favorite)} onOpen={() => favorite.job && router.push(`/job/${favorite.job.id}`)} locale={locale} />)}</View>}
         {currentFavorites.length > 1 && <Comparison favorites={currentFavorites} locale={locale} />}
       </ScrollView>
     </SafeAreaView>
@@ -93,13 +93,22 @@ function State({ text, action, onPress }: { text: string; action?: string; onPre
   return <View style={styles.state}><AppIcon name={{ ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={38} tintColor={Palette.blue} /><Text accessibilityRole="alert" style={styles.stateCopy}>{text}</Text>{action && onPress && <Pressable accessibilityRole="button" accessibilityLabel={action} onPress={onPress} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Text style={styles.actionText}>{action}</Text></Pressable>}</View>;
 }
 
+function EmptySaved({ locale, onPress }: { locale: 'de' | 'en'; onPress: () => void }) {
+  return <View style={styles.emptyState}>
+    <View style={styles.emptyIcon}><View style={styles.emptyIconInset}><AppIcon name={{ ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }} size={31} tintColor={Palette.blue} /></View><View style={styles.emptyDot}><AppIcon name={{ ios: 'plus', android: 'add', web: 'add' }} size={13} tintColor={Palette.white} /></View></View>
+    <Text style={styles.emptyTitle}>{t(locale, 'saved.emptyTitle')}</Text>
+    <Text style={styles.emptyCopy}>{t(locale, 'saved.emptyHint')}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'saved.emptyAction')} onPress={onPress} style={({ pressed }) => [styles.emptyAction, pressed && styles.pressed]}><Text style={styles.emptyActionText}>{t(locale, 'saved.emptyAction')}</Text><AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={17} tintColor={Palette.white} /></Pressable>
+  </View>;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Palette.background },
   content: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 120 },
   header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { color: Palette.text, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.5 },
   savedCountText: { color: Palette.textSecondary, fontSize: 17, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  account: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, marginBottom: 12, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: Palette.border },
+  account: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, padding: 10, marginBottom: 8, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.surface },
   avatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: Palette.blue, fontSize: 16, fontWeight: '700' },
   accountCopy: { flex: 1, minWidth: 0 },
@@ -126,8 +135,16 @@ const styles = StyleSheet.create({
   compareLabel: { color: Palette.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 7 },
   compareValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   compareValue: { flex: 1, minWidth: 120, color: Palette.text, fontSize: 13, lineHeight: 18 },
-  state: { minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
+  state: { width: '100%', minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
   stateCopy: { color: Palette.textSecondary, textAlign: 'center', maxWidth: 360, lineHeight: 21 },
+  emptyState: { minHeight: 390, alignItems: 'center', paddingHorizontal: 28, paddingTop: 72 },
+  emptyIcon: { width: 92, height: 92, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  emptyIconInset: { width: 78, height: 78, borderRadius: 26, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-5deg' }] },
+  emptyDot: { position: 'absolute', right: 2, bottom: 5, width: 28, height: 28, borderRadius: 14, backgroundColor: Palette.blue, borderWidth: 3, borderColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { color: Palette.text, fontSize: 24, lineHeight: 29, fontWeight: '700', letterSpacing: -0.4, textAlign: 'center' },
+  emptyCopy: { color: Palette.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 310, marginTop: 9 },
+  emptyAction: { minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blue, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 24 },
+  emptyActionText: { color: Palette.white, fontSize: 16, fontWeight: '700' },
   action: { minHeight: 48, backgroundColor: Palette.blue, borderRadius: 14, paddingHorizontal: 18, justifyContent: 'center' },
   actionText: { color: Palette.white, fontWeight: '700' },
   pressed: { opacity: 0.68 },
