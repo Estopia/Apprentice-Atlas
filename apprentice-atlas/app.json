@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "apprentice-atlas",
+    "name": "Apprentice Atlas",
     "description": "A location-aware apprenticeship discovery app with maps, saved jobs, and grounded AI help.",
     "slug": "apprentice-atlas",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/Apprentice Atlas-iOS-Default-1024x1024@2x.png",
     "scheme": "apprenticeatlas",
     "userInterfaceStyle": "light",
     "ios": {
