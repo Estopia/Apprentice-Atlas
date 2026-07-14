@@ -1,4 +1,4 @@
-import type { ApplicationStatus } from '@/types/jobs';
+import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
 
 export const APPLICATION_STATUSES = [
   'interested',
@@ -27,6 +27,34 @@ export function isApplicationDraftValid(status: unknown, note: unknown): boolean
 
 export function isValidApplicationJobId(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
+export type ApplicationSheetLoadResolution =
+  | { kind: 'ready'; job: Job | null; application: TrackedApplication | null }
+  | { kind: 'redirect' }
+  | { kind: 'error'; reason: 'application' | 'job-load' | 'job-unavailable' };
+
+export function resolveApplicationSheetLoad(
+  jobResult: { data: Job | null; error: unknown | null },
+  applicationResult: { data: TrackedApplication | null; error: { code: string } | null },
+): ApplicationSheetLoadResolution {
+  if (applicationResult.error?.code === 'auth-required') return { kind: 'redirect' };
+  if (applicationResult.error) return { kind: 'error', reason: 'application' };
+  if (jobResult.data || applicationResult.data) {
+    return { kind: 'ready', job: jobResult.data, application: applicationResult.data };
+  }
+  return { kind: 'error', reason: jobResult.error ? 'job-load' : 'job-unavailable' };
+}
+
+export function confirmApplicationRemovalOnWeb(
+  confirm: ((message: string) => boolean) | undefined,
+  title: string,
+  body: string,
+  onConfirm: () => unknown,
+): boolean {
+  if (!confirm?.(`${title}\n\n${body}`)) return false;
+  onConfirm();
+  return true;
 }
 
 export function validatedPendingTrackJobId(params: {

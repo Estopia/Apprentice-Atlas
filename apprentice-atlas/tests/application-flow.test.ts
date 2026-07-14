@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   APPLICATION_STATUSES,
   applicationNoteLength,
+  confirmApplicationRemovalOnWeb,
   isApplicationDraftValid,
+  resolveApplicationSheetLoad,
   validatedPendingTrackJobId,
 } from '../src/lib/application-flow';
 
@@ -37,6 +39,40 @@ describe('application form helpers', () => {
   it('rejects unsupported statuses', () => {
     expect(isApplicationDraftValid('pending', '')).toBe(false);
   });
+
+  it('keeps an existing application editable when its public job is unavailable', () => {
+    const existingApplication = {
+      id: '22222222-2222-4222-8222-222222222222',
+      userId: '33333333-3333-4333-8333-333333333333',
+      jobId,
+      status: 'interview' as const,
+      note: 'Keep this private note',
+      createdAt: '2026-07-14T10:00:00.000Z',
+      updatedAt: '2026-07-14T11:00:00.000Z',
+    };
+
+    expect(resolveApplicationSheetLoad(
+      { data: null, error: { code: 'query' } },
+      { data: existingApplication, error: null },
+    )).toEqual({ kind: 'ready', job: null, application: existingApplication });
+    expect(resolveApplicationSheetLoad(
+      { data: null, error: null },
+      { data: null, error: null },
+    )).toEqual({ kind: 'error', reason: 'job-unavailable' });
+  });
+
+  it('requires web confirmation and leaves removal untouched when cancelled', () => {
+    const remove = vi.fn();
+    const cancel = vi.fn(() => false);
+
+    expect(confirmApplicationRemovalOnWeb(cancel, 'Remove application?', 'This cannot be undone.', remove)).toBe(false);
+    expect(cancel).toHaveBeenCalledWith('Remove application?\n\nThis cannot be undone.');
+    expect(remove).not.toHaveBeenCalled();
+
+    const accept = vi.fn(() => true);
+    expect(confirmApplicationRemovalOnWeb(accept, 'Remove application?', 'This cannot be undone.', remove)).toBe(true);
+    expect(remove).toHaveBeenCalledOnce();
+  });
 });
 
 describe('pending application tracking', () => {
@@ -50,6 +86,17 @@ describe('pending application tracking', () => {
 });
 
 describe('application journey route integration', () => {
+  it('guards load, save, and remove completions after the sheet unmounts', () => {
+    const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
+    const saveBlock = sheet.slice(sheet.indexOf('const save = async'), sheet.indexOf('const remove = async'));
+    const removeBlock = sheet.slice(sheet.indexOf('const remove = async'), sheet.indexOf('const confirmRemove'));
+
+    expect(sheet).toMatch(/const mountedRef = useRef\(false\)/);
+    expect(sheet).toMatch(/if \(!active \|\| !mountedRef\.current\) return;/);
+    expect(saveBlock).toMatch(/await upsertApplication[\s\S]+if \(!mountedRef\.current\) return;[\s\S]+router\.back\(\)/);
+    expect(removeBlock).toMatch(/await removeApplication[\s\S]+if \(!mountedRef\.current\) return;[\s\S]+router\.back\(\)/);
+  });
+
   it('registers a native form sheet and implements the editable journey form', () => {
     const layout = readFileSync('src/app/_layout.tsx', 'utf8');
     const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
@@ -66,6 +113,26 @@ describe('application journey route integration', () => {
     expect(sheet).toMatch(/upsertApplication/);
     expect(sheet).toMatch(/removeApplication/);
     expect(sheet).not.toMatch(/maxLength=/);
+  });
+
+  it('renders a localized unavailable-listing context for an existing private application', () => {
+    const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
+    const messages = readFileSync('src/lib/i18n.ts', 'utf8');
+
+    expect(sheet).toMatch(/resolveApplicationSheetLoad/);
+    expect(sheet).toMatch(/application\.listingUnavailableTitle/);
+    expect(sheet).toMatch(/application\.listingUnavailableBody/);
+    expect(messages.match(/'application\.listingUnavailableTitle':/g)).toHaveLength(2);
+    expect(messages.match(/'application\.listingUnavailableBody':/g)).toHaveLength(2);
+  });
+
+  it('uses confirmation on web and the native alert elsewhere', () => {
+    const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
+    const webBlock = sheet.slice(sheet.indexOf("process.env.EXPO_OS === 'web'"), sheet.indexOf('Alert.alert'));
+
+    expect(webBlock).toMatch(/confirmApplicationRemovalOnWeb/);
+    expect(webBlock).not.toMatch(/void remove\(\)/);
+    expect(sheet).toMatch(/Alert\.alert/);
   });
 
   it('refreshes detail tracking on focus and limits auth continuation to the validated track action', () => {

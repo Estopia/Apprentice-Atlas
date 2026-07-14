@@ -16,8 +16,10 @@ import {
 import {
   APPLICATION_STATUSES,
   applicationNoteLength,
+  confirmApplicationRemovalOnWeb,
   isApplicationDraftValid,
   isValidApplicationJobId,
+  resolveApplicationSheetLoad,
 } from '@/lib/application-flow';
 import { localizeApplicationStatus, t, useLocale } from '@/lib/i18n';
 import { getJob } from '@/lib/jobs';
@@ -38,8 +40,14 @@ export default function ApplicationSheet() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busyOperation, setBusyOperation] = useState<ApplicationsOperation | null>(null);
+  const mountedRef = useRef(false);
   const redirectStarted = useRef(false);
   const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const redirectToAuth = useCallback(() => {
     if (!validJobId || redirectStarted.current) return;
@@ -59,19 +67,21 @@ export default function ApplicationSheet() {
 
     let active = true;
     void Promise.all([getJob(routeJobId, undefined, locale), getApplicationForJob(routeJobId)]).then(([jobResult, applicationResult]) => {
-      if (!active) return;
-      if (applicationResult.error?.code === 'auth-required') {
+      if (!active || !mountedRef.current) return;
+      const resolution = resolveApplicationSheetLoad(jobResult, applicationResult);
+      if (resolution.kind === 'redirect') {
         setLoading(false);
         redirectToAuth();
         return;
       }
-      if (jobResult.error || !jobResult.data) {
-        setError(t(locale, jobResult.error ? 'application.error.load' : 'application.error.jobUnavailable'));
-      } else if (applicationResult.error) {
-        setError(getReadableApplicationsError(applicationResult.error, locale, 'load'));
+      if (resolution.kind === 'error') {
+        setError(resolution.reason === 'application' && applicationResult.error
+          ? getReadableApplicationsError(applicationResult.error, locale, 'load')
+          : t(locale, resolution.reason === 'job-load' ? 'application.error.load' : 'application.error.jobUnavailable'));
       } else {
-        const existing = applicationResult.data;
-        setJob(jobResult.data);
+        const existing = resolution.application;
+        setError(null);
+        setJob(resolution.job);
         setApplication(existing);
         setStatus(existing?.status ?? 'interested');
         setNote(existing?.note ?? '');
@@ -104,6 +114,7 @@ export default function ApplicationSheet() {
     setError(null);
     setBusyOperation('save');
     const result = await upsertApplication(routeJobId, status, note);
+    if (!mountedRef.current) return;
     if (result.error) {
       handleOperationError('save', result.error);
       return;
@@ -116,6 +127,7 @@ export default function ApplicationSheet() {
     setError(null);
     setBusyOperation('remove');
     const result = await removeApplication(routeJobId);
+    if (!mountedRef.current) return;
     if (result.error) {
       handleOperationError('remove', result.error);
       return;
@@ -125,7 +137,15 @@ export default function ApplicationSheet() {
 
   const confirmRemove = () => {
     if (process.env.EXPO_OS === 'web') {
-      void remove();
+      const webConfirm = typeof globalThis.confirm === 'function'
+        ? (message: string) => globalThis.confirm(message)
+        : undefined;
+      confirmApplicationRemovalOnWeb(
+        webConfirm,
+        t(locale, 'application.confirmRemoveTitle'),
+        t(locale, 'application.confirmRemoveBody'),
+        remove,
+      );
       return;
     }
     Alert.alert(
@@ -152,23 +172,35 @@ export default function ApplicationSheet() {
         <StatePanel loading message={t(locale, 'application.redirecting')} />
       ) : loading ? (
         <StatePanel loading message={t(locale, 'application.loading')} />
-      ) : error && !job ? (
+      ) : error && !job && !application ? (
         <StatePanel
           action={t(locale, 'application.retry')}
           message={error}
           onPress={() => { setError(null); setLoading(true); setLoadAttempt((attempt) => attempt + 1); }}
         />
-      ) : job ? (
+      ) : job || application ? (
         <View style={styles.form}>
-          <View style={styles.jobContext}>
-            <View style={styles.jobIcon}>
-              <AppIcon name={{ ios: 'briefcase.fill', android: 'work', web: 'work' }} size={22} tintColor={Palette.blue} />
+          {job ? (
+            <View style={styles.jobContext}>
+              <View style={styles.jobIcon}>
+                <AppIcon name={{ ios: 'briefcase.fill', android: 'work', web: 'work' }} size={22} tintColor={Palette.blue} />
+              </View>
+              <View style={styles.jobCopy}>
+                <Text selectable numberOfLines={2} style={styles.jobTitle}>{job.title}</Text>
+                <Text selectable numberOfLines={1} style={styles.jobCompany}>{job.company} · {job.city}</Text>
+              </View>
             </View>
-            <View style={styles.jobCopy}>
-              <Text selectable numberOfLines={2} style={styles.jobTitle}>{job.title}</Text>
-              <Text selectable numberOfLines={1} style={styles.jobCompany}>{job.company} · {job.city}</Text>
+          ) : (
+            <View style={styles.jobContext}>
+              <View style={styles.jobIcon}>
+                <AppIcon name={{ ios: 'archivebox.fill', android: 'inventory_2', web: 'inventory_2' }} size={22} tintColor={Palette.textSecondary} />
+              </View>
+              <View style={styles.jobCopy}>
+                <Text selectable style={styles.jobTitle}>{t(locale, 'application.listingUnavailableTitle')}</Text>
+                <Text selectable style={styles.jobCompany}>{t(locale, 'application.listingUnavailableBody')}</Text>
+              </View>
             </View>
-          </View>
+          )}
 
           <View style={styles.privateHint}>
             <AppIcon name={{ ios: 'lock.fill', android: 'lock', web: 'lock' }} size={15} tintColor={Palette.blue} />
