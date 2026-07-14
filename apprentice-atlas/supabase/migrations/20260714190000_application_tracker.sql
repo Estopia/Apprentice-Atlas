@@ -43,6 +43,7 @@ using ((select auth.uid()) = user_id);
 
 revoke all on public.applications from public;
 revoke all on public.applications from anon;
+revoke all on public.applications from authenticated;
 grant select, delete on public.applications to authenticated;
 grant update (status, note) on public.applications to authenticated;
 grant all on public.applications to service_role;

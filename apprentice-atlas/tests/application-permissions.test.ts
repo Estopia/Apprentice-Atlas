@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const migrationPath = 'supabase/migrations/20260714190000_application_tracker.sql';
+const hardeningMigrationPath = 'supabase/migrations/20260714191000_harden_application_privileges.sql';
 
 function migration(): string {
   return readFileSync(migrationPath, 'utf8');
@@ -42,6 +43,7 @@ describe('application tracker schema and permissions', () => {
 
   it('routes inserts through an authenticated RPC without anonymous access', () => {
     const sql = migration();
+    expect(sql).toContain('revoke all on public.applications from authenticated;');
     expect(sql).toContain('grant select, delete on public.applications to authenticated;');
     expect(sql).toContain('grant update (status, note) on public.applications to authenticated;');
     expect(sql).not.toMatch(/grant update\s+on public\.applications to authenticated/i);
@@ -49,6 +51,15 @@ describe('application tracker schema and permissions', () => {
     expect(sql).toContain('grant all on public.applications to service_role;');
     expect(sql).toContain('revoke all on public.applications from anon;');
     expect(sql).not.toMatch(/grant\s+[^;]+on public\.applications to (anon|public)/i);
+  });
+
+  it('ships a corrective migration for environments with Supabase default table grants', () => {
+    const sql = readFileSync(hardeningMigrationPath, 'utf8');
+    expect(sql).toContain('revoke all on public.applications from authenticated;');
+    expect(sql).toContain('grant select, delete on public.applications to authenticated;');
+    expect(sql).toContain('grant update (status, note) on public.applications to authenticated;');
+    expect(sql).not.toMatch(/grant update\s+on public\.applications to authenticated/i);
+    expect(sql).not.toMatch(/grant (?:insert|truncate|trigger|references)[^;]*to authenticated/i);
   });
 
   it('defines a session-owned RPC that rejects unavailable jobs for new rows', () => {
