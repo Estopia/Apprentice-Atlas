@@ -22,6 +22,7 @@ npx supabase db reset
 7. `20260714120000_application_url.sql` — nullable direct application URL support for jobs and sources.
 8. `20260714130000_job_ai_qa_sessions.sql` — service-role-only per-job, per-session question counters and consume/release RPCs.
 9. `20260714140000_add_favorite_rpc.sql` — authenticated-owner favorite add/remove RPCs.
+10. `20260714150000_enforce_source_listing_urls.sql` — HTTP(S) source URL checks and sync validation for jobs and source listings.
 
 The preflight is required before locked `20260713092000` for existing imports because it repairs legacy source whitespace/blanks and normalized collisions; it is guarded and harmless on clean data. `20260713093000` is also guarded and can finish compatible intermediate schemas. Do not edit an existing migration or insert a new migration between these files; append later migrations with a newer timestamp. To inspect or validate migration state, use `npx supabase migration list --local` and `npx supabase db lint --local` where supported. Docker (or another Docker-compatible runtime) is required for the local stack.
 
@@ -42,7 +43,7 @@ npx supabase migration repair 001 --status reverted
 npx supabase migration repair 20260713090000 --status applied
 ```
 
-Use the same paired procedure for each old migration whose SQL is already represented, mapping old `001`/`002`/`003` to the corresponding timestamped schema migrations after verifying the actual database. The five `20260714*` migrations are new additions and should be applied normally with `npx supabase db push --linked`; do not mark them applied unless their SQL is already present. If an old migration was recorded but did not complete, mark only that old ID reverted and leave its timestamp migration unapplied so `db push` can run it. For partial or uncertain upgrades, stop and inspect or pull the remote schema before repairing; never mark a migration applied without confirming its SQL is already represented. After repair, run `npx supabase migration list --linked`, then apply the timestamp chain. Supabase documents that `migration repair` updates history only; it does not apply or revert SQL.
+Use the same paired procedure for each old migration whose SQL is already represented, mapping old `001`/`002`/`003` to the corresponding timestamped schema migrations after verifying the actual database. The six `20260714*` migrations are new additions and should be applied normally with `npx supabase db push --linked`; do not mark them applied unless their SQL is already present. If an old migration was recorded but did not complete, mark only that old ID reverted and leave its timestamp migration unapplied so `db push` can run it. For partial or uncertain upgrades, stop and inspect or pull the remote schema before repairing; never mark a migration applied without confirming its SQL is already represented. After repair, run `npx supabase migration list --linked`, then apply the timestamp chain. Supabase documents that `migration repair` updates history only; it does not apply or revert SQL.
 
 ## Production-source rule
 
