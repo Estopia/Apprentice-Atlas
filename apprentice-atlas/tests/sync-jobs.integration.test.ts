@@ -204,5 +204,7 @@ describe('sync provider authorization', () => {
     expect(isSyncRequestAuthorized(new Request('https://example.test', { method: 'POST' }), { internalSecret: 'secret', serviceRoleKey: 'service' })).toBe(false);
     expect(isSyncRequestAuthorized(new Request('https://example.test', { method: 'POST', headers: { 'x-sync-internal-secret': 'secret' } }), { internalSecret: 'secret' })).toBe(true);
     expect(isSyncRequestAuthorized(new Request('https://example.test', { method: 'POST', headers: { authorization: 'Bearer service' } }), { serviceRoleKey: 'service' })).toBe(true);
+    expect(isSyncRequestAuthorized(new Request('https://example.test', { method: 'POST', headers: { apikey: 'server-secret' } }), { secretKeys: ['server-secret'] })).toBe(true);
+    expect(isSyncRequestAuthorized(new Request('https://example.test', { method: 'POST', headers: { apikey: 'public-key' } }), { secretKeys: ['server-secret'] })).toBe(false);
   });
 });

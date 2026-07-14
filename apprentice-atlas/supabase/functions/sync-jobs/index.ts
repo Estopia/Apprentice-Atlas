@@ -11,7 +11,18 @@ import { parseSyncRequest } from '../_shared/sync-request.ts';
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Promise<Response>): void } | undefined;
 
 const env = (name: string): string => typeof Deno !== 'undefined' ? Deno.env.get(name) ?? '' : '';
+const secretKeys = (): string[] => {
+  try {
+    const parsed: unknown = JSON.parse(env('SUPABASE_SECRET_KEYS') || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? Object.values(parsed).filter((value): value is string => typeof value === 'string' && value.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+};
 const MAX_PAGES = Math.min(Math.max(Number(env('SYNC_MAX_PAGES') || 20), 1), 100);
+const BA_MAX_PAGES = Math.min(Math.max(Number(env('BA_SYNC_MAX_PAGES') || 5), 1), 20);
 const PAGE_DELAY_MS = Math.min(Math.max(Number(env('SYNC_PAGE_DELAY_MS') || 250), 0), 10_000);
 
 type Provider = 'find-apprenticeship' | 'bundesagentur-fuer-arbeit';
@@ -63,7 +74,9 @@ function createSupabaseRepository(supabase: SupabaseLike): SyncRepository {
 
 export async function handleSyncRequest(request: Request): Promise<Response> {
   if (request.method !== 'POST') return json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Use POST' } }, 405);
-  if (!isSyncRequestAuthorized(request, { internalSecret: env('SYNC_INTERNAL_SECRET'), serviceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY') })) return json({ error: { code: 'UNAUTHORIZED', message: 'Internal synchronization authorization required' } }, 401);
+  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
+  const projectSecretKeys = secretKeys();
+  if (!isSyncRequestAuthorized(request, { internalSecret: env('SYNC_INTERNAL_SECRET'), serviceRoleKey, secretKeys: projectSecretKeys })) return json({ error: { code: 'UNAUTHORIZED', message: 'Internal synchronization authorization required' } }, 401);
   try {
     const parsed = await parseSyncRequest(request);
     if (parsed.error) return json({ error: parsed.error }, 400);
@@ -72,9 +85,9 @@ export async function handleSyncRequest(request: Request): Promise<Response> {
     if (provider !== 'find-apprenticeship' && provider !== 'bundesagentur-fuer-arbeit') return json({ error: { code: 'INVALID_PROVIDER', message: `Unsupported provider: ${String(provider)}` } }, 400);
     const adapter = adapterFor(provider);
     const supabaseUrl = env('SUPABASE_URL');
-    const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
-    if (!supabaseUrl || !serviceRoleKey) throw new SourceConfigurationError('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
-    const result = await runSync({ provider, sourceKey: `${provider}:${env('SYNC_SOURCE_CONFIGURATION') || 'default'}`, adapter, repository: createSupabaseRepository(createClient(supabaseUrl, serviceRoleKey)), maxPages: MAX_PAGES, pageDelayMs: PAGE_DELAY_MS });
+    const adminKey = projectSecretKeys[0] ?? serviceRoleKey;
+    if (!supabaseUrl || !adminKey) throw new SourceConfigurationError('SUPABASE_URL and a Supabase server secret are required');
+    const result = await runSync({ provider, sourceKey: `${provider}:${env('SYNC_SOURCE_CONFIGURATION') || 'default'}`, adapter, repository: createSupabaseRepository(createClient(supabaseUrl, adminKey)), maxPages: provider === 'bundesagentur-fuer-arbeit' ? BA_MAX_PAGES : MAX_PAGES, pageDelayMs: PAGE_DELAY_MS });
     return json(result);
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'SYNC_ERROR';

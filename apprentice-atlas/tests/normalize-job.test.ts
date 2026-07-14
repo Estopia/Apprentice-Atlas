@@ -174,8 +174,7 @@ describe('official source adapters', () => {
   });
 
   it('uses the official BA Ausbildung search contract and normalizes Germany-only records', async () => {
-    let request: Request | URL | string | undefined;
-    let init: RequestInit | undefined;
+    const requests: Array<{ input: Request | URL | string; init?: RequestInit }> = [];
     const baRecord = {
       beruf: 'Fachinformatiker/in - Anwendungsentwicklung',
       titel: 'Ausbildung Fachinformatiker/in (m/w/d)',
@@ -184,35 +183,67 @@ describe('official source adapters', () => {
       arbeitsort: { ort: 'Berlin', land: 'Deutschland', koordinaten: { lat: 52.52, lon: 13.405 } },
       externeUrl: 'https://atlas.example/apply/123',
     };
+    const baDetail = {
+      referenznummer: baRecord.refnr,
+      stellenangebotsTitel: baRecord.titel,
+      firma: baRecord.arbeitgeber,
+      hauptberuf: baRecord.beruf,
+      stellenangebotsBeschreibung: '<p>Du entwickelst Anwendungen.</p><ul><li>Im Team arbeiten</li></ul>',
+      geforderterBildungsabschluss: 'MITTLERE_REIFE',
+      veroeffentlichungszeitraum: { von: '2026-07-14', bis: '2026-08-31' },
+    };
     const adapter = new BaAdapter({ enabled: true, endpoint: 'https://rest.example.test/jobboerse/jobsuche-service/pc/v4/jobs', apiKey: 'jobboerse-jobsuche', pageSize: 2, fetcher: async (input, options) => {
-      request = input;
-      init = options;
-      return new Response(JSON.stringify({ stellenangebote: [baRecord], maxErgebnisse: 3, page: 1, size: 2 }), { status: 200 });
+      requests.push({ input, init: options });
+      const requestUrl = new URL(String(input));
+      return requestUrl.pathname.includes('/jobdetails/')
+        ? new Response(JSON.stringify(baDetail), { status: 200 })
+        : new Response(JSON.stringify({ stellenangebote: [baRecord], maxErgebnisse: 3, page: 1, size: 2 }), { status: 200 });
     } });
     const page = await adapter.fetchPage(null);
     const normalized = adapter.normalize(page.records[0]);
-    const requestUrl = new URL(String(request));
+    const requestUrl = new URL(String(requests[0].input));
+    const detailUrl = new URL(String(requests[1].input));
     expect(requestUrl.pathname).toBe('/jobboerse/jobsuche-service/pc/v4/jobs');
     expect(requestUrl.searchParams.get('angebotsart')).toBe('4');
     expect(requestUrl.searchParams.get('page')).toBe('1');
     expect(requestUrl.searchParams.get('size')).toBe('2');
-    expect(new Headers(init?.headers).get('X-API-Key')).toBe('jobboerse-jobsuche');
+    expect(new Headers(requests[0].init?.headers).get('X-API-Key')).toBe('jobboerse-jobsuche');
+    expect(detailUrl.pathname).toBe('/jobboerse/jobsuche-service/pc/v4/jobdetails/MTAwMDEtMTIzNDU2Nzg5MC1T');
+    expect(new Headers(requests[1].init?.headers).get('X-API-Key')).toBe('jobboerse-jobsuche');
     expect(normalized?.externalId).toBe('10001-1234567890-S');
     expect(normalized?.sourceUrl).toBe('https://www.arbeitsagentur.de/jobsuche/jobdetail/10001-1234567890-S');
     expect(normalized?.job.country).toBe('Germany');
     expect(normalized?.job.city).toBe('Berlin');
+    expect(normalized?.job.sourceName).toBe('Bundesagentur für Arbeit');
+    expect(normalized?.job.rawDescription).toBe('Du entwickelst Anwendungen.\n• Im Team arbeiten');
+    expect(normalized?.job.requirements).toEqual(['Mittlerer Schulabschluss']);
+    expect(normalized?.job.tags).toEqual(['Fachinformatiker/in - Anwendungsentwicklung', 'Mittlerer Schulabschluss']);
+    expect(normalized?.job.category).toBe('technology');
+    expect(normalized?.job.expiresAt).toBe('2026-08-31');
     expect(normalized?.job.applicationUrl).toBe('https://atlas.example/apply/123');
-    expect(normalized?.rawRecord).toEqual(baRecord);
+    expect(normalized?.rawRecord).toEqual({ ...baRecord, detail: baDetail });
     expect(page.nextCursor).toBe('2');
     expect(page.complete).toBe(false);
   });
 
+  it('keeps a BA search record when its detail disappears during synchronization', async () => {
+    const baRecord = { refnr: '10001-1234567890-S', titel: 'Ausbildung', arbeitgeber: 'Atlas GmbH', beruf: 'Kaufmann/-frau', arbeitsort: { ort: 'Berlin', land: 'Deutschland' } };
+    const adapter = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/pc/v4/jobs', apiKey: 'secret', fetcher: async (input) => {
+      return String(input).includes('/jobdetails/')
+        ? new Response(null, { status: 404 })
+        : new Response(JSON.stringify({ stellenangebote: [baRecord], maxErgebnisse: 1, page: 1, size: 100 }), { status: 200 });
+    } });
+    const page = await adapter.fetchPage(null);
+    expect(page.records).toEqual([baRecord]);
+    expect(adapter.normalize(page.records[0])?.job.rawDescription).toBe('');
+  });
+
   it('rejects non-Germany BA records and malformed pagination metadata', async () => {
     const outsideGermanyRecord = { refnr: 'at-1', titel: 'Lehrstelle', arbeitgeber: 'Austria GmbH', arbeitsort: { ort: 'Wien', land: 'Österreich' } };
-    const adapter = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ stellenangebote: [outsideGermanyRecord], maxErgebnisse: 1, page: 1, size: 1 }), { status: 200 }) });
+    const adapter = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret', fetchDetails: false, fetcher: async () => new Response(JSON.stringify({ stellenangebote: [outsideGermanyRecord], maxErgebnisse: 1, page: 1, size: 1 }), { status: 200 }) });
     const page = await adapter.fetchPage(null);
     expect(adapter.normalize(page.records[0])).toBeNull();
-    const malformed = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ stellenangebote: [], page: 1, size: 1 }), { status: 200 }) });
+    const malformed = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret', fetchDetails: false, fetcher: async () => new Response(JSON.stringify({ stellenangebote: [], page: 1, size: 1 }), { status: 200 }) });
     await expect(malformed.fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
   });
 });
