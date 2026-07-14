@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizeJob } from '../supabase/functions/_shared/normalize-job';
 import { dedupeByExternalId } from '../supabase/functions/_shared/source-adapter';
 import { UK_OFFICIAL_CONTRACT_UNCONFIRMED, UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-apprenticeship-adapter';
-import { BA_OFFICIAL_CONTRACT_UNCONFIRMED, createBaAdapter } from '../supabase/functions/_shared/ba-adapter';
+import { BaAdapter } from '../supabase/functions/_shared/ba-adapter';
 
 const validRecord = {
   vacancyReference: ' uk-123 ',
@@ -140,7 +140,46 @@ describe('official source adapters', () => {
     expect(() => new UkApprenticeshipAdapter({ apiKey: 'secret' })).toThrowError(expect.objectContaining({ code: UK_OFFICIAL_CONTRACT_UNCONFIRMED }));
   });
 
-  it('fails BA ingestion clearly when its official read configuration is absent', async () => {
-    expect(() => createBaAdapter()).toThrowError(expect.objectContaining({ code: BA_OFFICIAL_CONTRACT_UNCONFIRMED }));
+  it('uses the official BA Ausbildung search contract and normalizes Germany-only records', async () => {
+    let request: Request | URL | string | undefined;
+    let init: RequestInit | undefined;
+    const baRecord = {
+      beruf: 'Fachinformatiker/in - Anwendungsentwicklung',
+      titel: 'Ausbildung Fachinformatiker/in (m/w/d)',
+      refnr: '10001-1234567890-S',
+      arbeitgeber: 'Atlas GmbH',
+      arbeitsort: { ort: 'Berlin', land: 'Deutschland', koordinaten: { lat: 52.52, lon: 13.405 } },
+      externeUrl: 'https://atlas.example/apply/123',
+    };
+    const adapter = new BaAdapter({ endpoint: 'https://rest.example.test/jobboerse/jobsuche-service/pc/v4/jobs', apiKey: 'jobboerse-jobsuche', pageSize: 2, fetcher: async (input, options) => {
+      request = input;
+      init = options;
+      return new Response(JSON.stringify({ stellenangebote: [baRecord], maxErgebnisse: 3, page: 1, size: 2 }), { status: 200 });
+    } });
+    const page = await adapter.fetchPage(null);
+    const normalized = adapter.normalize(page.records[0]);
+    const requestUrl = new URL(String(request));
+    expect(requestUrl.pathname).toBe('/jobboerse/jobsuche-service/pc/v4/jobs');
+    expect(requestUrl.searchParams.get('angebotsart')).toBe('4');
+    expect(requestUrl.searchParams.get('page')).toBe('1');
+    expect(requestUrl.searchParams.get('size')).toBe('2');
+    expect(new Headers(init?.headers).get('X-API-Key')).toBe('jobboerse-jobsuche');
+    expect(normalized?.externalId).toBe('10001-1234567890-S');
+    expect(normalized?.sourceUrl).toBe('https://www.arbeitsagentur.de/jobsuche/jobdetail/10001-1234567890-S');
+    expect(normalized?.job.country).toBe('Germany');
+    expect(normalized?.job.city).toBe('Berlin');
+    expect(normalized?.job.applicationUrl).toBe('https://atlas.example/apply/123');
+    expect(normalized?.rawRecord).toEqual(baRecord);
+    expect(page.nextCursor).toBe('2');
+    expect(page.complete).toBe(false);
+  });
+
+  it('rejects non-Germany BA records and malformed pagination metadata', async () => {
+    const outsideGermanyRecord = { refnr: 'at-1', titel: 'Lehrstelle', arbeitgeber: 'Austria GmbH', arbeitsort: { ort: 'Wien', land: 'Österreich' } };
+    const adapter = new BaAdapter({ fetcher: async () => new Response(JSON.stringify({ stellenangebote: [outsideGermanyRecord], maxErgebnisse: 1, page: 1, size: 1 }), { status: 200 }) });
+    const page = await adapter.fetchPage(null);
+    expect(adapter.normalize(page.records[0])).toBeNull();
+    const malformed = new BaAdapter({ fetcher: async () => new Response(JSON.stringify({ stellenangebote: [], page: 1, size: 1 }), { status: 200 }) });
+    await expect(malformed.fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
   });
 });
