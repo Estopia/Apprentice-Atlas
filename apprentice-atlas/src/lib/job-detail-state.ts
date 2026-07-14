@@ -13,9 +13,7 @@ export function resetJobDetailState(state: JobDetailState): JobDetailState {
   return { ...state, job: null, explanation: null, loading: true, aiLoading: false, error: null, aiError: null };
 }
 
-export function getOriginalListingUrl(job: Pick<Job, 'sourceUrl'>): string {
-  if (!job.sourceUrl || !/^https?:\/\/\S+$/i.test(job.sourceUrl.trim())) {
-    throw new Error('Ingested jobs must include an official original-listing URL');
-  }
+export function getOriginalListingUrl(job: Pick<Job, 'sourceUrl'>): string | null {
+  if (!job.sourceUrl || !/^https?:\/\/\S+$/i.test(job.sourceUrl.trim())) return null;
   return job.sourceUrl.trim();
 }

@@ -75,4 +75,15 @@ describe('upsert_job_source PostgreSQL integration', () => {
     expect(execFileSync('psql', ['-X', '-q', '-At', databaseUrl!], { input: "select count(*) from public.job_sources where external_id = 'invalid-rpc';", encoding: 'utf8' }).trim()).toBe('0');
     expect(execFileSync('psql', ['-X', '-q', '-At', databaseUrl!], { input: `select count(*) from public.jobs where id = '${invalidJobId}';`, encoding: 'utf8' }).trim()).toBe('0');
   });
+
+  it.skipIf(!databaseUrl || !hasPsql)('rejects missing or malformed source URLs before writing', async () => {
+    const jobId = '00000000-0000-0000-0000-000000000298';
+    execFileSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', databaseUrl!], { input: `delete from public.job_sources where external_id in ('missing-source-rpc', 'malformed-source-rpc'); delete from public.jobs where id = '${jobId}';`, encoding: 'utf8' });
+    const payload = (sourceUrl: string, externalId: string) => `select * from public.upsert_job_source(
+      'find-apprenticeship', '${externalId}', '${sourceUrl}', '{}'::jsonb,
+      jsonb_build_object('id', '${jobId}', 'title', 'RPC apprentice', 'company', 'Atlas', 'country', 'GB', 'city', 'Nationwide', 'job_type', 'apprenticeship', 'level', 'entry-level', 'category', 'general', 'tags', '[]'::jsonb, 'raw_description', '', 'requirements', '[]'::jsonb, 'source_url', '${sourceUrl}', 'source_name', 'find-apprenticeship', 'status', 'active'), now());`;
+    await expect(runPsql(payload('', 'missing-source-rpc'))).rejects.toThrow(/source URL/i);
+    await expect(runPsql(payload('not-a-url', 'malformed-source-rpc'))).rejects.toThrow(/source URL/i);
+    expect(execFileSync('psql', ['-X', '-q', '-At', databaseUrl!], { input: `select count(*) from public.jobs where id = '${jobId}';`, encoding: 'utf8' }).trim()).toBe('0');
+  });
 });

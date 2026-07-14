@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '../src/lib/job-detail-state';
 
@@ -7,9 +8,16 @@ describe('job detail route state', () => {
     expect(resetJobDetailState(previous)).toEqual({ job: null, explanation: null, loading: true, aiLoading: false, error: null, aiError: null });
   });
 
-  it('requires an original official listing URL for detail views', () => {
+  it('normalizes valid listing URLs and safely hides legacy invalid values', () => {
     expect(getOriginalListingUrl({ sourceUrl: ' https://official.example/listing/1 ' })).toBe('https://official.example/listing/1');
-    expect(() => getOriginalListingUrl({ sourceUrl: null })).toThrow('official original-listing URL');
-    expect(() => getOriginalListingUrl({ sourceUrl: '' })).toThrow('official original-listing URL');
+    expect(getOriginalListingUrl({ sourceUrl: null })).toBeNull();
+    expect(getOriginalListingUrl({ sourceUrl: '' })).toBeNull();
+  });
+
+  it('renders the original-link action only for a safe normalized URL', () => {
+    const detailScreen = readFileSync('src/app/job/[id].tsx', 'utf8');
+    expect(detailScreen).toContain('const sourceUrl = getOriginalListingUrl(job);');
+    expect(detailScreen).toMatch(/sourceUrl\s*&&\s*<Pressable/);
+    expect(detailScreen).not.toContain('throw new Error');
   });
 });
