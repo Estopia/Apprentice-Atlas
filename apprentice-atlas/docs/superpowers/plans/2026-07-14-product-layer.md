@@ -109,5 +109,5 @@
 - [x] Verify onboarding, anonymous discovery, auth return, status editing, My Atlas empty/populated states, German/English, and 320/390 width behavior.
 - [x] Apply the new migration to the linked Supabase project only after local checks pass; verify table, RLS, and grants.
 - [x] Document the new product flows and the migration in README.
-- [ ] Dispatch final spec and code-quality reviews; fix every actionable issue.
+- [x] Dispatch final spec and code-quality reviews; fix every actionable issue.
 - [ ] Merge `codex/product-layer` into `main` without overwriting the main checkout's pre-existing `app.json` change.
