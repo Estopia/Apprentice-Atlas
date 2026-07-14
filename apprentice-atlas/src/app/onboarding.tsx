@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,6 +15,7 @@ import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { Palette, Radius, Shadows } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
 import { localizeCategory, t } from '@/lib/i18n';
+import { getPostOnboardingDestination } from '@/lib/onboarding-destination';
 import type { UserPreferences } from '@/lib/preferences';
 
 const TOTAL_STEPS = 3;
@@ -25,11 +26,20 @@ type Country = NonNullable<UserPreferences['country']>;
 
 export default function OnboardingScreen() {
   const { preferences, isHydrated, completeOnboarding } = usePreferences();
+  const continuationParams = useLocalSearchParams<{
+    jobId?: string;
+    pendingAction?: string;
+    returnTo?: string;
+  }>();
   if (!isHydrated) return null;
-  return <OnboardingFlow complete={completeOnboarding} initialPreferences={preferences} />;
+  return <OnboardingFlow complete={completeOnboarding} continuationParams={continuationParams} initialPreferences={preferences} />;
 }
 
-function OnboardingFlow({ complete, initialPreferences }: { complete: (preferences: UserPreferences) => Promise<UserPreferences>; initialPreferences: UserPreferences }) {
+function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
+  complete: (preferences: UserPreferences) => Promise<UserPreferences>;
+  continuationParams: { jobId?: string; pendingAction?: string; returnTo?: string };
+  initialPreferences: UserPreferences;
+}) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [draft, setDraft] = useState(initialPreferences);
@@ -61,7 +71,7 @@ function OnboardingFlow({ complete, initialPreferences }: { complete: (preferenc
     }
     setIsSaving(true);
     await complete(draft);
-    router.replace('/');
+    router.replace(getPostOnboardingDestination(continuationParams, isEditing) as never);
   };
 
   return (

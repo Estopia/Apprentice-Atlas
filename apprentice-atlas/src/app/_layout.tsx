@@ -1,4 +1,4 @@
-import { DefaultTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
+import { DefaultTheme, router, Stack, ThemeProvider, useGlobalSearchParams, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -6,12 +6,18 @@ import { useEffect, useState } from 'react';
 import { Palette } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
 import { hydrateLocale, t, useLocale } from '@/lib/i18n';
+import { getOnboardingGateParams } from '@/lib/onboarding-destination';
 import { loadPreferences } from '@/lib/preferences';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const pathname = usePathname();
+  const { jobId, pendingAction, returnTo } = useGlobalSearchParams<{
+    jobId?: string;
+    pendingAction?: string;
+    returnTo?: string;
+  }>();
   const [locale] = useLocale();
   const { preferences, isHydrated: preferencesHydrated } = usePreferences();
   const [localeHydrated, setLocaleHydrated] = useState(false);
@@ -23,10 +29,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (!preferencesHydrated || !localeHydrated) return;
     if (!preferences.onboardingComplete && pathname !== '/onboarding') {
-      router.replace('/onboarding');
+      router.replace({
+        pathname: '/onboarding',
+        params: getOnboardingGateParams(pathname, { jobId, pendingAction, returnTo }),
+      });
     }
     void SplashScreen.hideAsync();
-  }, [localeHydrated, pathname, preferences.onboardingComplete, preferencesHydrated]);
+  }, [jobId, localeHydrated, pathname, pendingAction, preferences.onboardingComplete, preferencesHydrated, returnTo]);
 
   return (
     <ThemeProvider value={{ ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: Palette.blue, background: Palette.background, card: Palette.background, text: Palette.text, border: Palette.border } }}>
