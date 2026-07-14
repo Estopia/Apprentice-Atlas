@@ -15,6 +15,7 @@ export interface Job {
   rawDescription: string;
   requirements: string[];
   sourceUrl: string;
+  applicationUrl?: string | null;
   sourceName: string;
   status: JobStatus;
   lastSeenAt: string;
@@ -39,19 +40,23 @@ export interface JobFilter {
 
 export interface JobExplanation {
   jobId: string;
-  locale: 'de' | 'en';
+  language: 'de' | 'en';
   summary: string;
-  fitReasons: string[];
-  considerations: string[];
+  goodIf: string[];
+  notSoGoodIf: string[];
+  fitReasons?: string[];
+  considerations?: string[];
   generatedAt: string;
 }
 
 export interface JobQuestionAnswer {
   jobId: string;
-  locale: 'de' | 'en';
+  language: 'de' | 'en';
   question: string;
   answer: string;
-  grounded: boolean;
+  knownFromPosting: boolean;
+  notSpecified: boolean;
+  grounded?: boolean;
   generatedAt: string;
 }
 

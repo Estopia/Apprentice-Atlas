@@ -23,6 +23,8 @@ describe('normalizeJob', () => {
     expect(normalized?.job.city).toBe('London');
     expect(normalized?.job.latitude).toBe(51.5072);
     expect(normalized?.job.longitude).toBe(-0.1276);
+    expect(normalized?.job.sourceUrl).toBe('https://example.test/vacancies/uk-123');
+    expect(normalized?.job.applicationUrl).toBe('https://example.test/jobs/uk-123');
     expect(normalized?.rawRecord).toBe(validRecord);
   });
 

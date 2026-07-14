@@ -34,7 +34,7 @@ begin
   if existing_job_id is null then
     insert into public.jobs (
       id, title, company, country, city, latitude, longitude, job_type, level,
-      category, tags, raw_description, requirements, source_url, source_name,
+      category, tags, raw_description, requirements, source_url, application_url, source_name,
       status, last_seen_at, expires_at, created_at, updated_at
     ) values (
       canonical_job_id,
@@ -51,6 +51,7 @@ begin
       p_job->>'raw_description',
       coalesce(array(select jsonb_array_elements_text(p_job->'requirements')), '{}'),
       p_job->>'source_url',
+      nullif(p_job->>'application_url', ''),
       p_job->>'source_name',
       coalesce(p_job->>'status', 'active'),
       coalesce(nullif(p_job->>'last_seen_at', '')::timestamptz, p_fetched_at),
@@ -73,6 +74,7 @@ begin
         raw_description = p_job->>'raw_description',
         requirements = coalesce(array(select jsonb_array_elements_text(p_job->'requirements')), '{}'),
         source_url = p_job->>'source_url',
+        application_url = nullif(p_job->>'application_url', ''),
         source_name = p_job->>'source_name',
         status = coalesce(p_job->>'status', 'active'),
         last_seen_at = coalesce(nullif(p_job->>'last_seen_at', '')::timestamptz, p_fetched_at),

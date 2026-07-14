@@ -13,7 +13,7 @@ type JobRow = {
   id: string; title: string; company: string; country: string; city: string;
   latitude: number | null; longitude: number | null; job_type: string; level: string;
   category: string; tags: string[] | null; raw_description: string; requirements: string[] | null;
-  source_url: string; source_name: string; status: Job['status']; last_seen_at: string;
+  source_url: string; application_url: string | null; source_name: string; status: Job['status']; last_seen_at: string;
   expires_at: string | null; created_at: string; updated_at: string;
 };
 
@@ -22,10 +22,21 @@ function fromRow(row: JobRow): Job {
     id: row.id, title: row.title, company: row.company, country: row.country, city: row.city,
     latitude: row.latitude, longitude: row.longitude, jobType: row.job_type, level: row.level,
     category: row.category, tags: row.tags ?? [], rawDescription: row.raw_description,
-    requirements: row.requirements ?? [], sourceUrl: row.source_url, sourceName: row.source_name,
+    requirements: row.requirements ?? [], sourceUrl: row.source_url, applicationUrl: row.application_url ?? null, sourceName: row.source_name,
     status: row.status, lastSeenAt: row.last_seen_at, expiresAt: row.expires_at,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
+}
+
+export async function getJob(id: string, client?: SupabaseClient): Promise<{ data: Job | null; error: JobsError | null }> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { data: null, error: { code: 'query', message: 'Invalid job identifier.' } };
+  try {
+    const result = await (client ?? getSupabaseClient()).from('jobs').select('*').eq('id', id).eq('status', 'active').maybeSingle();
+    if (result.error) return { data: null, error: { code: 'query', message: result.error.message || 'Could not load the job.' } };
+    return { data: result.data ? fromRow(result.data as JobRow) : null, error: null };
+  } catch (error) {
+    return { data: null, error: { code: 'configuration', message: error instanceof Error ? error.message : 'Could not load the job.' } };
+  }
 }
 
 export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient, signal?: AbortSignal): Promise<JobsResult> {

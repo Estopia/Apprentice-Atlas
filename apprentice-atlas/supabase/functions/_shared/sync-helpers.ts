@@ -14,12 +14,12 @@ export function syncRunInsertPayload(provider: string, sourceKey: string, starte
 
 export function jobInsertPayload(item: NormalizedSourceRecord, jobId: string, seenAt: string) {
   const job = item.job;
-  return { id: jobId, title: job.title, company: job.company, country: job.country, city: job.city, latitude: job.latitude, longitude: job.longitude, job_type: job.jobType, level: job.level, category: job.category, tags: job.tags, raw_description: job.rawDescription, requirements: job.requirements, source_url: job.sourceUrl, source_name: job.sourceName, status: job.status, last_seen_at: seenAt, expires_at: job.expiresAt, created_at: job.createdAt, updated_at: seenAt };
+  return { id: jobId, title: job.title, company: job.company, country: job.country, city: job.city, latitude: job.latitude, longitude: job.longitude, job_type: job.jobType, level: job.level, category: job.category, tags: job.tags, raw_description: job.rawDescription, requirements: job.requirements, source_url: job.sourceUrl, application_url: job.applicationUrl, source_name: job.sourceName, status: job.status, last_seen_at: seenAt, expires_at: job.expiresAt, created_at: job.createdAt, updated_at: seenAt };
 }
 
 export function jobUpdatePayload(item: NormalizedSourceRecord, seenAt: string) {
   const job = item.job;
-  return { title: job.title, company: job.company, country: job.country, city: job.city, latitude: job.latitude, longitude: job.longitude, job_type: job.jobType, level: job.level, category: job.category, tags: job.tags, raw_description: job.rawDescription, requirements: job.requirements, source_url: job.sourceUrl, source_name: job.sourceName, status: job.status, last_seen_at: seenAt, expires_at: job.expiresAt, updated_at: seenAt };
+  return { title: job.title, company: job.company, country: job.country, city: job.city, latitude: job.latitude, longitude: job.longitude, job_type: job.jobType, level: job.level, category: job.category, tags: job.tags, raw_description: job.rawDescription, requirements: job.requirements, source_url: job.sourceUrl, application_url: job.applicationUrl, source_name: job.sourceName, status: job.status, last_seen_at: seenAt, expires_at: job.expiresAt, updated_at: seenAt };
 }
 
 export function sourceUpsertPayload(item: NormalizedSourceRecord, jobId: string, provider: string, fetchedAt: string) {

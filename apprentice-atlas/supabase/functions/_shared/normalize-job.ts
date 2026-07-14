@@ -63,7 +63,8 @@ const pickNested = (record: SourceRecord, keys: string[]): string | null => {
 
 export function normalizeJob(record: SourceRecord, options: NormalizeOptions): NormalizedSourceRecord | null {
   const externalId = firstString(record, ['externalId', 'external_id', 'id', 'vacancyId', 'vacancyReference', 'vacancyReferenceNumber', 'reference']);
-  const sourceUrl = firstString(record, ['sourceUrl', 'source_url', 'vacancyUrl', 'url', 'applicationUri', 'applicationUrl']);
+  const sourceUrl = firstString(record, ['vacancyUrl', 'sourceUrl', 'source_url', 'url', 'applicationUri', 'applicationUrl']);
+  const applicationUrl = firstString(record, ['applicationUrl', 'applicationUri', 'applyUrl', 'apply_url']);
   const title = firstString(record, ['title', 'jobTitle', 'vacancyTitle']);
   const company = pickNested(record, ['company', 'employer', 'employerName', 'organisation', 'organization']);
   const firstAddress = Array.isArray(record.addresses) && record.addresses[0] && typeof record.addresses[0] === 'object'
@@ -101,6 +102,7 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     rawDescription: description,
     requirements: textList(record.requirements ?? record.skills),
     sourceUrl,
+    applicationUrl,
     sourceName: options.provider,
     status: 'active',
     lastSeenAt: now,
