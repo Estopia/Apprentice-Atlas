@@ -132,7 +132,7 @@ function toApplication(value: unknown): TrackedApplication | null {
     || typeof value.job_id !== 'string'
     || !isApplicationStatus(value.status)
     || !isNullableString(value.note)
-    || (typeof value.note === 'string' && value.note.length > 500)
+    || (typeof value.note === 'string' && Array.from(value.note).length > 500)
     || typeof value.created_at !== 'string'
     || typeof value.updated_at !== 'string'
   ) return null;
@@ -162,7 +162,7 @@ function normalizeNote(note: string | null): { data: string | null; error: Appli
     return { data: null, error: validationError('The application note must be text.') };
   }
   const normalized = note?.trim() || null;
-  if (normalized && normalized.length > 500) {
+  if (normalized && Array.from(normalized).length > 500) {
     return { data: null, error: validationError('The application note cannot exceed 500 characters.') };
   }
   return { data: normalized, error: null };
@@ -248,18 +248,15 @@ export async function upsertApplication(
   if (normalizedNote.error) return errorResult(normalizedNote.error);
 
   try {
-    const result = await supabase
-      .from('applications')
-      .upsert(
-        { user_id: user.data, job_id: jobId, status, note: normalizedNote.data },
-        { onConflict: 'user_id,job_id' },
-      )
-      .select(APPLICATION_SELECT)
-      .single();
+    const result = await supabase.rpc('upsert_application', {
+      p_job_id: jobId,
+      p_status: status,
+      p_note: normalizedNote.data,
+    });
     if (result.error) {
       return errorResult({ code: 'mutation', message: result.error.message || 'Could not save the application.' });
     }
-    const application = toApplication(result.data);
+    const application = toApplication(Array.isArray(result.data) ? result.data[0] : result.data);
     return application
       ? { data: application, error: null }
       : errorResult(validationError('Invalid application data.'));

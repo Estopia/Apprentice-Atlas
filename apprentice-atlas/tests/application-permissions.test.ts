@@ -23,9 +23,10 @@ describe('application tracker schema and permissions', () => {
     expect(sql).toMatch(/create trigger applications_set_updated_at[\s\S]*before update on public\.applications[\s\S]*execute function public\.set_updated_at\(\)/i);
   });
 
-  it('adds useful user-status and job indexes and enables RLS', () => {
+  it('adds useful user-status, list-order, and job indexes and enables RLS', () => {
     const sql = migration();
     expect(sql).toMatch(/create index applications_user_status_idx on public\.applications\s*\(user_id,\s*status\)/i);
+    expect(sql).toMatch(/create index applications_user_updated_at_idx on public\.applications\s*\(user_id,\s*updated_at desc\)/i);
     expect(sql).toMatch(/create index applications_job_id_idx on public\.applications\s*\(job_id\)/i);
     expect(sql).toContain('alter table public.applications enable row level security;');
   });
@@ -39,18 +40,31 @@ describe('application tracker schema and permissions', () => {
     expect(sql.match(/create policy/gi)).toHaveLength(4);
   });
 
-  it('grants authenticated CRUD and service-role ownership without anonymous access', () => {
+  it('routes inserts through an authenticated RPC without anonymous access', () => {
     const sql = migration();
-    expect(sql).toContain('grant select, insert, update, delete on public.applications to authenticated;');
+    expect(sql).toContain('grant select, update, delete on public.applications to authenticated;');
+    expect(sql).toContain('revoke insert on public.applications from authenticated;');
     expect(sql).toContain('grant all on public.applications to service_role;');
     expect(sql).toContain('revoke all on public.applications from anon;');
     expect(sql).not.toMatch(/grant\s+[^;]+on public\.applications to (anon|public)/i);
   });
 
+  it('defines a session-owned RPC that rejects unavailable jobs for new rows', () => {
+    const sql = migration();
+    expect(sql).toMatch(/create or replace function public\.upsert_application\(p_job_id uuid, p_status text, p_note text\)/i);
+    expect(sql).toMatch(/security definer\s+set search_path = public/i);
+    expect(sql).toMatch(/caller_id uuid := auth\.uid\(\)/i);
+    expect(sql).toMatch(/where user_id = caller_id\s+and job_id = p_job_id/i);
+    expect(sql).toMatch(/jobs\.status = 'active'\s+and \(jobs\.expires_at is null or jobs\.expires_at > now\(\)\)/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text) from anon;');
+    expect(sql).toContain('grant execute on function public.upsert_application(uuid, text, text) to authenticated;');
+  });
+
   it('does not introduce broad or ownership-free application policies', () => {
     const sql = migration();
     expect(sql).not.toMatch(/on public\.applications for all/i);
-    expect(sql).not.toMatch(/on public\.applications[\s\S]*?to (anon|public)/i);
+    expect(sql).not.toMatch(/on public\.applications[\s\S]*?\bto\s+(anon|public)\b/i);
     expect(sql).not.toMatch(/(?:using|with check)\s*\(\s*(?:true|1\s*=\s*1)\s*\)/i);
   });
 });

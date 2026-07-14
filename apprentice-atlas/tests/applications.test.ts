@@ -49,6 +49,7 @@ describe('application operations', () => {
     await expect(upsertApplication(jobId, 'applied', null, client as never)).resolves.toMatchObject({ data: null, error: { code: 'auth-required' } });
     await expect(removeApplication(jobId, client as never)).resolves.toMatchObject({ data: null, error: { code: 'auth-required' } });
     expect(client.from).not.toHaveBeenCalled();
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it('lists only the current user rows, maps valid data, and preserves a missing job', async () => {
@@ -115,22 +116,37 @@ describe('application operations', () => {
     const result = await upsertApplication(jobId, 'preparing', '   ', client as never);
 
     expect(result.data).toMatchObject({ userId, jobId, status: 'preparing', note: null });
-    expect(client.query.upsert).toHaveBeenCalledWith(
-      { user_id: userId, job_id: jobId, status: 'preparing', note: null },
-      { onConflict: 'user_id,job_id' },
-    );
-    expect(client.query.select).toHaveBeenCalledWith(expect.stringMatching(/jobs\(\*\)/));
+    expect(client.rpc).toHaveBeenCalledWith('upsert_application', {
+      p_job_id: jobId,
+      p_status: 'preparing',
+      p_note: null,
+    });
+    const rpcArgs = (client.rpc.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0][1];
+    expect(rpcArgs).not.toHaveProperty('user_id');
   });
 
-  it('rejects invalid statuses and notes longer than 500 trimmed characters without querying', async () => {
+  it('rejects invalid statuses and notes longer than 500 Unicode characters without querying', async () => {
     const { upsertApplication } = await import(modulePath);
     const invalidStatusClient = createClient();
     const invalidNoteClient = createClient();
+    const validEmojiClient = createClient({ singleData: { ...applicationRow, status: 'applied', note: '😀'.repeat(500), jobs: null } });
 
     await expect(upsertApplication(jobId, 'pending' as never, null, invalidStatusClient as never)).resolves.toMatchObject({ data: null, error: { code: 'validation' } });
-    await expect(upsertApplication(jobId, 'applied', ` ${'x'.repeat(501)} `, invalidNoteClient as never)).resolves.toMatchObject({ data: null, error: { code: 'validation' } });
-    expect(invalidStatusClient.from).not.toHaveBeenCalled();
-    expect(invalidNoteClient.from).not.toHaveBeenCalled();
+    await expect(upsertApplication(jobId, 'applied', ` ${'😀'.repeat(501)} `, invalidNoteClient as never)).resolves.toMatchObject({ data: null, error: { code: 'validation' } });
+    await expect(upsertApplication(jobId, 'applied', '😀'.repeat(500), validEmojiClient as never)).resolves.toMatchObject({ error: null });
+    expect(invalidStatusClient.rpc).not.toHaveBeenCalled();
+    expect(invalidNoteClient.rpc).not.toHaveBeenCalled();
+    expect(validEmojiClient.rpc).toHaveBeenCalledOnce();
+  });
+
+  it('counts combining Unicode code points consistently with PostgreSQL char_length', async () => {
+    const { upsertApplication } = await import(modulePath);
+    const validClient = createClient({ singleData: { ...applicationRow, status: 'applied', note: 'e\u0301'.repeat(250), jobs: null } });
+    const invalidClient = createClient();
+
+    await expect(upsertApplication(jobId, 'applied', 'e\u0301'.repeat(250), validClient as never)).resolves.toMatchObject({ error: null });
+    await expect(upsertApplication(jobId, 'applied', `${'e\u0301'.repeat(250)}x`, invalidClient as never)).resolves.toMatchObject({ data: null, error: { code: 'validation' } });
+    expect(invalidClient.rpc).not.toHaveBeenCalled();
   });
 
   it('removes only the current user application for the requested job', async () => {
@@ -150,13 +166,13 @@ describe('application operations', () => {
 
     await expect(listApplications(queryClient as never)).resolves.toMatchObject({ data: null, error: { code: 'query', message: 'database unavailable' } });
     await expect(upsertApplication(jobId, 'offer', '  Great news  ', mutationClient as never)).resolves.toMatchObject({ data: null, error: { code: 'mutation', message: 'write unavailable' } });
-    expect(mutationClient.query.upsert).toHaveBeenCalledWith(expect.objectContaining({ note: 'Great news' }), expect.anything());
+    expect(mutationClient.rpc).toHaveBeenCalledWith('upsert_application', expect.objectContaining({ p_note: 'Great news' }));
   });
 });
 
 function createClient(options: { userId?: string | null; listData?: unknown[]; singleData?: unknown; error?: Error; authError?: Error } = {}) {
   const resolvedUserId = options.userId === undefined ? userId : options.userId;
-  let operation: 'read' | 'upsert' | 'delete' = 'read';
+  let operation: 'read' | 'delete' = 'read';
   let equalityCount = 0;
   const result = () => ({ data: null, error: options.error ?? null });
   const query: any = {
@@ -169,7 +185,6 @@ function createClient(options: { userId?: string | null; listData?: unknown[]; s
     order: vi.fn(async () => ({ data: options.listData ?? [], error: options.error ?? null })),
     maybeSingle: vi.fn(async () => ({ data: options.singleData ?? null, error: options.error ?? null })),
     single: vi.fn(async () => ({ data: options.singleData ?? null, error: options.error ?? null })),
-    upsert: vi.fn(() => { operation = 'upsert'; return query; }),
     delete: vi.fn(() => { operation = 'delete'; equalityCount = 0; return query; }),
   };
   return {
@@ -180,6 +195,7 @@ function createClient(options: { userId?: string | null; listData?: unknown[]; s
       })),
     },
     from: vi.fn(() => { operation = 'read'; equalityCount = 0; return query; }),
+    rpc: vi.fn(async () => ({ data: options.singleData ?? null, error: options.error ?? null })),
     query,
   };
 }
