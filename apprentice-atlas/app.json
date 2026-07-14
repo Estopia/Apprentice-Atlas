@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "apprentice-atlas",
+    "description": "A location-aware apprenticeship discovery app with maps, saved jobs, and grounded AI help.",
     "slug": "apprentice-atlas",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,16 +9,22 @@
     "scheme": "apprenticeatlas",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.estopiaengineering.apprenticeatlas",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Apprentice Atlas uses your location to find nearby apprenticeship opportunities."
+      }
     },
     "android": {
+      "package": "com.estopiaengineering.apprenticeatlas",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
     },
     "web": {
       "output": "static",
@@ -28,11 +35,7 @@
       "expo-location",
       [
         "expo-splash-screen",
-        {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
-        }
+        { "backgroundColor": "#173B35" }
       ]
     ],
     "experiments": {
