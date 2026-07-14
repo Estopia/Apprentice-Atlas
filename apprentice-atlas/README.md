@@ -27,13 +27,13 @@ Run `npx expo config --type public` to inspect the resolved public config. The A
 
 ```sh
 npx eas login
-npx eas env:create --name GOOGLE_MAPS_API_KEY --value "<android-key>" --scope project
+npx eas env:create --name GOOGLE_MAPS_API_KEY --value "<android-key>" --scope project --environment development --visibility sensitive
 npx eas build --profile development --platform ios
 npx eas build --profile development --platform android
 npx expo start --dev-client
 ```
 
-`GOOGLE_MAPS_API_KEY` is an Android-only EAS environment value. Restrict it in Google Cloud to the Android application and Maps SDK services. iOS uses Apple Maps and remains buildable without this key. Do not put it in an `EXPO_PUBLIC_*` variable or commit it.
+`GOOGLE_MAPS_API_KEY` is an Android-only EAS environment value. Create it in the `development` environment with `sensitive` visibility because that is the environment used by the `development` build profile. Restrict it in Google Cloud to the Android application and Maps SDK services. iOS uses Apple Maps and remains buildable without this key. Do not put it in an `EXPO_PUBLIC_*` variable or commit it.
 
 ## Supabase setup and migrations
 

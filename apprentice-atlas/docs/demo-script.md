@@ -48,7 +48,7 @@ Screen recording: tap Save, open Saved, show the saved card/comparison, then ret
 
 Narrator: “Save promising options, compare them later, and apply when one feels right.”
 
-**2:08 — Buttoned-up punchline**
+**2:08 — Make the Codex joke explicit**
 
 God: “And remember: the divine wisdom was powered by a map, a database, and excellent product engineering.”
 
@@ -59,5 +59,3 @@ God: “Yes. But now you have a shortlist.”
 Student: “So who handles the hard parts?”
 
 God: “No. That’s what Codex is for.”
-
-**End at approximately 2:25.** Keep the performance brisk, use fictional local fixtures if official feeds are not configured, and avoid showing secrets or personal account data in the recording.
