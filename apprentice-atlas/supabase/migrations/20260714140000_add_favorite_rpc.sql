@@ -20,6 +20,7 @@ begin
     from public.jobs
     where jobs.id = p_job_id
       and jobs.status = 'active'
+      and (jobs.expires_at is null or jobs.expires_at > now())
   ) then
     raise exception 'Job is not available for saving' using errcode = 'P0002';
   end if;
@@ -47,6 +48,28 @@ grant execute on function public.add_favorite(uuid) to authenticated;
 -- All authenticated inserts must go through add_favorite. Read and delete
 -- access remain governed by the existing RLS policies.
 revoke insert on public.favorites from authenticated;
+
+-- Keep public job visibility aligned with what can be favorited when an
+-- ingestion run has not yet changed status to expired.
+drop policy if exists "Anyone can read active jobs" on public.jobs;
+create policy "Anyone can read active jobs"
+on public.jobs for select
+to anon, authenticated
+using (status = 'active' and (expires_at is null or expires_at > now()));
+
+drop policy if exists "Anyone can read published translations for active jobs" on public.job_translations;
+create policy "Anyone can read published translations for active jobs"
+on public.job_translations for select
+to anon, authenticated
+using (
+  status = 'published'
+  and exists (
+    select 1 from public.jobs
+    where jobs.id = job_translations.job_id
+      and jobs.status = 'active'
+      and (jobs.expires_at is null or jobs.expires_at > now())
+  )
+);
 
 do $$
 begin

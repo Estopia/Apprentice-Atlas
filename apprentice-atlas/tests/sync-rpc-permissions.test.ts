@@ -13,6 +13,7 @@ describe('atomic sync RPC permissions', () => {
     expect(favoritesMigration).toMatch(/security definer\s+set search_path = public/i);
     expect(favoritesMigration).toContain('auth.uid()');
     expect(favoritesMigration).toContain("status = 'active'");
+    expect(favoritesMigration).toMatch(/expires_at\s+is null\s+or\s+expires_at\s*>\s*now\(\)/i);
     expect(favoritesMigration).toContain('revoke execute on function public.add_favorite(uuid) from public;');
     expect(favoritesMigration).toContain('revoke execute on function public.add_favorite(uuid) from anon;');
     expect(favoritesMigration).toContain('grant execute on function public.add_favorite(uuid) to authenticated;');
