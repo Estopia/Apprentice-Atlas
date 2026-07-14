@@ -12,18 +12,20 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useLocale, t } from '@/lib/i18n';
 
 export default function AppTabs() {
+  const [locale] = useLocale();
   return (
     <Tabs>
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
           <TabTrigger name="home" href="/" asChild>
-          <TabButton>Discover</TabButton>
+          <TabButton>{t(locale, 'tabs.discover')}</TabButton>
           </TabTrigger>
           <TabTrigger name="explore" href="/explore" asChild>
-          <TabButton>Saved</TabButton>
+          <TabButton>{t(locale, 'tabs.saved')}</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>

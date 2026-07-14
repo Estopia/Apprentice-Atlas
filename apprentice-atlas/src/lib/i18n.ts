@@ -38,6 +38,15 @@ const messages = {
     'loading.ai': 'KI-Antwort wird erstellt …',
     'errors.generic': 'Etwas ist schiefgelaufen.',
     'errors.jobs': 'Ausbildungen konnten nicht geladen werden.',
+    'errors.configuration': 'Die Suche ist gerade nicht verfügbar.',
+    'errors.query': 'Ausbildungen konnten nicht geladen werden. Bitte versuche es erneut.',
+    'errors.invalidLocation': 'Für die Entfernungssuche fehlt ein gültiger Standort.',
+    'map.title': 'Kartenansicht',
+    'map.webHelper': 'Web-Vorschau – wähle eine Kartenposition aus, um den Eintrag zu öffnen.',
+    'map.noPositions': 'Keine Ausbildungen mit Kartenposition verfügbar.',
+    'map.markerList': 'Liste der Kartenpositionen',
+    'tabs.discover': 'Entdecken',
+    'tabs.saved': 'Gespeichert',
     'actions.save': 'Speichern',
     'actions.saved': 'Gespeichert',
     'actions.apply': 'Jetzt bewerben',
@@ -82,6 +91,15 @@ const messages = {
     'loading.ai': 'Generating AI answer …',
     'errors.generic': 'Something went wrong.',
     'errors.jobs': 'Could not load apprenticeships.',
+    'errors.configuration': 'Search is currently unavailable.',
+    'errors.query': 'Could not load apprenticeships. Please try again.',
+    'errors.invalidLocation': 'A valid location is needed for distance search.',
+    'map.title': 'Map preview',
+    'map.webHelper': 'Web preview — select a map position to focus its listing.',
+    'map.noPositions': 'No apprenticeships with map positions are available.',
+    'map.markerList': 'Map marker list',
+    'tabs.discover': 'Discover',
+    'tabs.saved': 'Saved',
     'actions.save': 'Save',
     'actions.saved': 'Saved',
     'actions.apply': 'Apply now',
@@ -112,6 +130,10 @@ export function setLocale(locale: Locale): void {
 
 export function t(locale: Locale, key: TranslationKey): string {
   return localeMessages[locale][key];
+}
+
+export function localizeJobError(locale: Locale, code: 'configuration' | 'query' | 'invalid-filter'): string {
+  return t(locale, code === 'configuration' ? 'errors.configuration' : code === 'invalid-filter' ? 'errors.invalidLocation' : 'errors.query');
 }
 
 export function useLocale(): readonly [Locale, (locale: Locale) => void] {

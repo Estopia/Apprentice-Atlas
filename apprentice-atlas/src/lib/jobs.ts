@@ -2,9 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { getSupabaseClient } from './supabase';
 import type { Job, JobFilter } from '../types/jobs';
-import { getBoundingBox, hasMapPosition, serializeJobFilters } from './job-filters';
+import { isWithinRadius, mergeJobs, serializeBoundingBox, serializeJobFilters } from './job-filters';
 
-export { getBoundingBox, hasMapPosition, serializeJobFilters } from './job-filters';
+export { getBoundingBox, hasMapPosition, isWithinRadius, mergeJobs, serializeBoundingBox, serializeJobFilters } from './job-filters';
 
 export type JobsError = { code: 'configuration' | 'query' | 'invalid-filter'; message: string };
 export type JobsResult = { data: Job[]; error: JobsError | null };
@@ -16,15 +16,6 @@ type JobRow = {
   source_url: string; source_name: string; status: Job['status']; last_seen_at: string;
   expires_at: string | null; created_at: string; updated_at: string;
 };
-
-const EARTH_RADIUS_KM = 6371;
-
-function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number) {
-  const dLat = ((bLat - aLat) * Math.PI) / 180;
-  const dLon = ((bLon - aLon) * Math.PI) / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
-}
 
 function fromRow(row: JobRow): Job {
   return {
@@ -44,23 +35,31 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient)
   }
   try {
     const supabase = client ?? getSupabaseClient();
-    let query = supabase.from('jobs').select('*').eq('status', 'active').order('updated_at', { ascending: false });
-    if (selected.country) query = query.ilike('country', selected.country);
-    if (selected.city) query = query.ilike('city', selected.city);
-    if (selected.category) query = query.eq('category', selected.category);
-    if (selected.jobType) query = query.eq('job_type', selected.jobType);
-    if (selected.level) query = query.eq('level', selected.level);
-    if (selected.tags?.length) query = query.overlaps('tags', selected.tags);
-    if (selected.search) query = query.or(`title.ilike.%${selected.search}%,company.ilike.%${selected.search}%`);
+    const buildQuery = () => {
+      let query = supabase.from('jobs').select('*').eq('status', 'active').order('updated_at', { ascending: false });
+      if (selected.country) query = query.ilike('country', selected.country);
+      if (selected.city) query = query.ilike('city', selected.city);
+      if (selected.category) query = query.eq('category', selected.category);
+      if (selected.jobType) query = query.eq('job_type', selected.jobType);
+      if (selected.level) query = query.eq('level', selected.level);
+      if (selected.tags?.length) query = query.overlaps('tags', selected.tags);
+      if (selected.search) query = query.or(`title.ilike.%${selected.search}%,company.ilike.%${selected.search}%`);
+      return query;
+    };
+
+    let query = buildQuery();
+    let nationwideQuery: ReturnType<typeof buildQuery> | null = null;
     if (selected.latitude !== undefined && selected.longitude !== undefined && selected.radiusKm) {
-      const box = getBoundingBox(selected.latitude, selected.longitude, selected.radiusKm);
-      query = query.gte('latitude', box.minLatitude).lte('latitude', box.maxLatitude).gte('longitude', box.minLongitude).lte('longitude', box.maxLongitude);
+      const box = serializeBoundingBox(selected.latitude, selected.longitude, selected.radiusKm);
+      query = query.gte('latitude', box.latitude.gte).lte('latitude', box.latitude.lte).gte('longitude', box.longitude.gte).lte('longitude', box.longitude.lte);
+      nationwideQuery = buildQuery().is('latitude', null).is('longitude', null);
     }
-    const { data, error } = await query;
+    const [coordinateResult, nationwideResult] = await Promise.all([query, nationwideQuery ?? Promise.resolve({ data: [], error: null })]);
+    const error = coordinateResult.error ?? nationwideResult.error;
     if (error) return { data: [], error: { code: 'query', message: error.message || 'Could not load jobs.' } };
-    let jobs = (data as JobRow[]).map(fromRow);
+    const jobs = mergeJobs((coordinateResult.data ?? []).map((row) => fromRow(row as JobRow)), (nationwideResult.data ?? []).map((row) => fromRow(row as JobRow)));
     if (selected.radiusKm && selected.latitude !== undefined && selected.longitude !== undefined) {
-      jobs = jobs.filter((job) => !hasMapPosition(job) || distanceKm(selected.latitude!, selected.longitude!, job.latitude, job.longitude) <= selected.radiusKm!);
+      return { data: jobs.filter((job) => isWithinRadius(job, selected.latitude!, selected.longitude!, selected.radiusKm!)), error: null };
     }
     return { data: jobs, error: null };
   } catch (error) {

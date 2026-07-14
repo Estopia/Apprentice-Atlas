@@ -1,17 +1,19 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useLocale, t } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
 import type { JobMapProps } from './job-map';
 
 export default function JobMap({ jobs, selectedJobId, onSelect }: JobMapProps) {
+  const [locale] = useLocale();
   const markers = jobs.filter(hasMapPosition);
   return (
-    <View style={styles.surface} accessibilityLabel="Map marker list">
-      <Text style={styles.title}>Map preview</Text>
-      <Text style={styles.hint}>Web preview — select a map position to focus its listing.</Text>
+    <View style={styles.surface} accessibilityLabel={t(locale, 'map.markerList')}>
+      <Text style={styles.title}>{t(locale, 'map.title')}</Text>
+      <Text style={styles.hint}>{t(locale, 'map.webHelper')}</Text>
       <View style={styles.grid}>
         {markers.map((job) => <Pressable key={job.id} onPress={() => onSelect(job)} style={[styles.marker, job.id === selectedJobId && styles.selected]}><Text style={styles.pin}>●</Text><Text numberOfLines={1} style={styles.markerText}>{job.city}</Text></Pressable>)}
-        {!markers.length && <Text style={styles.hint}>No coordinate-based listings yet.</Text>}
+        {!markers.length && <Text style={styles.hint}>{t(locale, 'map.noPositions')}</Text>}
       </View>
     </View>
   );
