@@ -14,16 +14,22 @@ export default function AppTabs() {
         <CustomTabList>
           <TabTrigger name="index" href="/" asChild><TabButton icon="map">{t(locale, 'tabs.discover')}</TabButton></TabTrigger>
           <TabTrigger name="favorites" href="/favorites" asChild><TabButton icon="bookmark">{t(locale, 'tabs.saved')}</TabButton></TabTrigger>
+          <TabTrigger name="atlas" href="/atlas" asChild><TabButton icon="person">{t(locale, 'tabs.atlas')}</TabButton></TabTrigger>
         </CustomTabList>
       </TabList>
     </Tabs>
   );
 }
 
-function TabButton({ children, isFocused, icon, ...props }: TabTriggerSlotProps & { icon: 'map' | 'bookmark' }) {
+function TabButton({ children, isFocused, icon, ...props }: TabTriggerSlotProps & { icon: 'map' | 'bookmark' | 'person' }) {
+  const iconName = icon === 'map'
+    ? { ios: 'map.fill', android: 'map', web: 'map' } as const
+    : icon === 'bookmark'
+      ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } as const
+      : { ios: 'person.crop.circle.fill', android: 'person', web: 'person' } as const;
   return (
     <Pressable {...props} accessibilityRole="tab" accessibilityState={{ selected: Boolean(isFocused) }} style={({ pressed }) => [styles.tabButton, isFocused && styles.tabButtonActive, pressed && styles.pressed]}>
-      <AppIcon name={icon === 'map' ? { ios: 'map.fill', android: 'map', web: 'map' } : { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }} size={18} tintColor={isFocused ? Palette.white : Palette.textSecondary} />
+      <AppIcon name={iconName} size={18} tintColor={isFocused ? Palette.white : Palette.textSecondary} />
       <Text style={[styles.tabText, isFocused && styles.tabTextActive]}>{children}</Text>
     </Pressable>
   );
@@ -36,7 +42,7 @@ function CustomTabList(props: TabListProps) {
 const styles = StyleSheet.create({
   tabListContainer: { position: 'absolute', left: 0, right: 0, bottom: 18, zIndex: 50, alignItems: 'center', pointerEvents: 'box-none' },
   innerContainer: { flexDirection: 'row', padding: 5, gap: 4, borderRadius: Radius.pill, backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
-  tabButton: { height: 46, minHeight: 44, width: 120, minWidth: 44, paddingHorizontal: 18, borderRadius: Radius.pill, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  tabButton: { height: 46, minHeight: 44, width: 108, minWidth: 44, paddingHorizontal: 12, borderRadius: Radius.pill, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   tabButtonActive: { backgroundColor: Palette.blue },
   tabText: { color: Palette.textSecondary, fontSize: 13, fontWeight: '800' },
   tabTextActive: { color: Palette.white },

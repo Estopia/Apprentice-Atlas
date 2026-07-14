@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import type { ApplicationStatus } from '@/types/jobs';
+
 export type Locale = 'de' | 'en';
 
 const messages = {
@@ -109,6 +111,45 @@ const messages = {
     'map.markerList': 'Liste der Kartenpositionen',
     'tabs.discover': 'Entdecken',
     'tabs.saved': 'Gespeichert',
+    'tabs.atlas': 'Mein Atlas',
+    'atlas.title': 'Mein Atlas',
+    'atlas.subtitle': 'Dein persönlicher Überblick für den nächsten Schritt.',
+    'atlas.progress': 'Bewerbungsfortschritt',
+    'atlas.total': 'Gesamt',
+    'atlas.active': 'Aktiv',
+    'atlas.finished': 'Abgeschlossen',
+    'atlas.interviews': 'Gespräche',
+    'atlas.offers': 'Angebote',
+    'atlas.activeApplications': 'Aktive Bewerbungen',
+    'atlas.finishedApplications': 'Abgeschlossen',
+    'atlas.updated': 'Aktualisiert',
+    'atlas.unavailable': 'Die zugehörige Ausbildung ist nicht mehr verfügbar.',
+    'atlas.loading': 'Dein Atlas wird geladen …',
+    'atlas.errorTitle': 'Dein Fortschritt konnte nicht geladen werden',
+    'atlas.errorBody': 'Prüfe deine Verbindung und versuche es noch einmal.',
+    'atlas.retry': 'Erneut versuchen',
+    'atlas.emptyTitle': 'Dein Weg beginnt mit einer Chance',
+    'atlas.emptyBody': 'Entdecke eine Ausbildung und füge sie deinem Bewerbungsweg hinzu.',
+    'atlas.discover': 'Chancen entdecken',
+    'atlas.preferences': 'Deine Einstellungen',
+    'atlas.editPreferences': 'Bearbeiten',
+    'atlas.audience': 'Ausgangslage',
+    'atlas.interests': 'Interessen',
+    'atlas.country': 'Suchland',
+    'atlas.language': 'Sprache',
+    'atlas.notSet': 'Noch nicht festgelegt',
+    'atlas.audienceStudent': 'Schüler:in',
+    'atlas.audienceDropout': 'Neuorientierung',
+    'atlas.account': 'Konto',
+    'atlas.signedOutTitle': 'Dein Atlas bleibt auch ohne Konto nützlich',
+    'atlas.signedOutBody': 'Melde dich an, um Bewerbungen privat zu verfolgen und deinen Fortschritt auf allen Geräten zu behalten.',
+    'atlas.signIn': 'Anmelden',
+    'atlas.status.interested': 'Interessiert',
+    'atlas.status.preparing': 'In Vorbereitung',
+    'atlas.status.applied': 'Beworben',
+    'atlas.status.interview': 'Gespräch',
+    'atlas.status.offer': 'Angebot',
+    'atlas.status.closed': 'Beendet',
     'saved.title': 'Gespeichert',
     'saved.account': 'Konto',
     'saved.description': 'Melde dich an, um Ausbildungen für später zu speichern.',
@@ -263,6 +304,45 @@ const messages = {
     'map.markerList': 'Map marker list',
     'tabs.discover': 'Discover',
     'tabs.saved': 'Saved',
+    'tabs.atlas': 'My Atlas',
+    'atlas.title': 'My Atlas',
+    'atlas.subtitle': 'Your personal overview for the next step.',
+    'atlas.progress': 'Application progress',
+    'atlas.total': 'Total',
+    'atlas.active': 'Active',
+    'atlas.finished': 'Finished',
+    'atlas.interviews': 'Interviews',
+    'atlas.offers': 'Offers',
+    'atlas.activeApplications': 'Active applications',
+    'atlas.finishedApplications': 'Finished',
+    'atlas.updated': 'Updated',
+    'atlas.unavailable': 'The related apprenticeship is no longer available.',
+    'atlas.loading': 'Loading your Atlas …',
+    'atlas.errorTitle': 'Your progress could not be loaded',
+    'atlas.errorBody': 'Check your connection and try again.',
+    'atlas.retry': 'Try again',
+    'atlas.emptyTitle': 'Your path starts with an opportunity',
+    'atlas.emptyBody': 'Discover an apprenticeship and add it to your application journey.',
+    'atlas.discover': 'Discover opportunities',
+    'atlas.preferences': 'Your preferences',
+    'atlas.editPreferences': 'Edit',
+    'atlas.audience': 'Current situation',
+    'atlas.interests': 'Interests',
+    'atlas.country': 'Search country',
+    'atlas.language': 'Language',
+    'atlas.notSet': 'Not set yet',
+    'atlas.audienceStudent': 'Student',
+    'atlas.audienceDropout': 'Changing direction',
+    'atlas.account': 'Account',
+    'atlas.signedOutTitle': 'Your Atlas is useful without an account',
+    'atlas.signedOutBody': 'Sign in to track applications privately and keep your progress across devices.',
+    'atlas.signIn': 'Sign in',
+    'atlas.status.interested': 'Interested',
+    'atlas.status.preparing': 'Preparing',
+    'atlas.status.applied': 'Applied',
+    'atlas.status.interview': 'Interview',
+    'atlas.status.offer': 'Offer',
+    'atlas.status.closed': 'Closed',
     'saved.title': 'Saved',
     'saved.account': 'Account',
     'saved.description': 'Sign in to keep apprenticeships here for later.',
@@ -372,6 +452,10 @@ export function localizeCountry(locale: Locale, country: string): string {
   if (locale === 'de' && country === 'Germany') return 'Deutschland';
   if (locale === 'de' && country === 'United Kingdom') return 'Vereinigtes Königreich';
   return country;
+}
+
+export function localizeApplicationStatus(locale: Locale, status: ApplicationStatus): string {
+  return t(locale, `atlas.status.${status}` as TranslationKey);
 }
 
 export function localizeJobError(locale: Locale, code: 'configuration' | 'query' | 'invalid-filter'): string {

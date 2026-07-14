@@ -55,9 +55,13 @@ const favorite: FavoriteJob = {
 };
 
 describe('auth route and readable errors', () => {
-  it('accepts only local job return paths', () => {
+  it('accepts only exact local job and approved tab return paths', () => {
     expect(isSafeReturnPath(`/job/${job.id}`)).toBe(true);
+    expect(isSafeReturnPath('/atlas')).toBe(true);
+    expect(isSafeReturnPath('/favorites')).toBe(true);
     expect(isSafeReturnPath('https://evil.test/steal')).toBe(false);
+    expect(isSafeReturnPath('/atlas/anything')).toBe(false);
+    expect(isSafeReturnPath('/atlas?token=secret')).toBe(false);
     expect(isSafeReturnPath('/favorites?token=secret')).toBe(false);
   });
 
