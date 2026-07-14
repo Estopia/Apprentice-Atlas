@@ -10,6 +10,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { getDiscoveryState, resetDiscoveryState, setDiscoveryFilters } from '../src/lib/discovery-state';
+import { getLocale, setLocale } from '../src/lib/i18n';
 import {
   completeOnboarding,
   DEFAULT_PREFERENCES,
@@ -56,6 +57,29 @@ describe('anonymous preferences', () => {
 
     expect(JSON.parse(storage.get(PREFERENCES_STORAGE_KEY) ?? '')).toEqual(personalizedPreferences);
     await expect(loadPreferences()).resolves.toEqual(personalizedPreferences);
+  });
+
+  it('restores discovery personalization from completed preferences on cold start', async () => {
+    const completed = { ...personalizedPreferences, onboardingComplete: true };
+    storage.set(PREFERENCES_STORAGE_KEY, JSON.stringify(completed));
+    setDiscoveryFilters({ search: 'apprentice' });
+
+    await loadPreferences();
+
+    expect(getDiscoveryState().filters).toEqual({
+      search: 'apprentice',
+      country: 'Germany',
+      category: 'technology',
+    });
+  });
+
+  it('keeps the effective locale in sync when preferences are saved', async () => {
+    setLocale('de');
+
+    await savePreferences({ ...personalizedPreferences, locale: 'en' });
+
+    expect(getLocale()).toBe('en');
+    expect(JSON.parse(storage.get(PREFERENCES_STORAGE_KEY) ?? '').locale).toBe('en');
   });
 
   it('completes onboarding and applies country plus the first interest to discovery', async () => {

@@ -50,6 +50,14 @@ function publish(preferences: UserPreferences) {
   listeners.forEach((listener) => listener());
 }
 
+function applyDiscoveryPersonalization(preferences: UserPreferences) {
+  if (!preferences.onboardingComplete) return;
+  updateDiscoveryFilters({
+    country: preferences.country ?? undefined,
+    category: preferences.interests[0],
+  });
+}
+
 export function subscribePreferences(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -71,11 +79,13 @@ export async function loadPreferences(): Promise<UserPreferences> {
     // First-run defaults keep anonymous discovery available if storage is unavailable.
   }
   publish(preferences);
+  applyDiscoveryPersonalization(preferences);
   return preferences;
 }
 
 export async function savePreferences(preferences: UserPreferences): Promise<UserPreferences> {
   const safePreferences = isPreferences(preferences) ? preferences : DEFAULT_PREFERENCES;
+  setLocale(safePreferences.locale);
   try {
     await AsyncStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(safePreferences));
   } catch {
@@ -87,10 +97,6 @@ export async function savePreferences(preferences: UserPreferences): Promise<Use
 
 export async function completeOnboarding(preferences: UserPreferences): Promise<UserPreferences> {
   const completed = await savePreferences({ ...preferences, onboardingComplete: true });
-  setLocale(completed.locale);
-  updateDiscoveryFilters({
-    country: completed.country ?? undefined,
-    category: completed.interests[0],
-  });
+  applyDiscoveryPersonalization(completed);
   return completed;
 }
