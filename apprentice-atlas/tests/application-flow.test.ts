@@ -86,6 +86,18 @@ describe('pending application tracking', () => {
 });
 
 describe('application journey route integration', () => {
+  it('preserves the draft on token refresh and reloads it when the user changes', () => {
+    const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
+    const loadEffectStart = sheet.indexOf('useEffect(() => {', sheet.indexOf('const redirectToAuth'));
+    const loadEffectEnd = sheet.indexOf('\n\n  const noteLength', loadEffectStart);
+    const loadEffect = sheet.slice(loadEffectStart, loadEffectEnd);
+
+    expect(sheet).toMatch(/const authUserId = auth\.session\?\.user\.id \?\? null;/);
+    expect(loadEffect).toMatch(/if \(!validJobId \|\| auth\.loading\) return;\s+if \(!authUserId\)/);
+    expect(loadEffect).toMatch(/\[[^\]]*authUserId[^\]]*\]\);$/);
+    expect(loadEffect).not.toMatch(/auth\.session|access_token|sessionKey/);
+  });
+
   it('guards load, save, and remove completions after the sheet unmounts', () => {
     const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
     const saveBlock = sheet.slice(sheet.indexOf('const save = async'), sheet.indexOf('const remove = async'));

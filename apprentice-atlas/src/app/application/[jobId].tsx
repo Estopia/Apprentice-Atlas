@@ -42,7 +42,7 @@ export default function ApplicationSheet() {
   const [busyOperation, setBusyOperation] = useState<ApplicationsOperation | null>(null);
   const mountedRef = useRef(false);
   const redirectStarted = useRef(false);
-  const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
+  const authUserId = auth.session?.user.id ?? null;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -60,7 +60,7 @@ export default function ApplicationSheet() {
 
   useEffect(() => {
     if (!validJobId || auth.loading) return;
-    if (!auth.session) {
+    if (!authUserId) {
       redirectToAuth();
       return;
     }
@@ -89,7 +89,7 @@ export default function ApplicationSheet() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, [auth.loading, auth.session, loadAttempt, locale, redirectToAuth, routeJobId, sessionKey, validJobId]);
+  }, [auth.loading, authUserId, loadAttempt, locale, redirectToAuth, routeJobId, validJobId]);
 
   const noteLength = applicationNoteLength(note);
   const noteTooLong = noteLength > 500;
