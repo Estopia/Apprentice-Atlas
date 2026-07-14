@@ -53,4 +53,6 @@ Each `sync_runs` row records a provider configuration run, not an individual `jo
 
 From `apprentice-atlas/`, `npm run test -- tests` runs the complete suite. The PostgreSQL expiration integration tests skip locally only when `TASK3_TEST_DATABASE_URL` and `TEST_DATABASE_URL` are both unset. `.github/workflows/test.yml` provisions disposable PostgreSQL, creates the Supabase-compatible roles, applies every timestamped migration, sets both variables, and runs the same command, so the real database tests are enforced in CI.
 
+To run the real source/expiration integration tests locally, start a temporary PostgreSQL instance, apply the timestamped migrations, and run with `TASK3_TEST_DATABASE_URL` (or `TEST_DATABASE_URL`) set. To validate the legacy provenance path locally, apply `20260713090000_initial_schema.sql`, then `fixtures/preflight_source_provenance.sql`, then `20260713091000_preflight_source_cleanup.sql` and the remaining timestamped migrations; the `legacy-provenance` CI job contains the exact order and assertions.
+
 The MVP deliberately stores latitude/longitude as numeric columns and uses bounding-box filtering. PostGIS is intentionally not required yet.
