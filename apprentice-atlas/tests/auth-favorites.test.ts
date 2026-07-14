@@ -5,6 +5,7 @@ import {
   isSafeReturnPath,
   signUp,
   subscribeToAuth,
+  validatedPendingSaveJobId,
   type AuthError,
 } from '../src/lib/auth';
 import {
@@ -55,10 +56,23 @@ const favorite: FavoriteJob = {
 };
 
 describe('auth route and readable errors', () => {
-  it('accepts only local job return paths', () => {
+  it('accepts only exact Atlas and valid local job return paths', () => {
     expect(isSafeReturnPath(`/job/${job.id}`)).toBe(true);
+    expect(isSafeReturnPath('/atlas')).toBe(true);
+    expect(isSafeReturnPath('/favorites')).toBe(false);
     expect(isSafeReturnPath('https://evil.test/steal')).toBe(false);
+    expect(isSafeReturnPath('/atlas/anything')).toBe(false);
+    expect(isSafeReturnPath('/atlas?token=secret')).toBe(false);
     expect(isSafeReturnPath('/favorites?token=secret')).toBe(false);
+  });
+
+  it('continues a pending save only for the exact matching job return path', () => {
+    const otherJobId = '66666666-6666-4666-8666-666666666666';
+
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${job.id}` })).toBe(job.id);
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/atlas' })).toBeNull();
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${otherJobId}` })).toBeNull();
+    expect(validatedPendingSaveJobId({ pendingAction: 'track', jobId: job.id, returnTo: `/job/${job.id}` })).toBeNull();
   });
 
   it('maps auth errors to readable localized messages', () => {

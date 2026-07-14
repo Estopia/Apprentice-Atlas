@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,12 +9,14 @@ import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
+import { getApplicationForJob, getReadableApplicationsError, type ApplicationsError } from '@/lib/applications';
+import { isValidApplicationJobId } from '@/lib/application-flow';
 import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
-import { localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
+import { localizeApplicationStatus, localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
 import { getJob } from '@/lib/jobs';
 import { getValidHttpUrl } from '@/lib/official-listing-url';
-import type { FavoriteJob } from '@/types/jobs';
+import type { FavoriteJob, TrackedApplication } from '@/types/jobs';
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,8 +31,13 @@ export default function JobDetailScreen() {
   const [favoriteJobId, setFavoriteJobId] = useState<string | null>(null);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [favoriteError, setFavoriteError] = useState<FavoritesError | null>(null);
+  const [application, setApplication] = useState<TrackedApplication | null>(null);
+  const [applicationJobId, setApplicationJobId] = useState<string | null>(null);
+  const [applicationLoading, setApplicationLoading] = useState(false);
+  const [applicationError, setApplicationError] = useState<ApplicationsError | null>(null);
   const activeState = loadedId === routeId ? state : resetJobDetailState(state);
   const { job, explanation, loading, aiLoading, error, aiError } = activeState;
+  const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
 
   useEffect(() => {
     let mounted = true;
@@ -55,7 +62,34 @@ export default function JobDetailScreen() {
     return () => { mounted = false; };
   }, [auth.session, job]);
 
+  const loadApplication = useCallback(() => {
+    if (auth.loading || !sessionKey || !job) {
+      if (!auth.loading && !sessionKey) {
+        setApplication(null);
+        setApplicationJobId(null);
+        setApplicationError(null);
+        setApplicationLoading(false);
+      }
+      return undefined;
+    }
+    let active = true;
+    const requestedJobId = job.id;
+    setApplicationLoading(true);
+    setApplicationError(null);
+    void getApplicationForJob(requestedJobId).then((result) => {
+      if (!active) return;
+      setApplicationJobId(requestedJobId);
+      setApplication(result.data);
+      setApplicationError(result.error);
+      setApplicationLoading(false);
+    });
+    return () => { active = false; };
+  }, [auth.loading, job, sessionKey]);
+
+  useFocusEffect(loadApplication);
+
   const activeFavorite = auth.session && favoriteJobId === job?.id ? favorite : null;
+  const activeApplication = auth.session && applicationJobId === job?.id ? application : null;
   const toggleFavorite = async () => {
     if (!job || favoriteBusy) return;
     if (!auth.session) { router.push({ pathname: '/auth', params: { returnTo: `/job/${job.id}`, pendingAction: 'save', jobId: job.id } }); return; }
@@ -73,6 +107,15 @@ export default function JobDetailScreen() {
       else setFavorite(result.data ?? optimistic);
     }
     setFavoriteBusy(false);
+  };
+
+  const openApplicationJourney = () => {
+    if (!job || !isValidApplicationJobId(job.id)) return;
+    if (!auth.session) {
+      router.push({ pathname: '/auth', params: { returnTo: `/job/${job.id}`, pendingAction: 'track', jobId: job.id } });
+      return;
+    }
+    router.push({ pathname: '/application/[jobId]', params: { jobId: job.id } } as never);
   };
 
   if (loading) return <State text={t(locale, 'loading.jobDetails')} locale={locale} />;
@@ -105,6 +148,25 @@ export default function JobDetailScreen() {
         {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
 
         <View style={styles.source}><AppIcon name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }} size={19} tintColor={Palette.blue} /><View style={styles.sourceCopy}><Text style={styles.sourceText}>{job.sourceName}</Text><Text style={styles.updated}>{t(locale, 'job.lastUpdated')}: {new Date(job.updatedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text></View></View>
+
+        <Pressable
+          accessibilityLabel={`${t(locale, 'application.journey')}, ${activeApplication ? localizeApplicationStatus(locale, activeApplication.status) : t(locale, 'application.track')}`}
+          accessibilityRole="button"
+          onPress={openApplicationJourney}
+          style={({ pressed }) => [styles.applicationJourney, pressed && styles.pressed]}
+        >
+          <View style={styles.applicationJourneyIcon}><AppIcon name={{ ios: 'arrow.trianglehead.branch', android: 'route', web: 'route' }} size={20} tintColor={Palette.blue} /></View>
+          <View style={styles.applicationJourneyCopy}>
+            <Text style={styles.applicationJourneyLabel}>{t(locale, 'application.journey')}</Text>
+            <Text style={styles.applicationJourneyValue}>{applicationLoading && auth.session
+              ? t(locale, 'application.loading')
+              : activeApplication
+                ? localizeApplicationStatus(locale, activeApplication.status)
+                : t(locale, 'application.track')}</Text>
+          </View>
+          <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={16} tintColor={Palette.textSecondary} />
+        </Pressable>
+        {applicationError && applicationJobId === job.id && <Text accessibilityRole="alert" style={styles.error}>{getReadableApplicationsError(applicationError, locale, 'load')}</Text>}
 
         <AiExplanation explanation={explanation} loading={aiLoading} error={aiError} />
         <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.description')}</Text><Text style={styles.body}>{job.rawDescription || t(locale, 'ai.unknown')}</Text></View>
@@ -159,6 +221,11 @@ const styles = StyleSheet.create({
   sourceCopy: { flex: 1 },
   sourceText: { color: Palette.text, fontWeight: '600' },
   updated: { color: Palette.textSecondary, marginTop: 4, fontSize: 11 },
+  applicationJourney: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.blueSoft },
+  applicationJourneyIcon: { width: 38, height: 38, borderRadius: 12, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.white },
+  applicationJourneyCopy: { flex: 1, minWidth: 0, gap: 2 },
+  applicationJourneyLabel: { color: Palette.text, fontSize: 14, fontWeight: '700' },
+  applicationJourneyValue: { color: Palette.blue, fontSize: 13, fontWeight: '600' },
   section: { paddingTop: 24 },
   heading: { color: Palette.text, fontWeight: '700', fontSize: 21 },
   body: { color: Palette.text, lineHeight: 23, marginTop: 10, fontSize: 15 },

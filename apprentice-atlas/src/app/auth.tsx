@@ -5,7 +5,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AuthForm } from '@/components/auth/auth-form';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
-import { isSafeReturnPath } from '@/lib/auth';
+import { validatedPendingTrackJobId } from '@/lib/application-flow';
+import { isSafeReturnPath, validatedPendingSaveJobId } from '@/lib/auth';
 import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
 
@@ -15,11 +16,17 @@ export default function AuthScreen() {
   const params = useLocalSearchParams<{ returnTo?: string; pendingAction?: string; jobId?: string }>();
   const [error, setError] = useState<string | null>(null);
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/favorites';
+  const pendingTrackJobId = validatedPendingTrackJobId(params);
+  const pendingSaveJobId = validatedPendingSaveJobId(params);
 
   const complete = async () => {
     setError(null);
-    if (params.pendingAction === 'save' && params.jobId && isSafeReturnPath(`/job/${params.jobId}`)) {
-      const result = await addFavorite(params.jobId);
+    if (pendingTrackJobId) {
+      router.replace({ pathname: '/application/[jobId]', params: { jobId: pendingTrackJobId } } as never);
+      return;
+    }
+    if (pendingSaveJobId) {
+      const result = await addFavorite(pendingSaveJobId);
       if (result.error) { setError(getReadableFavoritesError(result.error, locale)); return; }
     }
     router.replace(returnTo);

@@ -1,6 +1,16 @@
 # Apprentice Atlas
 
-Apprentice Atlas helps students find a realistic next step after school. The app combines location-aware discovery, map-based browsing, job details, grounded AI explanations and Q&A, private saved jobs, and a direct application link. The product UI is bilingual (English/German); the demo script is intentionally English.
+Apprentice Atlas helps students and university dropouts turn nearby opportunities into a concrete next step. The app combines location-aware map discovery, grounded job details and AI guidance with first-run personalization, private saved jobs, and a personal application journey. The complete product UI is bilingual (English/German).
+
+## Product flows
+
+- Browse official apprenticeship and early-career listings on the map without an account. Search, filters, list mode, location access, and manual location fallback all remain available anonymously.
+- Complete a three-step first-run setup for audience, interests, country, and language. Preferences persist locally and preconfigure discovery after a cold start.
+- Open a job for its official description, source metadata, application link, simple AI explanation, fit guidance, and limited grounded Q&A.
+- Save jobs or track a private application after signing in. The application journey covers interested, preparing, applied, interview, offer, and closed, with an optional private note.
+- Use My Atlas / Mein Atlas as the personal hub for progress, active and completed applications, preferences, and account controls. Expired listings already in a journey remain manageable.
+
+Browsing does not require login. Favorites, application tracking, and other private account data do. Authentication returns users to the exact safe route and pending action they started.
 
 ## Local web testing
 
@@ -63,14 +73,17 @@ Clean databases apply every timestamp migration in filename order, then `supabas
 11. `20260714160000_enforce_application_urls.sql`
 12. `20260714170000_user_assets_storage.sql`
 13. `20260714180000_index_favorites_job_id.sql`
+14. `20260714190000_application_tracker.sql`
+15. `20260714191000_harden_application_privileges.sql`
 
-The preflight is required before the locked schema hardening migration because it repairs legacy whitespace/blanks and normalized source collisions. The guarded post-release migration is safe on clean data and completes compatibility, audit, and constraint hardening. The local-only `supabase/fixtures/preflight_source_provenance.sql` fixture is for testing the legacy repair path; load it after the initial schema and before the preflight, then apply the remaining timestamp migrations. Never load fixtures or `seed.sql` into production.
+The preflight is required before the locked schema hardening migration because it repairs legacy whitespace/blanks and normalized source collisions. The guarded post-release migration is safe on clean data and completes compatibility, audit, and constraint hardening. The application tracker migration and its privilege-hardening follow-up are applied to the hosted project. They enforce owner-only RLS, immutable application identity, restricted column updates, and authenticated access to the validated upsert RPC. The local-only `supabase/fixtures/preflight_source_provenance.sql` fixture is for testing the legacy repair path; load it after the initial schema and before the preflight, then apply the remaining timestamp migrations. Never load fixtures or `seed.sql` into production.
 
 If a remote project has old `001`/`002`/`003` history, back it up and inspect the actual schema before applying the initial migration. Use `npx supabase migration list --linked`, then pair `npx supabase migration repair <old-id> --status reverted` with `npx supabase migration repair <timestamp-id> --status applied` only when the timestamp SQL is already represented in the database. For partial or uncertain upgrades, stop, pull/inspect the schema, and do not mark a migration applied without evidence. After repair, list history again and run `npx supabase db push --linked`. `migration repair` changes history only; it does not run SQL.
 
 ## Data, auth, AI, and source boundaries
 
-- The browser/mobile client receives only active jobs and published translations through RLS. Jobs remain discoverable with canonical title, description, and location fields when a requested published translation is absent. Favorites are private to the signed-in owner.
+- The browser/mobile client receives only active jobs and published translations through RLS. Jobs remain discoverable with canonical title, description, and location fields when a requested published translation is absent. Favorites and applications are private to the signed-in owner.
+- Application creation uses a validated security-definer RPC. Direct client inserts, table-wide updates, identity-column changes, and anonymous access are revoked; owners may read/delete their rows and update only status/note through the allowed boundary.
 - `job_sources`, `sync_runs`, provider payloads, cached AI content, and the Supabase service-role key are server-side only.
 - Edge Functions use `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY`; `OPENAI_MODEL=gpt-5.6` is optional and defaults to that model in the handlers. Configure them as Supabase project secrets, never as `EXPO_PUBLIC_*` values:
 
@@ -85,7 +98,7 @@ The hosted `ai-explain`, `ai-qa`, and `sync-jobs` Edge Functions are deployed. B
 
 ## Codex and GPT-5.6 roles
 
-Codex was used as an engineering and review partner for Expo components, Supabase queries and Edge Functions, typed clients, official API adapters, validation, tests, and documentation. GPT-5.6 powers the user-facing plain-language explanations, “Good if” / “Not so good if” fit lists, and limited job Q&A through the server-side Edge Functions. These are separate boundaries: the app never exposes provider secrets.
+Codex was used as an engineering and review partner for Expo components, native interaction flows, Supabase migrations/RLS, Edge Functions, typed clients, official API adapters, validation, tests, and documentation. Development was split into bounded subagent tasks, with independent specification and security/code-quality reviews after each product slice. Codex also drove narrow and standard iPhone web visual checks before integration. GPT-5.6 powers the user-facing plain-language explanations, “Good if” / “Not so good if” fit lists, and limited job Q&A through the server-side Edge Functions. These are separate boundaries: the app never exposes provider secrets.
 
 ## Verification
 
@@ -96,14 +109,17 @@ npm test
 npm run lint
 npx tsc --noEmit
 npx expo export --platform web
+npx expo export --platform ios --output-dir /tmp/apprentice-atlas-ios-export
+npx expo-doctor
 npx expo config --type public
 ```
 
-The native development profiles should be validated with `npx eas build:configure`/`npx eas build --profile development --platform <ios|android>` when EAS credentials and a device are available. This task does not require an actual native build.
+The product-layer handoff passed 141 automated tests with 6 environment-gated integration tests skipped, Expo lint, TypeScript, Expo Doctor (20/20), static web export, static iOS export, and interactive checks at 320×844 and 390×844. The application RPC integration test was additionally run successfully against a disposable PostgreSQL database with every timestamped migration applied. The native development profiles should still be validated with `npx eas build:configure`/`npx eas build --profile development --platform <ios|android>` when EAS credentials and a device are available.
 
 ## Known limitations
 
 - Local seed data is fictional; official ingestion remains server-side and configuration-gated.
-- The MVP uses numeric latitude/longitude and bounding-box filtering; PostGIS is not required yet.
+- Discovery uses numeric latitude/longitude and bounding-box filtering; PostGIS is not currently required.
 - A physical-device native build requires EAS credentials, signing, and (for Android) the restricted maps key.
 - Location permission denial falls back to manual city/country selection. AI availability depends on configured Edge Function secrets and network access.
+- Application notes are private text fields, not document uploads or a full employer-facing application system. The actual application is completed on the official provider page.

@@ -10,8 +10,19 @@ export type SignUpResult = { user: User | null; session: Session | null; needsEm
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const uuidPattern = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 
-export function isSafeReturnPath(path: string | undefined): path is `/job/${string}` {
-  return Boolean(path && new RegExp(`^/job/${uuidPattern}$`, 'i').test(path));
+export function isSafeReturnPath(path: string | undefined): path is `/job/${string}` | '/atlas' {
+  return path === '/atlas'
+    || Boolean(path && new RegExp(`^/job/${uuidPattern}$`, 'i').test(path));
+}
+
+export function validatedPendingSaveJobId(params: {
+  pendingAction?: string;
+  jobId?: string;
+  returnTo?: string;
+}): string | null {
+  const { pendingAction, jobId, returnTo } = params;
+  if (pendingAction !== 'save' || !jobId || !isSafeReturnPath(returnTo)) return null;
+  return returnTo === `/job/${jobId}` ? jobId : null;
 }
 
 export function getReadableAuthError(error: AuthError, locale: Locale): string {

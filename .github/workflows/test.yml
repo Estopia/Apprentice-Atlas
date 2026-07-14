@@ -48,8 +48,14 @@ jobs:
           CREATE ROLE service_role;
           CREATE SCHEMA auth;
           CREATE TABLE auth.users (id uuid primary key);
+          CREATE SCHEMA storage;
+          CREATE TABLE storage.buckets (id text primary key, name text not null, public boolean not null default false);
+          CREATE TABLE storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text not null references storage.buckets(id), owner_id text);
+          ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
           CREATE FUNCTION auth.uid() RETURNS uuid
-          LANGUAGE sql STABLE AS $$ SELECT null::uuid $$;
+          LANGUAGE sql STABLE AS $$
+            SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
           SQL
       - name: Apply timestamped migrations
         env:
@@ -107,8 +113,14 @@ jobs:
           CREATE ROLE service_role;
           CREATE SCHEMA auth;
           CREATE TABLE auth.users (id uuid primary key);
+          CREATE SCHEMA storage;
+          CREATE TABLE storage.buckets (id text primary key, name text not null, public boolean not null default false);
+          CREATE TABLE storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text not null references storage.buckets(id), owner_id text);
+          ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
           CREATE FUNCTION auth.uid() RETURNS uuid
-          LANGUAGE sql STABLE AS $$ SELECT null::uuid $$;
+          LANGUAGE sql STABLE AS $$
+            SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
           SQL
       - name: Apply initial schema and provenance fixture
         env:

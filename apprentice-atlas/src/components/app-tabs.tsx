@@ -28,6 +28,14 @@ export default function AppTabs() {
           md={{ default: 'bookmark_border', selected: 'bookmark' }}
         />
       </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="atlas">
+        <NativeTabs.Trigger.Label>{t(locale, 'tabs.atlas')}</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }}
+          md={{ default: 'person', selected: 'person' }}
+        />
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }

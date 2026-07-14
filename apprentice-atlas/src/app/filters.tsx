@@ -4,8 +4,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
+import { usePreferences } from '@/hooks/use-preferences';
 import { resetDiscoveryState, setDiscoveryFilters, setDiscoverySort, useDiscoveryState } from '@/lib/discovery-state';
-import { localizeCategory, setLocale, t, useLocale } from '@/lib/i18n';
+import { localizeCategory, t, useLocale } from '@/lib/i18n';
+import type { UserPreferences } from '@/lib/preferences';
 import type { JobFilter } from '@/types/jobs';
 
 const categories = ['technology', 'business', 'skilled-trades'];
@@ -15,7 +17,9 @@ export default function FiltersSheet() {
   const [locale] = useLocale();
   const insets = useSafeAreaInsets();
   const { filters, sort } = useDiscoveryState();
+  const { preferences, savePreferences } = usePreferences();
   const update = (next: Partial<JobFilter>) => setDiscoveryFilters({ ...filters, ...next });
+  const updateLocale = (nextLocale: UserPreferences['locale']) => void savePreferences({ ...preferences, locale: nextLocale });
 
   return (
     <>
@@ -49,8 +53,8 @@ export default function FiltersSheet() {
           <Choice active={sort === 'title'} label={t(locale, 'discovery.sortTitle')} onPress={() => setDiscoverySort('title')} />
         </FilterSection>
         <FilterSection title={t(locale, 'discovery.language')}>
-          <Choice active={locale === 'de'} label="Deutsch" onPress={() => setLocale('de')} />
-          <Choice active={locale === 'en'} label="English" onPress={() => setLocale('en')} />
+          <Choice active={locale === 'de'} label="Deutsch" onPress={() => updateLocale('de')} />
+          <Choice active={locale === 'en'} label="English" onPress={() => updateLocale('en')} />
         </FilterSection>
         <Pressable accessibilityRole="button" onPress={resetDiscoveryState} style={styles.reset}><Text style={styles.resetText}>{t(locale, 'discovery.resetFilters')}</Text></Pressable>
       </ScrollView>
