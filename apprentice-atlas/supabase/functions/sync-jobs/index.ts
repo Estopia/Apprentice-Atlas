@@ -19,7 +19,7 @@ type SupabaseLike = { from(table: string): any; rpc(name: string, params: Record
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-function adapterFor(provider: Provider): SourceAdapter {
+export function adapterFor(provider: Provider): SourceAdapter {
   return provider === 'find-apprenticeship' ? createUkApprenticeshipAdapter() : createBaAdapter();
 }
 
@@ -70,10 +70,11 @@ export async function handleSyncRequest(request: Request): Promise<Response> {
     const body = parsed.body;
     const provider = body.provider ?? 'find-apprenticeship';
     if (provider !== 'find-apprenticeship' && provider !== 'bundesagentur-fuer-arbeit') return json({ error: { code: 'INVALID_PROVIDER', message: `Unsupported provider: ${String(provider)}` } }, 400);
+    const adapter = adapterFor(provider);
     const supabaseUrl = env('SUPABASE_URL');
     const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
     if (!supabaseUrl || !serviceRoleKey) throw new SourceConfigurationError('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
-    const result = await runSync({ provider, sourceKey: `${provider}:${env('SYNC_SOURCE_CONFIGURATION') || 'default'}`, adapter: adapterFor(provider), repository: createSupabaseRepository(createClient(supabaseUrl, serviceRoleKey)), maxPages: MAX_PAGES, pageDelayMs: PAGE_DELAY_MS });
+    const result = await runSync({ provider, sourceKey: `${provider}:${env('SYNC_SOURCE_CONFIGURATION') || 'default'}`, adapter, repository: createSupabaseRepository(createClient(supabaseUrl, serviceRoleKey)), maxPages: MAX_PAGES, pageDelayMs: PAGE_DELAY_MS });
     return json(result);
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'SYNC_ERROR';

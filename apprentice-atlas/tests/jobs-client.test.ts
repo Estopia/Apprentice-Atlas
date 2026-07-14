@@ -22,8 +22,39 @@ describe('client job filters', () => {
     expect(result.data).toMatchObject({ city: 'Nationwide', latitude: null, longitude: null, sourceUrl: null, applicationUrl: null });
   });
 
+  it('loads an active job when no published translation exists', async () => {
+    const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Canonical title', company: 'Canonical company', country: 'Germany', city: 'Berlin', latitude: 52, longitude: 13, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: ['canonical'], raw_description: 'Canonical description', requirements: ['canonical'], source_url: null, application_url: null, source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now', job_translations: [] };
+    let nestedTranslationFilterUsed = false;
+    const chain: any = {
+      select: () => chain,
+      eq: (field: string) => { if (field.startsWith('job_translations.')) nestedTranslationFilterUsed = true; return chain; },
+      maybeSingle: async () => ({ data: nestedTranslationFilterUsed ? null : row, error: null }),
+    };
+    const result = await getJob(row.id, { from: () => chain } as any, 'de');
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ title: 'Canonical title', company: 'Canonical company', rawDescription: 'Canonical description', city: 'Berlin' });
+  });
+
+  it('discovers active jobs when no published translation exists', async () => {
+    const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Canonical title', company: 'Canonical company', country: 'Germany', city: 'Berlin', latitude: null, longitude: null, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: [], raw_description: 'Canonical description', requirements: [], source_url: null, application_url: null, source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now', job_translations: [] };
+    let nestedTranslationFilterUsed = false;
+    const client = { from: () => {
+      const chain: any = {
+        select: () => chain,
+        eq: (field: string) => { if (field.startsWith('job_translations.')) nestedTranslationFilterUsed = true; return chain; },
+        order: () => chain,
+        then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: nestedTranslationFilterUsed ? [] : [row], error: null }).then(resolve),
+      };
+      return chain;
+    } };
+    const result = await listJobs({}, client as any, undefined, 'de');
+    expect(result.error).toBeNull();
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toMatchObject({ title: 'Canonical title', rawDescription: 'Canonical description', city: 'Berlin' });
+  });
+
   it('consumes the selected published translation and keeps canonical URL fields', async () => {
-    const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Canonical title', company: 'Canonical company', country: 'Germany', city: 'Berlin', latitude: 52, longitude: 13, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: ['canonical'], raw_description: 'Canonical description', requirements: ['canonical'], source_url: 'https://official.example/listing/1', application_url: 'https://apply.example/1', source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now', job_translations: [{ title: 'Übersetzter Titel', company: 'Übersetztes Unternehmen', description: 'Übersetzte Beschreibung', requirements: ['Übersetzt'], tags: ['Ausbildung'] }] };
+    const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Canonical title', company: 'Canonical company', country: 'Germany', city: 'Berlin', latitude: 52, longitude: 13, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: ['canonical'], raw_description: 'Canonical description', requirements: ['canonical'], source_url: 'https://official.example/listing/1', application_url: 'https://apply.example/1', source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now', job_translations: [{ language_code: 'de', status: 'published', title: 'Übersetzter Titel', company: 'Übersetztes Unternehmen', description: 'Übersetzte Beschreibung', requirements: ['Übersetzt'], tags: ['Ausbildung'] }] };
     const chain: any = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: row, error: null }) };
     const result = await getJob(row.id, { from: () => chain } as any, 'de');
     expect(result.data).toMatchObject({ title: 'Übersetzter Titel', company: 'Übersetztes Unternehmen', rawDescription: 'Übersetzte Beschreibung', requirements: ['Übersetzt'], tags: ['Ausbildung'], sourceUrl: row.source_url, applicationUrl: row.application_url });

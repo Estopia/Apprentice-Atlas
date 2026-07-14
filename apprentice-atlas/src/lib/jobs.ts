@@ -19,15 +19,15 @@ type JobRow = {
 };
 
 type TranslationRow = {
-  title: string; company: string; description: string; requirements: string[] | null; tags: string[] | null;
+  language_code: string; status: 'draft' | 'published'; title: string; company: string; description: string; requirements: string[] | null; tags: string[] | null;
 };
 
 export function escapeSearchPattern(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&').replace(/[(),.]/g, '\\$&');
 }
 
-function fromRow(row: JobRow): Job {
-  const translation = row.job_translations?.[0];
+function fromRow(row: JobRow, locale: Locale): Job {
+  const translation = row.job_translations?.find((candidate) => candidate.language_code === locale && candidate.status === 'published');
   return {
     id: row.id, title: translation?.title ?? row.title, company: translation?.company ?? row.company, country: row.country, city: row.city,
     latitude: row.latitude, longitude: row.longitude, jobType: row.job_type, level: row.level,
@@ -42,9 +42,9 @@ export async function getJob(id: string, client?: SupabaseClient, locale: Locale
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { data: null, error: { code: 'query', message: 'Invalid job identifier.' } };
   try {
     const supabase = client ?? (await import('./supabase')).getSupabaseClient();
-    const result = await supabase.from('jobs').select('*, job_translations!left(title, company, description, requirements, tags)').eq('id', id).eq('status', 'active').eq('job_translations.language_code', locale).eq('job_translations.status', 'published').maybeSingle();
+    const result = await supabase.from('jobs').select('*, job_translations!left(language_code, status, title, company, description, requirements, tags)').eq('id', id).eq('status', 'active').maybeSingle();
     if (result.error) return { data: null, error: { code: 'query', message: result.error.message || 'Could not load the job.' } };
-    return { data: result.data ? fromRow(result.data as JobRow) : null, error: null };
+    return { data: result.data ? fromRow(result.data as JobRow, locale) : null, error: null };
   } catch (error) {
     return { data: null, error: { code: 'configuration', message: error instanceof Error ? error.message : 'Could not load the job.' } };
   }
@@ -58,7 +58,7 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient,
   try {
     const supabase = client ?? (await import('./supabase')).getSupabaseClient();
     const buildQuery = () => {
-      let query = supabase.from('jobs').select('*, job_translations!left(title, company, description, requirements, tags)').eq('status', 'active').eq('job_translations.language_code', locale).eq('job_translations.status', 'published').order('updated_at', { ascending: false });
+      let query = supabase.from('jobs').select('*, job_translations!left(language_code, status, title, company, description, requirements, tags)').eq('status', 'active').order('updated_at', { ascending: false });
       if (signal) query = query.abortSignal(signal);
       if (selected.country) query = query.ilike('country', selected.country);
       if (selected.city) query = query.ilike('city', selected.city);
@@ -83,7 +83,7 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient,
     const [coordinateResult, nationwideResult] = await Promise.all([query, nationwideQuery ?? Promise.resolve({ data: [], error: null })]);
     const error = coordinateResult.error ?? nationwideResult.error;
     if (error) return { data: [], error: { code: 'query', message: error.message || 'Could not load jobs.' } };
-    const jobs = mergeJobs((coordinateResult.data ?? []).map((row) => fromRow(row as JobRow)), (nationwideResult.data ?? []).map((row) => fromRow(row as JobRow)));
+    const jobs = mergeJobs((coordinateResult.data ?? []).map((row) => fromRow(row as JobRow, locale)), (nationwideResult.data ?? []).map((row) => fromRow(row as JobRow, locale)));
     if (selected.radiusKm && selected.latitude !== undefined && selected.longitude !== undefined) {
       return { data: jobs.filter((job) => isWithinRadius(job, selected.latitude!, selected.longitude!, selected.radiusKm!)), error: null };
     }

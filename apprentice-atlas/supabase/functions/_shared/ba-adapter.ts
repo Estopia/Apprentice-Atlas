@@ -1,8 +1,6 @@
 import { normalizeJob } from './normalize-job.ts';
-import { asRecord, asString, getEnv, SourceFetchError, SourcePaginationError, type NormalizedSourceRecord, type SourceAdapter, type SourcePage, type SourceRecord } from './source-adapter.ts';
+import { asRecord, asString, getEnv, SourceConfigurationError, SourceFetchError, SourcePaginationError, type NormalizedSourceRecord, type SourceAdapter, type SourcePage, type SourceRecord } from './source-adapter.ts';
 
-const DEFAULT_ENDPOINT = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
-const DEFAULT_API_KEY = 'jobboerse-jobsuche';
 const PAGE_SIZE = 100;
 
 export interface BaJobRecord extends SourceRecord {
@@ -54,9 +52,12 @@ export class BaAdapter implements SourceAdapter<BaJobRecord> {
   private readonly pageSize: number;
   private readonly fetcher: typeof fetch;
 
-  constructor(options: { endpoint?: string; apiKey?: string; pageSize?: number; fetcher?: typeof fetch } = {}) {
-    this.endpoint = options.endpoint ?? getEnv('BA_JOBS_API_URL') ?? DEFAULT_ENDPOINT;
-    this.apiKey = options.apiKey ?? getEnv('BA_JOBS_API_KEY') ?? DEFAULT_API_KEY;
+  constructor(options: { enabled?: boolean; endpoint?: string; apiKey?: string; pageSize?: number; fetcher?: typeof fetch } = {}) {
+    if (!(options.enabled ?? getEnv('BA_API_ENABLED') === 'true')) throw new SourceConfigurationError('BA synchronization is disabled until BA_API_ENABLED=true is configured.');
+    this.endpoint = options.endpoint ?? getEnv('BA_API_URL') ?? '';
+    this.apiKey = options.apiKey ?? getEnv('BA_API_KEY') ?? '';
+    if (!this.endpoint) throw new SourceConfigurationError('BA_API_URL is required for BA source synchronization');
+    if (!this.apiKey) throw new SourceConfigurationError('BA_API_KEY is required for BA source synchronization');
     this.pageSize = Math.min(Math.max(options.pageSize ?? PAGE_SIZE, 1), PAGE_SIZE);
     this.fetcher = options.fetcher ?? fetch;
   }

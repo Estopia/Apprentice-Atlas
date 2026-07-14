@@ -59,6 +59,7 @@ Clean databases apply every timestamp migration in filename order, then `supabas
 9. `20260714140000_add_favorite_rpc.sql`
 10. `20260714150000_enforce_source_listing_urls.sql`
 11. `20260714160000_enforce_application_urls.sql`
+12. `20260714170000_user_assets_storage.sql`
 
 The preflight is required before the locked schema hardening migration because it repairs legacy whitespace/blanks and normalized source collisions. The guarded post-release migration is safe on clean data and completes compatibility, audit, and constraint hardening. The local-only `supabase/fixtures/preflight_source_provenance.sql` fixture is for testing the legacy repair path; load it after the initial schema and before the preflight, then apply the remaining timestamp migrations. Never load fixtures or `seed.sql` into production.
 
@@ -66,7 +67,7 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
 
 ## Data, auth, AI, and source boundaries
 
-- The browser/mobile client receives only active jobs and published translations through RLS. Favorites are private to the signed-in owner.
+- The browser/mobile client receives only active jobs and published translations through RLS. Jobs remain discoverable with canonical title, description, and location fields when a requested published translation is absent. Favorites are private to the signed-in owner.
 - `job_sources`, `sync_runs`, provider payloads, cached AI content, and the Supabase service-role key are server-side only.
 - Edge Functions use `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY`; `OPENAI_MODEL=gpt-5.6` is optional and defaults to that model in the handlers. Configure them as Supabase project secrets, never as `EXPO_PUBLIC_*` values:
 
@@ -75,7 +76,7 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
   ```
 
 - AI explanations and Q&A are grounded in the selected job record. Q&A is limited server-side to two questions per job and opaque app session. Do not enter sensitive personal data into questions.
-- UK ingestion uses the documented official Display Advert API v2 endpoint (`https://api.apprenticeships.education.gov.uk/vacancies/vacancy`) and v2 request contract. That documentation reference is separate from runtime activation: synchronization refuses to run unless the server-only `UK_API_CONTRACT_CONFIRMED=true` flag is explicitly configured alongside the API key. The BA read API remains disabled until its official contract, availability, authentication, and reuse terms are directly confirmed. No website scraping or guessed API contract is allowed.
+- UK ingestion uses the documented official Display Advert API v2 endpoint (`https://api.apprenticeships.education.gov.uk/vacancies/vacancy`) and v2 request contract. That documentation reference is separate from runtime activation: synchronization refuses to run unless the server-only `UK_API_CONTRACT_CONFIRMED=true` flag is explicitly configured alongside the API key. Germany BA ingestion is likewise disabled by default and requires server-only `BA_API_ENABLED=true`, `BA_API_URL`, and `BA_API_KEY`. No website scraping or guessed API contract is allowed.
 
 ## Codex and GPT-5.6 roles
 
@@ -97,7 +98,7 @@ The native development profiles should be validated with `npx eas build:configur
 
 ## Known limitations
 
-- Official UK and German provider contracts are pending; local seed data is fictional.
+- Local seed data is fictional; official ingestion remains server-side and configuration-gated.
 - The MVP uses numeric latitude/longitude and bounding-box filtering; PostGIS is not required yet.
 - A physical-device native build requires EAS credentials, signing, and (for Android) the restricted maps key.
 - Location permission denial falls back to manual city/country selection. AI availability depends on configured Edge Function secrets and network access.

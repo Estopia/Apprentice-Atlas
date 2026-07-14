@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeJob } from '../supabase/functions/_shared/normalize-job';
-import { dedupeByExternalId } from '../supabase/functions/_shared/source-adapter';
+import { dedupeByExternalId, SourceConfigurationError } from '../supabase/functions/_shared/source-adapter';
 import { UK_OFFICIAL_CONTRACT_UNCONFIRMED, UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-apprenticeship-adapter';
 import { BaAdapter } from '../supabase/functions/_shared/ba-adapter';
 
@@ -94,6 +94,12 @@ describe('normalizeJob', () => {
 });
 
 describe('official source adapters', () => {
+  it('requires explicit BA enablement and credentials', () => {
+    expect(() => new BaAdapter()).toThrow(SourceConfigurationError);
+    expect(() => new BaAdapter({ enabled: true, apiKey: 'secret' })).toThrow(/BA_API_URL/i);
+    expect(() => new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs' })).toThrow(/BA_API_KEY/i);
+    expect(() => new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret' })).not.toThrow();
+  });
   it('uses the UK API key and v2 headers and extracts official URL/id', async () => {
     let request: Request | URL | string | undefined;
     let init: RequestInit | undefined;
@@ -151,7 +157,7 @@ describe('official source adapters', () => {
       arbeitsort: { ort: 'Berlin', land: 'Deutschland', koordinaten: { lat: 52.52, lon: 13.405 } },
       externeUrl: 'https://atlas.example/apply/123',
     };
-    const adapter = new BaAdapter({ endpoint: 'https://rest.example.test/jobboerse/jobsuche-service/pc/v4/jobs', apiKey: 'jobboerse-jobsuche', pageSize: 2, fetcher: async (input, options) => {
+    const adapter = new BaAdapter({ enabled: true, endpoint: 'https://rest.example.test/jobboerse/jobsuche-service/pc/v4/jobs', apiKey: 'jobboerse-jobsuche', pageSize: 2, fetcher: async (input, options) => {
       request = input;
       init = options;
       return new Response(JSON.stringify({ stellenangebote: [baRecord], maxErgebnisse: 3, page: 1, size: 2 }), { status: 200 });
@@ -176,10 +182,10 @@ describe('official source adapters', () => {
 
   it('rejects non-Germany BA records and malformed pagination metadata', async () => {
     const outsideGermanyRecord = { refnr: 'at-1', titel: 'Lehrstelle', arbeitgeber: 'Austria GmbH', arbeitsort: { ort: 'Wien', land: 'Österreich' } };
-    const adapter = new BaAdapter({ fetcher: async () => new Response(JSON.stringify({ stellenangebote: [outsideGermanyRecord], maxErgebnisse: 1, page: 1, size: 1 }), { status: 200 }) });
+    const adapter = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ stellenangebote: [outsideGermanyRecord], maxErgebnisse: 1, page: 1, size: 1 }), { status: 200 }) });
     const page = await adapter.fetchPage(null);
     expect(adapter.normalize(page.records[0])).toBeNull();
-    const malformed = new BaAdapter({ fetcher: async () => new Response(JSON.stringify({ stellenangebote: [], page: 1, size: 1 }), { status: 200 }) });
+    const malformed = new BaAdapter({ enabled: true, endpoint: 'https://ba.example.test/jobs', apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ stellenangebote: [], page: 1, size: 1 }), { status: 200 }) });
     await expect(malformed.fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
   });
 });
