@@ -19,6 +19,17 @@ describe('native auth and onboarding configuration', () => {
     expect(onboarding).not.toContain('Math.max(680');
   });
 
+  it('asks for language and search country before audience and interests', () => {
+    const languageStep = onboarding.indexOf("{step === 0 && (");
+    const audienceStep = onboarding.indexOf("{step === 1 && (");
+    const interestsStep = onboarding.indexOf("{step === 2 && (");
+
+    expect(onboarding.slice(languageStep, audienceStep)).toContain('onboarding.countryLanguageTitle');
+    expect(onboarding.slice(languageStep, audienceStep)).toContain('onboarding.language');
+    expect(onboarding.slice(audienceStep, interestsStep)).toContain('onboarding.audienceTitle');
+    expect(onboarding.slice(interestsStep)).toContain('onboarding.interestsTitle');
+  });
+
   it('enables the native Sign in with Apple entitlement and config plugin', () => {
     expect(appConfig.expo.ios.usesAppleSignIn).toBe(true);
     expect(appConfig.expo.plugins).toContain('expo-apple-authentication');

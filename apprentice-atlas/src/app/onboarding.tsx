@@ -48,10 +48,10 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
 
   const locale = draft.locale;
   const isValid = step === 0
-    ? draft.audience !== null
+    ? draft.country !== null
     : step === 1
-      ? draft.interests.length > 0
-      : draft.country !== null;
+      ? draft.audience !== null
+      : draft.interests.length > 0;
   const isEditing = initialPreferences.onboardingComplete;
 
   const selectAudience = (audience: Audience) => setDraft((current) => ({ ...current, audience }));
@@ -105,6 +105,25 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
 
         <View style={styles.content}>
           {step === 0 && (
+            <StepHeading title={t(locale, 'onboarding.countryLanguageTitle')} description={t(locale, 'onboarding.countryLanguageDescription')}>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>{t(locale, 'onboarding.language')}</Text>
+                <View style={styles.languageControl}>
+                  <LanguageChoice active={draft.locale === 'de'} label="Deutsch" onPress={() => setDraft((current) => ({ ...current, locale: 'de' }))} />
+                  <LanguageChoice active={draft.locale === 'en'} label="English" onPress={() => setDraft((current) => ({ ...current, locale: 'en' }))} />
+                </View>
+              </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>{t(locale, 'onboarding.country')}</Text>
+                <View style={styles.countryList}>
+                  <CountryChoice active={draft.country === 'Germany'} flag="🇩🇪" label={t(locale, 'onboarding.germany')} onPress={() => selectCountry('Germany')} />
+                  <CountryChoice active={draft.country === 'United Kingdom'} flag="🇬🇧" label={t(locale, 'onboarding.unitedKingdom')} onPress={() => selectCountry('United Kingdom')} />
+                </View>
+              </View>
+            </StepHeading>
+          )}
+
+          {step === 1 && (
             <StepHeading title={t(locale, 'onboarding.audienceTitle')} description={t(locale, 'onboarding.audienceDescription')}>
               <View style={styles.cardList}>
                 <ChoiceCard
@@ -125,7 +144,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
             </StepHeading>
           )}
 
-          {step === 1 && (
+          {step === 2 && (
             <StepHeading title={t(locale, 'onboarding.interestsTitle')} description={t(locale, 'onboarding.interestsDescription')}>
               <View style={styles.interestGrid}>
                 {INTERESTS.map((interest) => (
@@ -141,24 +160,6 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
             </StepHeading>
           )}
 
-          {step === 2 && (
-            <StepHeading title={t(locale, 'onboarding.countryLanguageTitle')} description={t(locale, 'onboarding.countryLanguageDescription')}>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t(locale, 'onboarding.country')}</Text>
-                <View style={styles.countryList}>
-                  <CountryChoice active={draft.country === 'Germany'} flag="🇩🇪" label={t(locale, 'onboarding.germany')} onPress={() => selectCountry('Germany')} />
-                  <CountryChoice active={draft.country === 'United Kingdom'} flag="🇬🇧" label={t(locale, 'onboarding.unitedKingdom')} onPress={() => selectCountry('United Kingdom')} />
-                </View>
-              </View>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t(locale, 'onboarding.language')}</Text>
-                <View style={styles.languageControl}>
-                  <LanguageChoice active={draft.locale === 'de'} label="Deutsch" onPress={() => setDraft((current) => ({ ...current, locale: 'de' }))} />
-                  <LanguageChoice active={draft.locale === 'en'} label="English" onPress={() => setDraft((current) => ({ ...current, locale: 'en' }))} />
-                </View>
-              </View>
-            </StepHeading>
-          )}
         </View>
 
         <View style={styles.footer}>
