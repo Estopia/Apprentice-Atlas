@@ -3,7 +3,7 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { AuthForm } from '@/components/auth/auth-form';
-import { addFavorite } from '@/lib/favorites';
+import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { isSafeReturnPath } from '@/lib/auth';
 import { useLocale, t } from '@/lib/i18n';
 
@@ -12,7 +12,7 @@ export default function AuthScreen() {
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/favorites';
   const complete = async () => {
     setError(null);
-    if (params.pendingAction === 'save' && params.jobId && isSafeReturnPath(`/job/${params.jobId}`)) { const result = await addFavorite(params.jobId); if (result.error) { setError(result.error.message); return; } }
+    if (params.pendingAction === 'save' && params.jobId && isSafeReturnPath(`/job/${params.jobId}`)) { const result = await addFavorite(params.jobId); if (result.error) { setError(getReadableFavoritesError(result.error, locale)); return; } }
     router.replace(returnTo);
   };
   return <SafeAreaView style={styles.safe}><View style={styles.content}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.back')} onPress={() => router.back()}><Text style={styles.back}>‹ {t(locale, 'actions.back')}</Text></Pressable><Text style={styles.title}>{t(locale, 'auth.title')}</Text><Text style={styles.copy}>{t(locale, 'auth.description')}</Text>{error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}<AuthForm onSuccess={() => void complete()} /></View></SafeAreaView>;

@@ -11,8 +11,12 @@ import {
   addFavorite,
   buildComparisonRows,
   dedupeFavorites,
+  getReadableFavoritesError,
+  invokeSignOut,
+  isFavoritesLoading,
   listFavorites,
   optimisticFavoriteState,
+  rollbackFavoriteState,
   removeFavorite,
   type FavoriteClient,
 } from '../src/lib/favorites';
@@ -83,17 +87,34 @@ describe('favorite state and comparison', () => {
     const next = optimisticFavoriteState(previous, favorite, 'add');
     expect(dedupeFavorites(next)).toHaveLength(1);
     expect(optimisticFavoriteState(next, favorite, 'remove')).toEqual([]);
-    expect(optimisticFavoriteState(previous, favorite, 'rollback')).toEqual(previous);
+    const optimisticRemove = optimisticFavoriteState(previous, favorite, 'remove');
+    expect(optimisticRemove).toEqual([]);
+    expect(rollbackFavoriteState(previous)).toEqual(previous);
+    expect(rollbackFavoriteState([])).toEqual([]);
   });
 
   it('builds compact comparison rows and preserves unavailable jobs', () => {
     const archived = { ...favorite, id: '44444444-4444-4444-8444-444444444444', jobId: '55555555-5555-4555-8555-555555555555', job: undefined };
-    expect(buildComparisonRows([favorite, archived])).toEqual([
-      { label: 'Title', values: ['Frontend apprentice', 'Unavailable'] },
-      { label: 'Company', values: ['Atlas', 'Unavailable'] },
-      { label: 'Location', values: ['Berlin, DE', 'Unavailable'] },
-      { label: 'Type', values: ['apprenticeship', 'Unavailable'] },
+    expect(buildComparisonRows([favorite, archived], 'en')).toEqual([
+      { label: 'Title', values: ['Frontend apprentice', 'No longer available'] },
+      { label: 'Company', values: ['Atlas', 'No longer available'] },
+      { label: 'Location', values: ['Berlin, DE', 'No longer available'] },
+      { label: 'Type', values: ['apprenticeship', 'No longer available'] },
     ]);
+    expect(buildComparisonRows([favorite, archived], 'de')[0].label).toBe('Titel');
+  });
+
+  it('keeps favorites loading until the authenticated user fetch completes', () => {
+    expect(isFavoritesLoading(true, null, null)).toBe(true);
+    expect(isFavoritesLoading(false, 'user-1', null)).toBe(true);
+    expect(isFavoritesLoading(false, 'user-1', 'user-1')).toBe(false);
+  });
+
+  it('localizes database errors and invokes the supplied sign-out action', async () => {
+    expect(getReadableFavoritesError({ code: 'mutation', message: 'permission denied' }, 'de')).toContain('gespeichert');
+    const signOut = vi.fn(async () => ({ error: null }));
+    await invokeSignOut(signOut);
+    expect(signOut).toHaveBeenCalledOnce();
   });
 });
 
@@ -103,8 +124,8 @@ describe('favorite operations', () => {
     const client = createClient(calls);
     await addFavorite(job.id, client);
     await removeFavorite(job.id, client);
-    expect(calls).toEqual([
-      { table: 'favorites', values: { user_id: 'user-1', job_id: job.id } },
+    expect(calls as unknown as Array<{ rpc?: string; table?: string; values?: unknown }>).toEqual([
+      { rpc: 'add_favorite', values: { p_job_id: job.id } },
       { table: 'favorites', values: undefined },
     ]);
   });
@@ -131,7 +152,6 @@ function createClient(calls: Array<{ table: string; values?: unknown }>, failure
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     order: vi.fn(() => chain),
-    insert: vi.fn((values: unknown) => { calls.push({ table: 'favorites', values }); return chain; }),
     delete: vi.fn(() => { calls.push({ table: 'favorites' }); return chain; }),
     maybeSingle: vi.fn(async () => result),
     single: vi.fn(async () => result),
@@ -140,5 +160,6 @@ function createClient(calls: Array<{ table: string; values?: unknown }>, failure
   return {
     auth: { getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: failure })) },
     from: vi.fn(() => chain),
+    rpc: vi.fn((name: string, values: unknown) => { (calls as unknown as Array<{ rpc?: string; table?: string; values?: unknown }>).push({ rpc: name, values }); return Promise.resolve({ data: { id: 'favorite-1', user_id: 'user-1', job_id: job.id, created_at: '2026-07-14T00:00:00.000Z' }, error: failure }); }),
   } as unknown as FavoriteClient;
 }

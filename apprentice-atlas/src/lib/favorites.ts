@@ -1,11 +1,27 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { FavoriteJob, Job } from '@/types/jobs';
+import { t, type Locale } from './i18n';
 
 export type FavoriteClient = SupabaseClient;
 export type FavoritesError = { code: 'configuration' | 'auth-required' | 'query' | 'mutation'; message: string };
 export type FavoritesResult<T> = { data: T | null; error: FavoritesError | null };
 export type ComparisonRow = { label: string; values: string[] };
+
+export function isFavoritesLoading(authLoading: boolean, sessionId: string | null, loadedForUserId: string | null): boolean {
+  return authLoading || Boolean(sessionId && sessionId !== loadedForUserId);
+}
+
+export function getReadableFavoritesError(error: FavoritesError, locale: Locale, operation: 'save' | 'remove' = 'save'): string {
+  if (error.code === 'auth-required') return t(locale, 'auth.loginRequired');
+  if (error.code === 'configuration') return t(locale, 'saved.errorConfiguration');
+  if (error.code === 'query') return t(locale, 'saved.errorLoad');
+  return t(locale, operation === 'remove' ? 'saved.errorRemove' : 'saved.errorSave');
+}
+
+export async function invokeSignOut(signOut: () => Promise<{ error: unknown }>): Promise<{ error: unknown }> {
+  return signOut();
+}
 
 function errorResult<T>(error: FavoritesError): FavoritesResult<T> { return { data: null, error }; }
 async function clientOrError(client?: FavoriteClient): Promise<FavoriteClient | FavoritesError> {
@@ -40,8 +56,7 @@ export async function getFavoriteForJob(jobId: string, client?: FavoriteClient):
 
 export async function addFavorite(jobId: string, client?: FavoriteClient): Promise<FavoritesResult<FavoriteJob>> {
   const supabase = await clientOrError(client); if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase); if (user.error || !user.data) return errorResult(user.error!);
-  try { const result = await supabase.from('favorites').insert({ user_id: user.data, job_id: jobId }).select('id,user_id,job_id,created_at').single(); if (result.error) return errorResult({ code: 'mutation', message: result.error.message || 'Could not save favorite.' }); return { data: toFavorite(result.data as Record<string, unknown>), error: null }; }
+  try { const result = await supabase.rpc('add_favorite', { p_job_id: jobId }); if (result.error) return errorResult({ code: 'mutation', message: result.error.message || 'Could not save favorite.' }); return { data: toFavorite(result.data as Record<string, unknown>), error: null }; }
   catch (error) { return errorResult({ code: 'mutation', message: error instanceof Error ? error.message : 'Could not save favorite.' }); }
 }
 
@@ -53,12 +68,14 @@ export async function removeFavorite(jobId: string, client?: FavoriteClient): Pr
 }
 
 export function dedupeFavorites(favorites: FavoriteJob[]): FavoriteJob[] { return favorites.filter((favorite, index, all) => all.findIndex((item) => item.jobId === favorite.jobId) === index); }
+export function rollbackFavoriteState<T>(previous: T): T { return previous; }
 export function optimisticFavoriteState(current: FavoriteJob[], favorite: FavoriteJob, action: 'add' | 'remove' | 'rollback'): FavoriteJob[] { if (action === 'rollback') return current; return action === 'add' ? dedupeFavorites([...current, favorite]) : current.filter((item) => item.jobId !== favorite.jobId); }
-export function buildComparisonRows(favorites: FavoriteJob[]): ComparisonRow[] {
+export function buildComparisonRows(favorites: FavoriteJob[], locale: Locale): ComparisonRow[] {
+  const unavailable = t(locale, 'saved.unavailable');
   return [
-    ['Title', (favorite: FavoriteJob) => favorite.job?.title ?? 'Unavailable'],
-    ['Company', (favorite: FavoriteJob) => favorite.job?.company ?? 'Unavailable'],
-    ['Location', (favorite: FavoriteJob) => favorite.job ? `${favorite.job.city}, ${favorite.job.country}` : 'Unavailable'],
-    ['Type', (favorite: FavoriteJob) => favorite.job?.jobType ?? 'Unavailable'],
+    [t(locale, 'saved.compareTitle'), (favorite: FavoriteJob) => favorite.job?.title ?? unavailable],
+    [t(locale, 'saved.compareCompany'), (favorite: FavoriteJob) => favorite.job?.company ?? unavailable],
+    [t(locale, 'saved.compareLocation'), (favorite: FavoriteJob) => favorite.job ? `${favorite.job.city}, ${favorite.job.country}` : unavailable],
+    [t(locale, 'saved.compareType'), (favorite: FavoriteJob) => favorite.job?.jobType ?? unavailable],
   ].map(([label, value]) => ({ label: label as string, values: favorites.slice(0, 2).map(value as (favorite: FavoriteJob) => string) }));
 }

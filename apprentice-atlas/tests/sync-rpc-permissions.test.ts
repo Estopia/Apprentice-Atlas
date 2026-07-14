@@ -4,9 +4,22 @@ import { describe, expect, it } from 'vitest';
 const migration = readFileSync('supabase/migrations/20260714100000_atomic_job_source_sync.sql', 'utf8');
 const expirationMigration = readFileSync('supabase/migrations/20260714110000_atomic_stale_expiration.sql', 'utf8');
 const qaMigration = readFileSync('supabase/migrations/20260714130000_job_ai_qa_sessions.sql', 'utf8');
+const favoritesMigration = readFileSync('supabase/migrations/20260714140000_add_favorite_rpc.sql', 'utf8');
 const functionSignature = 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)';
 
 describe('atomic sync RPC permissions', () => {
+  it('derives favorite ownership from auth.uid and exposes the add RPC only to authenticated users', () => {
+    expect(favoritesMigration).toMatch(/create or replace function public\.add_favorite\(p_job_id uuid\)/i);
+    expect(favoritesMigration).toMatch(/security definer\s+set search_path = public/i);
+    expect(favoritesMigration).toContain('auth.uid()');
+    expect(favoritesMigration).toContain("status = 'active'");
+    expect(favoritesMigration).toContain('revoke execute on function public.add_favorite(uuid) from public;');
+    expect(favoritesMigration).toContain('revoke execute on function public.add_favorite(uuid) from anon;');
+    expect(favoritesMigration).toContain('grant execute on function public.add_favorite(uuid) to authenticated;');
+    expect(favoritesMigration).toContain('revoke insert on public.favorites from authenticated;');
+    expect(favoritesMigration).not.toMatch(/insert into public\.favorites\s*\([^)]*user_id[^)]*\)\s*select/i);
+  });
+
   it('revokes client execution and grants only service_role execution', () => {
     expect(migration).toContain(`revoke execute on function ${functionSignature} from public;`);
     expect(migration).toContain(`revoke execute on function ${functionSignature} from anon;`);
