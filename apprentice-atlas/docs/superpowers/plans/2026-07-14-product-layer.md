@@ -110,4 +110,4 @@
 - [x] Apply the new migration to the linked Supabase project only after local checks pass; verify table, RLS, and grants.
 - [x] Document the new product flows and the migration in README.
 - [x] Dispatch final spec and code-quality reviews; fix every actionable issue.
-- [ ] Merge `codex/product-layer` into `main` without overwriting the main checkout's pre-existing `app.json` change.
+- [x] Merge `codex/product-layer` into `main` without overwriting the main checkout's pre-existing `app.json` change.
