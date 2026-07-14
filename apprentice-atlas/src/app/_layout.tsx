@@ -5,13 +5,14 @@ import { useEffect, useState } from 'react';
 
 import { Palette } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
-import { hydrateLocale } from '@/lib/i18n';
+import { hydrateLocale, t, useLocale } from '@/lib/i18n';
 import { loadPreferences } from '@/lib/preferences';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const pathname = usePathname();
+  const [locale] = useLocale();
   const { preferences, isHydrated: preferencesHydrated } = usePreferences();
   const [localeHydrated, setLocaleHydrated] = useState(false);
 
@@ -35,6 +36,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth" options={{ presentation: 'modal', headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="job/[id]" />
+        <Stack.Screen name="application/[jobId]" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.86, 1], sheetGrabberVisible: true, headerShown: true, headerShadowVisible: false, title: t(locale, 'application.sheetTitle'), contentStyle: { backgroundColor: Palette.surface } }} />
         <Stack.Screen name="filters" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.85, 1], sheetGrabberVisible: true, headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="location" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.55, 0.85], sheetGrabberVisible: true, headerShown: true, headerShadowVisible: false }} />
       </Stack>

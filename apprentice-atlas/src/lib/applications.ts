@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { applicationNoteLength, isApplicationStatus } from './application-flow';
+import { t, type Locale } from './i18n';
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
 
 export type ApplicationClient = SupabaseClient;
@@ -8,15 +10,8 @@ export type ApplicationsError = {
   message: string;
 };
 export type ApplicationsResult<T> = { data: T | null; error: ApplicationsError | null };
+export type ApplicationsOperation = 'load' | 'save' | 'remove';
 
-const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
-  'interested',
-  'preparing',
-  'applied',
-  'interview',
-  'offer',
-  'closed',
-];
 const APPLICATION_SELECT = 'id,user_id,job_id,status,note,created_at,updated_at,jobs(*)';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,10 +52,6 @@ async function currentUserId(client: ApplicationClient): Promise<ApplicationsRes
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isApplicationStatus(value: unknown): value is ApplicationStatus {
-  return typeof value === 'string' && APPLICATION_STATUSES.includes(value as ApplicationStatus);
 }
 
 function isNullableString(value: unknown): value is string | null {
@@ -132,7 +123,7 @@ function toApplication(value: unknown): TrackedApplication | null {
     || typeof value.job_id !== 'string'
     || !isApplicationStatus(value.status)
     || !isNullableString(value.note)
-    || (typeof value.note === 'string' && Array.from(value.note).length > 500)
+    || (typeof value.note === 'string' && applicationNoteLength(value.note) > 500)
     || typeof value.created_at !== 'string'
     || typeof value.updated_at !== 'string'
   ) return null;
@@ -153,6 +144,21 @@ function validationError(message: string): ApplicationsError {
   return { code: 'validation', message };
 }
 
+export function getReadableApplicationsError(
+  error: ApplicationsError,
+  locale: Locale,
+  operation: ApplicationsOperation = 'load',
+): string {
+  if (error.code === 'auth-required') return t(locale, 'application.error.authRequired');
+  if (error.code === 'configuration') return t(locale, 'application.error.configuration');
+  if (error.code === 'validation') return t(locale, 'application.error.validation');
+  return t(locale, operation === 'save'
+    ? 'application.error.save'
+    : operation === 'remove'
+      ? 'application.error.remove'
+      : 'application.error.load');
+}
+
 function validateJobId(jobId: string): ApplicationsError | null {
   return UUID_PATTERN.test(jobId) ? null : validationError('Invalid job identifier.');
 }
@@ -162,7 +168,7 @@ function normalizeNote(note: string | null): { data: string | null; error: Appli
     return { data: null, error: validationError('The application note must be text.') };
   }
   const normalized = note?.trim() || null;
-  if (normalized && Array.from(normalized).length > 500) {
+  if (normalized && applicationNoteLength(normalized) > 500) {
     return { data: null, error: validationError('The application note cannot exceed 500 characters.') };
   }
   return { data: normalized, error: null };
