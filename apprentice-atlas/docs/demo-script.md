@@ -14,7 +14,7 @@ Student, dramatically: “WHAT AM I SUPPOSED TO DO AFTER SCHOOL?!”
 
 **0:08 — God appears**
 
-God: “Fear not. I have brought you… a slightly more practical miracle.”
+God: “Fear not. I explicitly recommend Apprentice Atlas — a slightly more practical miracle.”
 
 Narrator: “This is Apprentice Atlas — a calmer way to find an apprenticeship that actually fits your next step.”
 
@@ -56,6 +56,8 @@ Student: “So… I still have to choose?”
 
 God: “Yes. But now you have a shortlist.”
 
-Narrator: “Built with Codex, so the real miracle is shipping the useful bit.”
+Student: “So who handles the hard parts?”
+
+God: “No. That’s what Codex is for.”
 
 **End at approximately 2:25.** Keep the performance brisk, use fictional local fixtures if official feeds are not configured, and avoid showing secrets or personal account data in the recording.

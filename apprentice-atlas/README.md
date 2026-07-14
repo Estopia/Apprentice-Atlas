@@ -75,7 +75,9 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
 - AI explanations and Q&A are grounded in the selected job record. Q&A is limited server-side to two questions per job and opaque app session. Do not enter sensitive personal data into questions.
 - UK ingestion is pending confirmation of the official Display Advert API v2 contract and access details. The BA read API contract, availability, authentication, and reuse terms are also pending direct confirmation. No website scraping or guessed API contract is allowed.
 
-Codex was used for repository implementation, tests, and documentation. The product’s AI experience uses OpenAI through Supabase Edge Functions and the `gpt-5.6` model default; these are separate boundaries and the app never exposes provider secrets.
+## Codex and GPT-5.6 roles
+
+Codex was used as an engineering and review partner for Expo components, Supabase queries and Edge Functions, typed clients, official API adapters, validation, tests, and documentation. GPT-5.6 powers the user-facing plain-language explanations, “Good if” / “Not so good if” fit lists, and limited job Q&A through the server-side Edge Functions. These are separate boundaries: the app never exposes provider secrets.
 
 ## Verification
 
