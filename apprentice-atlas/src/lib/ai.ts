@@ -28,7 +28,7 @@ const isExplanation = (value: unknown): value is JobExplanation => {
 const isAnswer = (value: unknown): value is JobQuestionAnswer => {
   if (!value || typeof value !== 'object') return false;
   const item = value as Record<string, unknown>;
-  return typeof item.jobId === 'string' && (item.language === 'de' || item.language === 'en') && typeof item.question === 'string' && typeof item.answer === 'string' && typeof item.knownFromPosting === 'boolean' && typeof item.notSpecified === 'boolean' && (item.status === 'grounded' || item.status === 'unknown') && typeof item.generatedAt === 'string';
+  return typeof item.jobId === 'string' && (item.language === 'de' || item.language === 'en') && typeof item.question === 'string' && typeof item.answer === 'string' && typeof item.knownFromPosting === 'boolean' && typeof item.notSpecified === 'boolean' && (item.status === 'grounded' || item.status === 'unknown') && Array.isArray(item.evidence) && item.evidence.every((evidence) => typeof evidence === 'string') && typeof item.generatedAt === 'string';
 };
 
 export function explainJob(jobId: string, language: Locale, client?: FunctionsClient) { return invoke<JobExplanation>('ai-explain', { jobId, language }, isExplanation, client); }

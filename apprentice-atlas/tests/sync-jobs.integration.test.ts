@@ -10,7 +10,7 @@ const makeItem = (externalId: string, createdAt = '2026-01-01T00:00:00.000Z'): N
   rawRecord: { vacancyReference: externalId },
   job: {
     id: `generated-${externalId}`, title: `Apprentice ${externalId}`, company: 'Atlas', country: 'UK', city: 'London', latitude: 51, longitude: -0.1,
-    jobType: 'apprenticeship', level: 'entry-level', category: 'general', tags: [], rawDescription: '', requirements: [], sourceUrl: `https://example.test/jobs/${externalId}`, sourceName: 'find-apprenticeship', status: 'active',
+    jobType: 'apprenticeship', level: 'entry-level', category: 'general', tags: [], rawDescription: '', requirements: [], sourceUrl: `https://example.test/jobs/${externalId}`, applicationUrl: null, sourceName: 'find-apprenticeship', status: 'active',
     lastSeenAt: createdAt, expiresAt: null, createdAt, updatedAt: createdAt,
   },
 });

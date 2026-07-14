@@ -11,6 +11,7 @@ export interface QaOutput {
   knownFromPosting: boolean;
   notSpecified: boolean;
   status: 'grounded' | 'unknown';
+  evidence: string[];
 }
 
 const text = (value: unknown, max = 1200): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
@@ -24,8 +25,8 @@ export const explanationJsonSchema = {
 
 export const qaJsonSchema = {
   type: 'object', additionalProperties: false,
-  properties: { answer: { type: 'string' }, status: { type: 'string', enum: ['grounded', 'unknown'] } },
-  required: ['answer', 'status'],
+  properties: { answer: { type: 'string' }, status: { type: 'string', enum: ['grounded', 'unknown'] }, evidence: { type: 'array', items: { type: 'string' } } },
+  required: ['answer', 'status', 'evidence'],
 };
 
 export function parseExplanation(value: unknown): ExplanationOutput | null {
@@ -34,17 +35,21 @@ export function parseExplanation(value: unknown): ExplanationOutput | null {
   return text(item.summary) && list(item.goodIf) && list(item.notSoGoodIf) ? { summary: item.summary.trim(), goodIf: item.goodIf.map((x) => x.trim()), notSoGoodIf: item.notSoGoodIf.map((x) => x.trim()) } : null;
 }
 
-export function parseQa(value: unknown): QaOutput | null {
+export function parseQa(value: unknown, serializedJobData: string): QaOutput | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
-  if (!text(item.answer, 900) || (item.status !== 'grounded' && item.status !== 'unknown')) return null;
+  if (!text(item.answer, 900) || (item.status !== 'grounded' && item.status !== 'unknown') || !list(item.evidence) || item.evidence.length > 4 || item.evidence.some((item) => item.length > 120)) return null;
+  const evidence = item.evidence.map((item) => item.trim());
+  const serialized = serializedJobData.toLocaleLowerCase();
+  if (evidence.some((item) => !item || !serialized.includes(item.toLocaleLowerCase()))) return null;
   const answer = item.answer.trim();
   const disclosure = /(not specified|not mentioned|not provided|not stated|unknown|not available|nicht angegeben|nicht genannt|nicht erwähnt|nicht spezifiziert|keine information|nicht ersichtlich|steht nicht)/i.test(answer);
   if (item.status === 'unknown' && !disclosure) return null;
-  if (item.status === 'grounded' && disclosure) return null;
+  if (item.status === 'grounded' && (disclosure || evidence.length === 0)) return null;
+  if (item.status === 'unknown' && evidence.length > 0) return null;
   return item.status === 'grounded'
-    ? { answer, knownFromPosting: true, notSpecified: false, status: 'grounded' }
-    : { answer, knownFromPosting: false, notSpecified: true, status: 'unknown' };
+    ? { answer, knownFromPosting: true, notSpecified: false, status: 'grounded', evidence }
+    : { answer, knownFromPosting: false, notSpecified: true, status: 'unknown', evidence: [] };
 }
 
 export function validateLanguage(value: unknown): value is Language { return value === 'de' || value === 'en'; }

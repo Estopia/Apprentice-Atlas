@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getJob } from '../src/lib/jobs';
+import { getJob, listJobs } from '../src/lib/jobs';
 import { hasMapPosition, serializeJobFilters } from '../src/lib/job-filters';
 import { applyDeviceLocationFilters, applyManualLocationFilters, manualLocation } from '../src/lib/location';
 
@@ -20,6 +20,16 @@ describe('client job filters', () => {
     const result = await getJob(row.id, { from: () => chain } as any);
     expect(result.error).toBeNull();
     expect(result.data).toMatchObject({ city: 'Nationwide', latitude: null, longitude: null, sourceUrl: null, applicationUrl: null });
+  });
+
+  it('merges the nationwide secondary query during an active radius filter', async () => {
+    const row = (id: string, latitude: number | null, longitude: number | null) => ({ id, title: id, company: 'Atlas', country: 'Germany', city: latitude === null ? 'Nationwide' : 'Berlin', latitude, longitude, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: [], raw_description: '', requirements: [], source_url: null, application_url: null, source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now' });
+    const queries = [row('nearby', 52.52, 13.405), row('nationwide', null, null)]; let queryIndex = 0;
+    const client = { from: () => { const data = queries[queryIndex++]; const chain: any = { select: () => chain, eq: () => chain, order: () => chain, gte: () => chain, lte: () => chain, is: () => chain, overlaps: () => chain, ilike: () => chain, abortSignal: () => chain, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [data], error: null }).then(resolve) }; return chain; } };
+    const result = await listJobs({ latitude: 52.52, longitude: 13.405, radiusKm: 50 }, client as any);
+    expect(result.error).toBeNull();
+    expect(result.data.map((job) => job.id)).toEqual(['nearby', 'nationwide']);
+    expect(result.data.find((job) => job.id === 'nationwide')).toMatchObject({ latitude: null, longitude: null });
   });
 
   it('accepts a complete manual location and rejects incomplete fallback input', () => {

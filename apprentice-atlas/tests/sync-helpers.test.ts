@@ -8,7 +8,7 @@ const item = {
   job: {
     id: 'generated', title: 'Apprentice', company: 'Atlas', country: 'UK', city: 'London', latitude: 51, longitude: -0.1,
     jobType: 'apprenticeship', level: 'entry-level', category: 'general', tags: [], rawDescription: '', requirements: [],
-    sourceUrl: 'https://example.test/jobs/uk-123', sourceName: 'find-apprenticeship', status: 'active' as const,
+    sourceUrl: 'https://example.test/jobs/uk-123', applicationUrl: null, sourceName: 'find-apprenticeship', status: 'active' as const,
     lastSeenAt: '2026-01-01T00:00:00.000Z', expiresAt: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   },
 };
