@@ -18,6 +18,9 @@ const messages = {
     'discovery.country': 'Land',
     'discovery.city': 'Stadt',
     'discovery.category': 'Kategorie',
+    'category.technology': 'Technologie',
+    'category.business': 'Wirtschaft',
+    'category.skilled-trades': 'Handwerk',
     'discovery.distance': 'Entfernung',
     'discovery.all': 'Alle',
     'discovery.useManual': 'Stadt und Land verwenden',
@@ -75,6 +78,9 @@ const messages = {
     'discovery.country': 'Country',
     'discovery.city': 'City',
     'discovery.category': 'Category',
+    'category.technology': 'Technology',
+    'category.business': 'Business',
+    'category.skilled-trades': 'Skilled trades',
     'discovery.distance': 'Distance',
     'discovery.all': 'All',
     'discovery.useManual': 'Use city and country',
@@ -138,6 +144,11 @@ export function setLocale(locale: Locale): void {
 
 export function t(locale: Locale, key: TranslationKey): string {
   return localeMessages[locale][key];
+}
+
+export function localizeCategory(locale: Locale, category: string): string {
+  const key = `category.${category}` as TranslationKey;
+  return key in localeMessages[locale] ? t(locale, key) : category;
 }
 
 export function localizeJobError(locale: Locale, code: 'configuration' | 'query' | 'invalid-filter'): string {

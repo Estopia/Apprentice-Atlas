@@ -2,14 +2,14 @@
 
 ## Native map builds
 
-Android standalone and EAS development builds configure `react-native-maps` from the non-public `GOOGLE_MAPS_API_KEY` build variable. Set it as an EAS environment variable or secret; never use an `EXPO_PUBLIC_` name or commit the key:
+Android standalone and EAS development builds configure `react-native-maps` from the non-public `GOOGLE_MAPS_API_KEY` build variable. iOS builds use Apple Maps and do not require this variable. Set it as an EAS environment variable or secret; never use an `EXPO_PUBLIC_` name or commit the key:
 
 ```bash
 eas env:create --name GOOGLE_MAPS_API_KEY --value "<android-key>" --scope project
 eas build --profile development --platform android
 ```
 
-The dynamic `app.config.ts` requires this variable for EAS native builds and leaves web configuration unaffected. Restrict the Google key to the Android package/API services in Google Cloud.
+The dynamic `app.config.ts` requires this variable only for Android EAS builds and leaves iOS and web configuration unaffected. Restrict the Google key to the Android package/API services in Google Cloud.
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
