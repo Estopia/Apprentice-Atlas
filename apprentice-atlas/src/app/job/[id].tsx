@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AiExplanation } from '@/components/jobs/ai-explanation';
 import { JobQa } from '@/components/jobs/job-qa';
@@ -19,6 +20,7 @@ export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const routeId = String(id);
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [locale] = useLocale();
   const auth = useAuth();
   const [state, setState] = useState<JobDetailState>({ job: null, explanation: null, loading: true, aiLoading: false, error: null, aiError: null });
@@ -77,6 +79,9 @@ export default function JobDetailScreen() {
   if (error || !job) return <State text={error ?? t(locale, 'errors.jobNotFound')} locale={locale} back={() => router.back()} />;
   const sourceUrl = getOriginalListingUrl(job);
   const applicationUrl = getValidHttpUrl(job.applicationUrl);
+  const primaryUrl = applicationUrl ?? sourceUrl;
+  const primaryLabel = applicationUrl ? t(locale, 'actions.apply') : t(locale, 'job.openSourceShort');
+  const compactActions = width < 360;
   const shareJob = () => void Share.share({ title: job.title, message: `${job.title} — ${job.company}\n${applicationUrl ?? sourceUrl ?? ''}` });
 
   return (
@@ -97,12 +102,7 @@ export default function JobDetailScreen() {
 
         {favoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(favoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
 
-        {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel={activeFavorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')} onPress={() => void toggleFavorite()} style={styles.utilityButton}><AppIcon name={activeFavorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
-
-        <View style={styles.actionRow}>
-          {applicationUrl && <Pressable accessibilityRole="link" accessibilityLabel={t(locale, 'actions.apply')} onPress={() => void Linking.openURL(applicationUrl)} style={styles.apply}><Text style={styles.applyText}>{t(locale, 'actions.apply')}</Text><AppIcon name={{ ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' }} size={17} tintColor={Palette.white} /></Pressable>}
-          {sourceUrl && <Pressable accessibilityRole="link" accessibilityLabel={t(locale, 'job.openSource')} onPress={() => void Linking.openURL(sourceUrl)} style={styles.sourceLink}><Text style={styles.sourceLinkText}>{t(locale, 'job.openSource')}</Text></Pressable>}
-        </View>
+        {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
 
         <View style={styles.source}><AppIcon name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }} size={19} tintColor={Palette.blue} /><View style={styles.sourceCopy}><Text style={styles.sourceText}>{job.sourceName}</Text><Text style={styles.updated}>{t(locale, 'job.lastUpdated')}: {new Date(job.updatedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text></View></View>
 
@@ -111,8 +111,20 @@ export default function JobDetailScreen() {
         {job.requirements.length > 0 && <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.requirements')}</Text>{job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>)}</View>}
         <JobQa jobId={job.id} />
       </ScrollView>
+      <SafeAreaView edges={['bottom']} style={styles.bottomBarSafe}>
+        <View style={styles.bottomBar}>
+          <Pressable accessibilityRole="button" accessibilityLabel={activeFavorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')} accessibilityState={{ selected: Boolean(activeFavorite), disabled: favoriteBusy }} disabled={favoriteBusy} onPress={() => void toggleFavorite()} style={({ pressed }) => [styles.bottomSave, compactActions && styles.bottomSaveCompact, !primaryUrl && styles.bottomSaveOnly, pressed && styles.pressed]}>
+            <AppIcon name={activeFavorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={20} tintColor={Palette.blue} />
+            {!compactActions && <Text style={styles.bottomSaveText}>{activeFavorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')}</Text>}
+          </Pressable>
+          {primaryUrl && <Pressable accessibilityRole="link" accessibilityLabel={primaryLabel} onPress={() => void Linking.openURL(primaryUrl)} style={({ pressed }) => [styles.bottomPrimary, pressed && styles.pressed]}>
+            <Text style={styles.bottomPrimaryText}>{primaryLabel}</Text>
+            <AppIcon name={{ ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' }} size={17} tintColor={Palette.white} />
+          </Pressable>}
+        </View>
+      </SafeAreaView>
       <Stack.Screen options={{ title: '', headerShown: true, headerTransparent: true, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }} />
-      {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={shareJob} /><Stack.Toolbar.Button icon={activeFavorite ? 'bookmark.fill' : 'bookmark'} selected={Boolean(activeFavorite)} disabled={favoriteBusy} onPress={() => void toggleFavorite()} /></Stack.Toolbar>}
+      {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={shareJob} /></Stack.Toolbar>}
     </>
   );
 }
@@ -142,12 +154,8 @@ const styles = StyleSheet.create({
   error: { color: Palette.danger, marginTop: 12, fontWeight: '700' },
   utilityRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 12 },
   utilityButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 16 },
-  apply: { minHeight: 50, flexGrow: 1, borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 18, backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  applyText: { color: Palette.white, fontWeight: '700', fontSize: 16 },
-  sourceLink: { minHeight: 50, flexGrow: 1, borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 18, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
   sourceLinkText: { color: Palette.blue, fontWeight: '700' },
-  source: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 15, marginTop: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
+  source: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 15, marginTop: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   sourceCopy: { flex: 1 },
   sourceText: { color: Palette.text, fontWeight: '600' },
   updated: { color: Palette.textSecondary, marginTop: 4, fontSize: 11 },
@@ -157,6 +165,15 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
   bullet: { width: 8, height: 8, borderRadius: 4, backgroundColor: Palette.blue, marginTop: 7 },
   bulletText: { flex: 1, color: Palette.text, lineHeight: 22 },
+  bottomBarSafe: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border, boxShadow: '0 -6px 22px rgba(15, 23, 42, 0.08)' },
+  bottomBar: { width: '100%', maxWidth: 720, minHeight: 72, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  bottomSave: { minWidth: 116, minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 14 },
+  bottomSaveCompact: { width: 50, minWidth: 50, paddingHorizontal: 0 },
+  bottomSaveOnly: { flex: 1 },
+  bottomSaveText: { color: Palette.blue, fontSize: 15, fontWeight: '700' },
+  bottomPrimary: { flex: 1, minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
+  bottomPrimaryText: { flexShrink: 1, color: Palette.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
   state: { flex: 1, backgroundColor: Palette.background, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
   stateIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   stateText: { color: Palette.textSecondary, textAlign: 'center', lineHeight: 21 },

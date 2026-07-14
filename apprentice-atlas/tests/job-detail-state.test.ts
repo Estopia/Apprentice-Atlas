@@ -18,17 +18,19 @@ describe('job detail route state', () => {
     }
   });
 
-  it('renders the original-link action only for a safe normalized URL', () => {
+  it('uses the safe normalized source as the fallback primary action', () => {
     const detailScreen = readFileSync('src/app/job/[id].tsx', 'utf8');
     expect(detailScreen).toContain('const sourceUrl = getOriginalListingUrl(job);');
-    expect(detailScreen).toMatch(/sourceUrl\s*&&\s*<Pressable/);
+    expect(detailScreen).toContain('const primaryUrl = applicationUrl ?? sourceUrl;');
+    expect(detailScreen).toMatch(/primaryUrl\s*&&\s*<Pressable/);
     expect(detailScreen).not.toContain('throw new Error');
   });
 
-  it('validates application destinations before rendering the apply action', () => {
+  it('validates application destinations before preferring the apply action', () => {
     const detailScreen = readFileSync('src/app/job/[id].tsx', 'utf8');
     expect(detailScreen).toContain('const applicationUrl = getValidHttpUrl(job.applicationUrl);');
-    expect(detailScreen).toMatch(/applicationUrl\s*&&\s*<Pressable/);
+    expect(detailScreen).toContain("const primaryLabel = applicationUrl ? t(locale, 'actions.apply') : t(locale, 'job.openSourceShort');");
+    expect(detailScreen).toContain('Linking.openURL(primaryUrl)');
     expect(detailScreen).not.toContain('Linking.openURL(job.applicationUrl!)');
   });
 });
