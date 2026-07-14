@@ -1,5 +1,3 @@
-import 'react-native-url-polyfill/auto';
-
 import type {
   AuthChangeEvent,
   Session,
