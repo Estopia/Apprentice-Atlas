@@ -19,10 +19,10 @@ const timeExpiredJob = '20000000-0000-4000-8000-000000000004';
 const sql = `
 begin;
 
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+insert into auth.users (id)
 values
-  ('${userOne}', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'tracker-one@example.test', '', now(), now(), now()),
-  ('${userTwo}', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'tracker-two@example.test', '', now(), now(), now());
+  ('${userOne}'),
+  ('${userTwo}');
 
 insert into public.jobs (id, title, company, country, city, job_type, level, category, raw_description, requirements, source_url, source_name, status, last_seen_at, expires_at, created_at, updated_at)
 values

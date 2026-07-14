@@ -84,7 +84,13 @@ describe('application tracker schema and permissions', () => {
 
   it('gives PostgreSQL integration tests a session-aware auth.uid mock', () => {
     const workflow = readFileSync(ciWorkflowPath, 'utf8');
+    const integrationTest = readFileSync('tests/application-rpc.integration.test.ts', 'utf8');
     expect(workflow.match(/current_setting\('request\.jwt\.claim\.sub', true\)/g)).toHaveLength(2);
     expect(workflow).not.toMatch(/CREATE FUNCTION auth\.uid\(\) RETURNS uuid\s+LANGUAGE sql STABLE AS \$\$ SELECT null::uuid \$\$/i);
+    expect(workflow).toContain('CREATE TABLE auth.users (id uuid primary key);');
+    expect(workflow.match(/CREATE TABLE storage\.buckets/g)).toHaveLength(2);
+    expect(workflow.match(/CREATE TABLE storage\.objects/g)).toHaveLength(2);
+    expect(integrationTest).toMatch(/insert into auth\.users \(id\)/i);
+    expect(integrationTest).not.toMatch(/insert into auth\.users \([^)]*instance_id/i);
   });
 });
