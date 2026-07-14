@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getJob, listJobs } from '../src/lib/jobs';
+import { escapeSearchPattern, getJob, listJobs } from '../src/lib/jobs';
 import { hasMapPosition, serializeJobFilters } from '../src/lib/job-filters';
 import { applyDeviceLocationFilters, applyManualLocationFilters, manualLocation } from '../src/lib/location';
 
@@ -20,6 +20,21 @@ describe('client job filters', () => {
     const result = await getJob(row.id, { from: () => chain } as any);
     expect(result.error).toBeNull();
     expect(result.data).toMatchObject({ city: 'Nationwide', latitude: null, longitude: null, sourceUrl: null, applicationUrl: null });
+  });
+
+  it('consumes the selected published translation and keeps canonical URL fields', async () => {
+    const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Canonical title', company: 'Canonical company', country: 'Germany', city: 'Berlin', latitude: 52, longitude: 13, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: ['canonical'], raw_description: 'Canonical description', requirements: ['canonical'], source_url: 'https://official.example/listing/1', application_url: 'https://apply.example/1', source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now', job_translations: [{ title: 'Übersetzter Titel', company: 'Übersetztes Unternehmen', description: 'Übersetzte Beschreibung', requirements: ['Übersetzt'], tags: ['Ausbildung'] }] };
+    const chain: any = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: row, error: null }) };
+    const result = await getJob(row.id, { from: () => chain } as any, 'de');
+    expect(result.data).toMatchObject({ title: 'Übersetzter Titel', company: 'Übersetztes Unternehmen', rawDescription: 'Übersetzte Beschreibung', requirements: ['Übersetzt'], tags: ['Ausbildung'], sourceUrl: row.source_url, applicationUrl: row.application_url });
+  });
+
+  it('escapes PostgREST search syntax and wildcard characters', async () => {
+    const filters: string[] = [];
+    const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Searchable', company: 'Atlas', country: 'Germany', city: 'Berlin', latitude: null, longitude: null, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: [], raw_description: '', requirements: [], source_url: null, application_url: null, source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now' };
+    const client = { from: () => { const chain: any = { select: () => chain, eq: () => chain, order: () => chain, or: (filter: string) => { filters.push(filter); return chain; }, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [row], error: null }).then(resolve) }; return chain; } };
+    await listJobs({ search: '100%,(dev)._\\admin' }, client as any, undefined, 'en');
+    expect(filters).toEqual([`title.ilike.%${escapeSearchPattern('100%,(dev)._\\admin')}%,company.ilike.%${escapeSearchPattern('100%,(dev)._\\admin')}%`]);
   });
 
   it('merges the nationwide secondary query during an active radius filter', async () => {

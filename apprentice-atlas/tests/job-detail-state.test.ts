@@ -24,4 +24,11 @@ describe('job detail route state', () => {
     expect(detailScreen).toMatch(/sourceUrl\s*&&\s*<Pressable/);
     expect(detailScreen).not.toContain('throw new Error');
   });
+
+  it('validates application destinations before rendering the apply action', () => {
+    const detailScreen = readFileSync('src/app/job/[id].tsx', 'utf8');
+    expect(detailScreen).toContain('const applicationUrl = getValidHttpUrl(job.applicationUrl);');
+    expect(detailScreen).toMatch(/applicationUrl\s*&&\s*<Pressable/);
+    expect(detailScreen).not.toContain('Linking.openURL(job.applicationUrl!)');
+  });
 });

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Job, JobFilter } from '../types/jobs';
+import { getLocale, type Locale } from './i18n';
 import { isWithinRadius, mergeJobs, serializeBoundingBox, serializeJobFilters } from './job-filters';
 
 export { getBoundingBox, hasMapPosition, isWithinRadius, mergeJobs, serializeBoundingBox, serializeJobFilters } from './job-filters';
@@ -14,24 +15,34 @@ type JobRow = {
   category: string; tags: string[] | null; raw_description: string; requirements: string[] | null;
   source_url: string | null; application_url: string | null; source_name: string; status: Job['status']; last_seen_at: string;
   expires_at: string | null; created_at: string; updated_at: string;
+  job_translations?: TranslationRow[] | null;
 };
 
+type TranslationRow = {
+  title: string; company: string; description: string; requirements: string[] | null; tags: string[] | null;
+};
+
+export function escapeSearchPattern(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&').replace(/[(),.]/g, '\\$&');
+}
+
 function fromRow(row: JobRow): Job {
+  const translation = row.job_translations?.[0];
   return {
-    id: row.id, title: row.title, company: row.company, country: row.country, city: row.city,
+    id: row.id, title: translation?.title ?? row.title, company: translation?.company ?? row.company, country: row.country, city: row.city,
     latitude: row.latitude, longitude: row.longitude, jobType: row.job_type, level: row.level,
-    category: row.category, tags: row.tags ?? [], rawDescription: row.raw_description,
-    requirements: row.requirements ?? [], sourceUrl: row.source_url, applicationUrl: row.application_url ?? null, sourceName: row.source_name,
+    category: row.category, tags: translation?.tags ?? row.tags ?? [], rawDescription: translation?.description ?? row.raw_description,
+    requirements: translation?.requirements ?? row.requirements ?? [], sourceUrl: row.source_url, applicationUrl: row.application_url ?? null, sourceName: row.source_name,
     status: row.status, lastSeenAt: row.last_seen_at, expiresAt: row.expires_at,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
 
-export async function getJob(id: string, client?: SupabaseClient): Promise<{ data: Job | null; error: JobsError | null }> {
+export async function getJob(id: string, client?: SupabaseClient, locale: Locale = getLocale()): Promise<{ data: Job | null; error: JobsError | null }> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { data: null, error: { code: 'query', message: 'Invalid job identifier.' } };
   try {
     const supabase = client ?? (await import('./supabase')).getSupabaseClient();
-    const result = await supabase.from('jobs').select('*').eq('id', id).eq('status', 'active').maybeSingle();
+    const result = await supabase.from('jobs').select('*, job_translations!left(title, company, description, requirements, tags)').eq('id', id).eq('status', 'active').eq('job_translations.language_code', locale).eq('job_translations.status', 'published').maybeSingle();
     if (result.error) return { data: null, error: { code: 'query', message: result.error.message || 'Could not load the job.' } };
     return { data: result.data ? fromRow(result.data as JobRow) : null, error: null };
   } catch (error) {
@@ -39,7 +50,7 @@ export async function getJob(id: string, client?: SupabaseClient): Promise<{ dat
   }
 }
 
-export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient, signal?: AbortSignal): Promise<JobsResult> {
+export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient, signal?: AbortSignal, locale: Locale = getLocale()): Promise<JobsResult> {
   const selected = serializeJobFilters(filters);
   if (selected.radiusKm && (selected.latitude === undefined || selected.longitude === undefined)) {
     return { data: [], error: { code: 'invalid-filter', message: 'A distance filter needs a location.' } };
@@ -47,7 +58,7 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient,
   try {
     const supabase = client ?? (await import('./supabase')).getSupabaseClient();
     const buildQuery = () => {
-      let query = supabase.from('jobs').select('*').eq('status', 'active').order('updated_at', { ascending: false });
+      let query = supabase.from('jobs').select('*, job_translations!left(title, company, description, requirements, tags)').eq('status', 'active').eq('job_translations.language_code', locale).eq('job_translations.status', 'published').order('updated_at', { ascending: false });
       if (signal) query = query.abortSignal(signal);
       if (selected.country) query = query.ilike('country', selected.country);
       if (selected.city) query = query.ilike('city', selected.city);
@@ -55,7 +66,10 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient,
       if (selected.jobType) query = query.eq('job_type', selected.jobType);
       if (selected.level) query = query.eq('level', selected.level);
       if (selected.tags?.length) query = query.overlaps('tags', selected.tags);
-      if (selected.search) query = query.or(`title.ilike.%${selected.search}%,company.ilike.%${selected.search}%`);
+      if (selected.search) {
+        const search = escapeSearchPattern(selected.search);
+        query = query.or(`title.ilike.%${search}%,company.ilike.%${search}%`);
+      }
       return query;
     };
 

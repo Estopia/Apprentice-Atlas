@@ -6,6 +6,7 @@ const expirationMigration = readFileSync('supabase/migrations/20260714110000_ato
 const qaMigration = readFileSync('supabase/migrations/20260714130000_job_ai_qa_sessions.sql', 'utf8');
 const favoritesMigration = readFileSync('supabase/migrations/20260714140000_add_favorite_rpc.sql', 'utf8');
 const sourceUrlMigration = readFileSync('supabase/migrations/20260714150000_enforce_source_listing_urls.sql', 'utf8');
+const applicationUrlMigration = readFileSync('supabase/migrations/20260714160000_enforce_application_urls.sql', 'utf8');
 const functionSignature = 'public.upsert_job_source(text, text, text, jsonb, jsonb, timestamptz)';
 
 describe('atomic sync RPC permissions', () => {
@@ -15,6 +16,11 @@ describe('atomic sync RPC permissions', () => {
     expect(sourceUrlMigration).toMatch(/requires a valid http or https source URL/i);
     expect(sourceUrlMigration).toMatch(/job\.source_url to be a valid http or https URL/i);
     expect(sourceUrlMigration).not.toMatch(/application_url[^\n]+source_url/i);
+  });
+  it('enforces optional strict application URLs without coupling them to source URLs', () => {
+    expect(applicationUrlMigration).toMatch(/jobs_application_url_http_check[\s\S]+not valid/i);
+    expect(applicationUrlMigration).toMatch(/application_url is null[\s\S]+https\?:\/\//i);
+    expect(applicationUrlMigration).not.toMatch(/source_url/i);
   });
   it('derives favorite ownership from auth.uid and exposes the add RPC only to authenticated users', () => {
     expect(favoritesMigration).toMatch(/create or replace function public\.add_favorite\(p_job_id uuid\)/i);

@@ -73,6 +73,13 @@ describe('normalizeJob', () => {
     }
   });
 
+  it('keeps sourceUrl required while dropping an invalid independent applicationUrl', () => {
+    const normalized = normalizeJob({ ...validRecord, applicationUrl: 'javascript:alert(1)' }, { provider: 'test' });
+    expect(normalized?.job.sourceUrl).toBe(validRecord.vacancyUrl);
+    expect(normalized?.job.applicationUrl).toBeNull();
+    expect(normalizeJob({ ...validRecord, applicationUrl: ' https://apply.example.test/path ' }, { provider: 'test' })?.job.applicationUrl).toBe('https://apply.example.test/path');
+  });
+
   it('accepts http and https listing URLs with a hostname', () => {
     for (const sourceUrl of ['http://example.test/listing/1', 'https://example.test/listing/1?source=official']) {
       const normalized = normalizeJob({ ...validRecord, vacancyUrl: sourceUrl }, { provider: 'test' });

@@ -106,7 +106,7 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     rawDescription: description,
     requirements: textList(record.requirements ?? record.skills),
     sourceUrl: validSourceUrl,
-    applicationUrl,
+    applicationUrl: getValidHttpUrl(applicationUrl),
     sourceName: options.provider,
     status: 'active',
     lastSeenAt: now,

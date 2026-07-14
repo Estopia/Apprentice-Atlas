@@ -58,6 +58,7 @@ Clean databases apply every timestamp migration in filename order, then `supabas
 8. `20260714130000_job_ai_qa_sessions.sql`
 9. `20260714140000_add_favorite_rpc.sql`
 10. `20260714150000_enforce_source_listing_urls.sql`
+11. `20260714160000_enforce_application_urls.sql`
 
 The preflight is required before the locked schema hardening migration because it repairs legacy whitespace/blanks and normalized source collisions. The guarded post-release migration is safe on clean data and completes compatibility, audit, and constraint hardening. The local-only `supabase/fixtures/preflight_source_provenance.sql` fixture is for testing the legacy repair path; load it after the initial schema and before the preflight, then apply the remaining timestamp migrations. Never load fixtures or `seed.sql` into production.
 
