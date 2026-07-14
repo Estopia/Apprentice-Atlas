@@ -12,7 +12,7 @@ export default function JobMap({ jobs, selectedJobId, onSelect }: JobMapProps) {
       <Text style={styles.title}>{t(locale, 'map.title')}</Text>
       <Text style={styles.hint}>{t(locale, 'map.webHelper')}</Text>
       <View style={styles.grid}>
-        {markers.map((job) => <Pressable key={job.id} onPress={() => onSelect(job)} style={[styles.marker, job.id === selectedJobId && styles.selected]}><Text style={styles.pin}>●</Text><Text numberOfLines={1} style={styles.markerText}>{job.city}</Text></Pressable>)}
+        {markers.map((job) => <Pressable key={job.id} accessibilityRole="button" accessibilityLabel={`${job.title}, ${job.company}, ${job.city}, ${job.country}`} accessibilityState={{ selected: job.id === selectedJobId }} onPress={() => onSelect(job)} style={[styles.marker, job.id === selectedJobId && styles.selected]}><Text style={styles.pin}>●</Text><Text numberOfLines={1} style={styles.markerText}>{job.city}</Text></Pressable>)}
         {!markers.length && <Text style={styles.hint}>{t(locale, 'map.noPositions')}</Text>}
       </View>
     </View>

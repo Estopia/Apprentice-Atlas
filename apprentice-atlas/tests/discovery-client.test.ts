@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { localizeJobError, t } from '../src/lib/i18n';
 import { getBoundingBox, hasMapPosition, isWithinRadius, mergeJobs, serializeBoundingBox } from '../src/lib/job-filters';
+import { getJobsMapRegion } from '../src/lib/map-region';
+import { shouldCommitRequest } from '../src/lib/request-guard';
 
 describe('discovery client helpers', () => {
   it('serializes a radius bbox into safe latitude and longitude ranges', () => {
@@ -32,5 +34,14 @@ describe('discovery client helpers', () => {
   it('only treats complete coordinates as marker positions', () => {
     expect(hasMapPosition({ latitude: null, longitude: null })).toBe(false);
     expect(hasMapPosition({ latitude: 52.52, longitude: 13.405 })).toBe(true);
+  });
+
+  it('recenters only when a request is still current and the signal is live', () => {
+    const controller = new AbortController();
+    expect(shouldCommitRequest(2, 2, controller.signal)).toBe(true);
+    expect(shouldCommitRequest(1, 2, controller.signal)).toBe(false);
+    controller.abort();
+    expect(shouldCommitRequest(2, 2, controller.signal)).toBe(false);
+    expect(getJobsMapRegion([{ latitude: 52, longitude: 13 }, { latitude: 53, longitude: 14 }])).toMatchObject({ latitude: 52.5, longitude: 13.5 });
   });
 });

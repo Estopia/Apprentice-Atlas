@@ -28,7 +28,7 @@ function fromRow(row: JobRow): Job {
   };
 }
 
-export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient): Promise<JobsResult> {
+export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient, signal?: AbortSignal): Promise<JobsResult> {
   const selected = serializeJobFilters(filters);
   if (selected.radiusKm && (selected.latitude === undefined || selected.longitude === undefined)) {
     return { data: [], error: { code: 'invalid-filter', message: 'A distance filter needs a location.' } };
@@ -37,6 +37,7 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient)
     const supabase = client ?? getSupabaseClient();
     const buildQuery = () => {
       let query = supabase.from('jobs').select('*').eq('status', 'active').order('updated_at', { ascending: false });
+      if (signal) query = query.abortSignal(signal);
       if (selected.country) query = query.ilike('country', selected.country);
       if (selected.city) query = query.ilike('city', selected.city);
       if (selected.category) query = query.eq('category', selected.category);

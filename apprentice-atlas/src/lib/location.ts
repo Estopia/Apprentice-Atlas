@@ -17,3 +17,7 @@ export function applyManualLocationFilters(filters: JobFilter, city: string, cou
   delete withoutDeviceRadius.radiusKm;
   return { ...withoutDeviceRadius, city: selected.city, country: selected.country };
 }
+
+export function applyDeviceLocationFilters(filters: JobFilter, latitude: number, longitude: number): JobFilter {
+  return { ...filters, city: undefined, country: undefined, latitude, longitude, radiusKm: filters.radiusKm ?? 50 };
+}
