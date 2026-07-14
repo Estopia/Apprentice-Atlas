@@ -15,6 +15,16 @@ export function isSafeReturnPath(path: string | undefined): path is `/job/${stri
     || Boolean(path && new RegExp(`^/job/${uuidPattern}$`, 'i').test(path));
 }
 
+export function validatedPendingSaveJobId(params: {
+  pendingAction?: string;
+  jobId?: string;
+  returnTo?: string;
+}): string | null {
+  const { pendingAction, jobId, returnTo } = params;
+  if (pendingAction !== 'save' || !jobId || !isSafeReturnPath(returnTo)) return null;
+  return returnTo === `/job/${jobId}` ? jobId : null;
+}
+
 export function getReadableAuthError(error: AuthError, locale: Locale): string {
   const messages: Record<Locale, Record<AuthErrorCode, string>> = {
     de: {

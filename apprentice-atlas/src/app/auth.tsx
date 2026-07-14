@@ -6,7 +6,7 @@ import { AuthForm } from '@/components/auth/auth-form';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { validatedPendingTrackJobId } from '@/lib/application-flow';
-import { isSafeReturnPath } from '@/lib/auth';
+import { isSafeReturnPath, validatedPendingSaveJobId } from '@/lib/auth';
 import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
 
@@ -17,6 +17,7 @@ export default function AuthScreen() {
   const [error, setError] = useState<string | null>(null);
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/favorites';
   const pendingTrackJobId = validatedPendingTrackJobId(params);
+  const pendingSaveJobId = validatedPendingSaveJobId(params);
 
   const complete = async () => {
     setError(null);
@@ -24,8 +25,8 @@ export default function AuthScreen() {
       router.replace({ pathname: '/application/[jobId]', params: { jobId: pendingTrackJobId } } as never);
       return;
     }
-    if (params.pendingAction === 'save' && params.jobId && isSafeReturnPath(`/job/${params.jobId}`)) {
-      const result = await addFavorite(params.jobId);
+    if (pendingSaveJobId) {
+      const result = await addFavorite(pendingSaveJobId);
       if (result.error) { setError(getReadableFavoritesError(result.error, locale)); return; }
     }
     router.replace(returnTo);

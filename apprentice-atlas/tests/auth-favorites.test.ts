@@ -5,6 +5,7 @@ import {
   isSafeReturnPath,
   signUp,
   subscribeToAuth,
+  validatedPendingSaveJobId,
   type AuthError,
 } from '../src/lib/auth';
 import {
@@ -63,6 +64,15 @@ describe('auth route and readable errors', () => {
     expect(isSafeReturnPath('/atlas/anything')).toBe(false);
     expect(isSafeReturnPath('/atlas?token=secret')).toBe(false);
     expect(isSafeReturnPath('/favorites?token=secret')).toBe(false);
+  });
+
+  it('continues a pending save only for the exact matching job return path', () => {
+    const otherJobId = '66666666-6666-4666-8666-666666666666';
+
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${job.id}` })).toBe(job.id);
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/atlas' })).toBeNull();
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${otherJobId}` })).toBeNull();
+    expect(validatedPendingSaveJobId({ pendingAction: 'track', jobId: job.id, returnTo: `/job/${job.id}` })).toBeNull();
   });
 
   it('maps auth errors to readable localized messages', () => {
