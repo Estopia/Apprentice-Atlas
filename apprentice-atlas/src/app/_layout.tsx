@@ -1,22 +1,37 @@
-import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DefaultTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Palette } from '@/constants/theme';
+import { usePreferences } from '@/hooks/use-preferences';
 import { hydrateLocale } from '@/lib/i18n';
+import { loadPreferences } from '@/lib/preferences';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function TabLayout() {
+export default function RootLayout() {
+  const pathname = usePathname();
+  const { preferences, isHydrated: preferencesHydrated } = usePreferences();
+  const [localeHydrated, setLocaleHydrated] = useState(false);
+
   useEffect(() => {
-    void hydrateLocale();
-    void SplashScreen.hideAsync();
+    void Promise.all([loadPreferences(), hydrateLocale()]).then(() => setLocaleHydrated(true));
   }, []);
+
+  useEffect(() => {
+    if (!preferencesHydrated || !localeHydrated) return;
+    if (!preferences.onboardingComplete && pathname !== '/onboarding') {
+      router.replace('/onboarding');
+    }
+    void SplashScreen.hideAsync();
+  }, [localeHydrated, pathname, preferences.onboardingComplete, preferencesHydrated]);
+
   return (
     <ThemeProvider value={{ ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: Palette.blue, background: Palette.background, card: Palette.background, text: Palette.text, border: Palette.border } }}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Palette.background } }}>
+        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth" options={{ presentation: 'modal', headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="job/[id]" />
