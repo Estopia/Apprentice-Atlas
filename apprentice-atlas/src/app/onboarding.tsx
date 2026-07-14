@@ -41,7 +41,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   initialPreferences: UserPreferences;
 }) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { height } = useWindowDimensions();
   const [draft, setDraft] = useState(initialPreferences);
   const [step, setStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -79,9 +79,13 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
       style={styles.screen}
       contentContainerStyle={[
         styles.scrollContent,
-        { minHeight: Math.max(680, width < 380 ? 700 : 760), paddingTop: Math.max(insets.top, 24), paddingBottom: Math.max(insets.bottom, 20) },
+        {
+          minHeight: height,
+          paddingTop: Math.max(insets.top, 16),
+          paddingBottom: Math.max(insets.bottom, 16),
+        },
       ]}
-      contentInsetAdjustmentBehavior="automatic"
+      contentInsetAdjustmentBehavior="never"
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.page}>
@@ -249,20 +253,20 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20 },
   page: { width: '100%', maxWidth: 620, alignSelf: 'center', flex: 1 },
-  topBar: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  brandMark: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blue },
+  topBar: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brandMark: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blue },
   eyebrow: { flex: 1, color: Palette.blueDark, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
   stepLabel: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  progress: { flexDirection: 'row', gap: 7, paddingTop: 18 },
+  progress: { flexDirection: 'row', gap: 7, paddingTop: 14 },
   progressTrack: { flex: 1, height: 5, borderRadius: Radius.pill, backgroundColor: Palette.surfaceStrong },
   progressTrackActive: { backgroundColor: Palette.blue },
-  content: { flex: 1, paddingTop: 38 },
-  stepContent: { gap: 28 },
+  content: { flex: 1, paddingTop: 28 },
+  stepContent: { gap: 24 },
   headingBlock: { gap: 10 },
   title: { color: Palette.blueDark, fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -0.7 },
   description: { color: Palette.textSecondary, fontSize: 16, lineHeight: 24, maxWidth: 520 },
-  cardList: { gap: 12 },
-  choiceCard: { minHeight: 112, padding: 17, borderWidth: 1.5, borderColor: Palette.border, borderRadius: Radius.medium, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Palette.white, ...Shadows.subtle },
+  cardList: { gap: 10 },
+  choiceCard: { minHeight: 104, padding: 15, borderWidth: 1.5, borderColor: Palette.border, borderRadius: Radius.medium, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Palette.white, ...Shadows.subtle },
   choiceCardActive: { borderColor: Palette.blue, backgroundColor: Palette.blueSoft },
   choiceIcon: { width: 48, height: 48, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
   choiceIconActive: { backgroundColor: Palette.blue },
@@ -273,7 +277,7 @@ const styles = StyleSheet.create({
   selectionIndicator: { width: 23, height: 23, borderRadius: Radius.pill, borderWidth: 1.5, borderColor: Palette.border, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.white },
   selectionIndicatorActive: { borderColor: Palette.blue, backgroundColor: Palette.blue },
   interestGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  interestCard: { width: '48%', minWidth: 145, flexGrow: 1, minHeight: 132, padding: 16, borderRadius: Radius.medium, borderWidth: 1.5, borderColor: Palette.border, backgroundColor: Palette.white, gap: 14, ...Shadows.subtle },
+  interestCard: { width: '48%', minWidth: 145, flexGrow: 1, minHeight: 116, padding: 15, borderRadius: Radius.medium, borderWidth: 1.5, borderColor: Palette.border, backgroundColor: Palette.white, gap: 11, ...Shadows.subtle },
   interestCardActive: { borderColor: Palette.blue, backgroundColor: Palette.blueSoft },
   interestIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
   interestIconActive: { backgroundColor: Palette.blue },
@@ -291,7 +295,7 @@ const styles = StyleSheet.create({
   languageChoiceActive: { backgroundColor: Palette.white, ...Shadows.subtle },
   languageLabel: { color: Palette.textSecondary, fontSize: 15, fontWeight: '600' },
   languageLabelActive: { color: Palette.blueDark, fontWeight: '800' },
-  footer: { paddingTop: 28, gap: 15 },
+  footer: { paddingTop: 20, gap: 12 },
   footerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   backButton: { minHeight: 54, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   backButtonPlaceholder: { width: 4 },

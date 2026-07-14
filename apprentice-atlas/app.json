@@ -10,7 +10,8 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.estopiaengineering.apprenticeatlas",
-      "icon": "./assets/Apprentice Atlas.icon",
+      "icon": "./assets/ApprenticeAtlas.icon",
+      "usesAppleSignIn": true,
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Apprentice Atlas uses your location to find nearby apprenticeship opportunities.",
@@ -38,6 +39,7 @@
     "plugins": [
       "expo-router",
       "expo-location",
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {

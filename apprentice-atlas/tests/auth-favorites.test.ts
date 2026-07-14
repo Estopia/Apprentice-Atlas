@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createSessionFromUrl,
   getReadableAuthError,
   isSafeReturnPath,
-  signUp,
+  parseAuthCallbackUrl,
+  sendMagicLink,
+  signInWithAppleIdToken,
   subscribeToAuth,
   validatedPendingSaveJobId,
   type AuthError,
@@ -56,10 +59,11 @@ const favorite: FavoriteJob = {
 };
 
 describe('auth route and readable errors', () => {
-  it('accepts only exact Atlas and valid local job return paths', () => {
+  it('accepts only exact local app return paths', () => {
     expect(isSafeReturnPath(`/job/${job.id}`)).toBe(true);
+    expect(isSafeReturnPath('/')).toBe(true);
+    expect(isSafeReturnPath('/favorites')).toBe(true);
     expect(isSafeReturnPath('/atlas')).toBe(true);
-    expect(isSafeReturnPath('/favorites')).toBe(false);
     expect(isSafeReturnPath('https://evil.test/steal')).toBe(false);
     expect(isSafeReturnPath('/atlas/anything')).toBe(false);
     expect(isSafeReturnPath('/atlas?token=secret')).toBe(false);
@@ -70,28 +74,67 @@ describe('auth route and readable errors', () => {
     const otherJobId = '66666666-6666-4666-8666-666666666666';
 
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${job.id}` })).toBe(job.id);
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/' })).toBe(job.id);
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/atlas' })).toBeNull();
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${otherJobId}` })).toBeNull();
     expect(validatedPendingSaveJobId({ pendingAction: 'track', jobId: job.id, returnTo: `/job/${job.id}` })).toBeNull();
   });
 
   it('maps auth errors to readable localized messages', () => {
-    const error: AuthError = { code: 'email-not-confirmed', message: 'raw provider detail' };
-    expect(getReadableAuthError(error, 'de')).toContain('E-Mail');
-    expect(getReadableAuthError(error, 'en')).toContain('confirm');
+    const error: AuthError = { code: 'invalid-link', message: 'raw provider detail' };
+    expect(getReadableAuthError(error, 'de')).toContain('abgelaufen');
+    expect(getReadableAuthError(error, 'en')).toContain('expired');
   });
 
-  it('exposes unverified signup and forwards session events', async () => {
+  it('sends a magic link with a mobile callback and forwards session events', async () => {
     const events: string[] = [];
     const auth = {
-      signUp: vi.fn(async () => ({ data: { user: { id: 'user-1' }, session: null }, error: null })),
+      signInWithOtp: vi.fn(async () => ({ data: {}, error: null })),
       onAuthStateChange: vi.fn((callback: (event: string, session: null) => void) => { callback('SIGNED_IN', null); return { data: { subscription: { unsubscribe: vi.fn() } } }; }),
     };
     const client = { auth } as any;
-    const signup = await signUp('person@example.test', 'password123', client);
+    const result = await sendMagicLink(' Person@Example.test ', 'apprenticeatlas://auth-callback', client);
     subscribeToAuth((event) => events.push(event), client);
-    expect(signup.data?.needsEmailConfirmation).toBe(true);
+    expect(result.error).toBeNull();
+    expect(auth.signInWithOtp).toHaveBeenCalledWith({
+      email: 'person@example.test',
+      options: { emailRedirectTo: 'apprenticeatlas://auth-callback', shouldCreateUser: true },
+    });
     expect(events).toEqual(['SIGNED_IN']);
+  });
+
+  it('parses implicit callback tokens and restores the Supabase session', async () => {
+    const url = 'apprenticeatlas://auth-callback?returnTo=%2Fatlas#access_token=access&refresh_token=refresh';
+    expect(parseAuthCallbackUrl(url)).toMatchObject({ accessToken: 'access', refreshToken: 'refresh' });
+    const session = { access_token: 'access', refresh_token: 'refresh' };
+    const auth = { setSession: vi.fn(async () => ({ data: { session }, error: null })) };
+    const result = await createSessionFromUrl(url, { auth } as any);
+    expect(result.data).toBe(session);
+    expect(auth.setSession).toHaveBeenCalledWith({ access_token: 'access', refresh_token: 'refresh' });
+  });
+
+  it('exchanges the Apple identity token and stores the first available name', async () => {
+    const session = { access_token: 'apple-access' };
+    const auth = {
+      signInWithIdToken: vi.fn(async () => ({ data: { session }, error: null })),
+      updateUser: vi.fn(async () => ({ data: {}, error: null })),
+    };
+    const result = await signInWithAppleIdToken({
+      identityToken: 'identity-token',
+      authorizationCode: 'authorization-code',
+      nonce: 'raw-nonce',
+      fullName: { givenName: 'Atlas', familyName: 'Apprentice' },
+    }, { auth } as any);
+    expect(result.data).toBe(session);
+    expect(auth.signInWithIdToken).toHaveBeenCalledWith({
+      provider: 'apple',
+      token: 'identity-token',
+      nonce: 'raw-nonce',
+      access_token: 'authorization-code',
+    });
+    expect(auth.updateUser).toHaveBeenCalledWith({
+      data: { full_name: 'Atlas Apprentice', given_name: 'Atlas', family_name: 'Apprentice' },
+    });
   });
 });
 

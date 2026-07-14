@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -18,6 +19,15 @@ export default function AuthScreen() {
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/favorites';
   const pendingTrackJobId = validatedPendingTrackJobId(params);
   const pendingSaveJobId = validatedPendingSaveJobId(params);
+  const continuationAction = pendingTrackJobId ? 'track' : pendingSaveJobId ? 'save' : undefined;
+  const continuationJobId = pendingTrackJobId ?? pendingSaveJobId ?? undefined;
+  const redirectTo = Linking.createURL('auth-callback', {
+    queryParams: {
+      returnTo,
+      ...(continuationAction ? { pendingAction: continuationAction } : {}),
+      ...(continuationJobId ? { jobId: continuationJobId } : {}),
+    },
+  });
 
   const complete = async () => {
     setError(null);
@@ -42,7 +52,7 @@ export default function AuthScreen() {
         </View>
         <View style={styles.formGroup}>
           {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-          <AuthForm onSuccess={() => void complete()} />
+          <AuthForm onSuccess={() => void complete()} redirectTo={redirectTo} />
         </View>
       </ScrollView>
       <Stack.Screen options={{ title: t(locale, 'auth.account'), headerShown: true, headerShadowVisible: false }} />

@@ -15,6 +15,7 @@ type RawOnboardingParams = {
 
 export type PostOnboardingDestination =
   | '/'
+  | '/favorites'
   | '/atlas'
   | `/job/${string}`
   | {
