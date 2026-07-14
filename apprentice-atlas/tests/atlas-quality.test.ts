@@ -32,4 +32,13 @@ describe('My Atlas quality contracts', () => {
     expect(screen).toMatch(/atlas\.updatedFallback/);
     expect(messages.match(/'atlas\.updatedFallback':/g)).toHaveLength(2);
   });
+
+  it('opens every application row in its application sheet by the stored job id', () => {
+    const screen = read('src/app/(tabs)/atlas.tsx');
+    const applicationRow = screen.slice(screen.indexOf('function ApplicationRow'), screen.indexOf('function PreferenceRow'));
+
+    expect(applicationRow).toMatch(/accessibilityRole="button"/);
+    expect(applicationRow).not.toMatch(/disabled=\{!job\}/);
+    expect(applicationRow).toMatch(/onPress=\{\(\) => router\.push\(\{ pathname: '\/application\/\[jobId\]', params: \{ jobId: application\.jobId \} \} as never\)\}/);
+  });
 });

@@ -229,11 +229,9 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
   const title = job?.title ?? t(locale, 'atlas.unavailable');
   return (
     <Pressable
-      accessibilityLabel={job ? `${job.title}, ${status}` : t(locale, 'atlas.unavailable')}
-      accessibilityRole={job ? 'button' : undefined}
-      accessibilityState={{ disabled: !job }}
-      disabled={!job}
-      onPress={() => job && router.push(`/job/${job.id}`)}
+      accessibilityLabel={`${title}, ${status}`}
+      accessibilityRole="button"
+      onPress={() => router.push({ pathname: '/application/[jobId]', params: { jobId: application.jobId } } as never)}
       style={({ pressed }) => [styles.applicationRow, !last && styles.rowDivider, pressed && styles.pressed]}
     >
       <View style={styles.applicationIcon}>
@@ -247,7 +245,7 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
       <View style={[styles.statusPill, application.status === 'offer' && styles.statusSuccess, application.status === 'closed' && styles.statusMuted]}>
         <Text style={[styles.statusText, application.status === 'offer' && styles.statusSuccessText, application.status === 'closed' && styles.statusMutedText]}>{status}</Text>
       </View>
-      {job && <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={15} tintColor={Palette.textSecondary} />}
+      <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={15} tintColor={Palette.textSecondary} />
     </Pressable>
   );
 }
