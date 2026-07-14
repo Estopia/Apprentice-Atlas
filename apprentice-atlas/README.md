@@ -37,6 +37,8 @@ npx expo start --dev-client
 
 ## Supabase setup and migrations
 
+The hosted project is `apprentice-atlas` (`zslmbyxmvyzuropzxjjy`) in `eu-central-1`. The local `.env.local` is configured with its public URL and publishable key. Never commit that file or any server secret.
+
 The client only needs the public URL and anon key in `.env.local`. Start a local Supabase stack from this directory with Docker available:
 
 ```sh
@@ -60,6 +62,7 @@ Clean databases apply every timestamp migration in filename order, then `supabas
 10. `20260714150000_enforce_source_listing_urls.sql`
 11. `20260714160000_enforce_application_urls.sql`
 12. `20260714170000_user_assets_storage.sql`
+13. `20260714180000_index_favorites_job_id.sql`
 
 The preflight is required before the locked schema hardening migration because it repairs legacy whitespace/blanks and normalized source collisions. The guarded post-release migration is safe on clean data and completes compatibility, audit, and constraint hardening. The local-only `supabase/fixtures/preflight_source_provenance.sql` fixture is for testing the legacy repair path; load it after the initial schema and before the preflight, then apply the remaining timestamp migrations. Never load fixtures or `seed.sql` into production.
 
@@ -74,6 +77,8 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
   ```sh
   npx supabase secrets set OPENAI_API_KEY="<key>" SUPABASE_SERVICE_ROLE_KEY="<service-role-key>" OPENAI_MODEL="gpt-5.6"
   ```
+
+The hosted `ai-explain`, `ai-qa`, and `sync-jobs` Edge Functions are deployed. Before using AI or live source synchronization, add the server-only OpenAI, UK, and optional BA credentials through Supabase project secrets; the public app key is already configured locally.
 
 - AI explanations and Q&A are grounded in the selected job record. Q&A is limited server-side to two questions per job and opaque app session. Do not enter sensitive personal data into questions.
 - UK ingestion uses the documented official Display Advert API v2 endpoint (`https://api.apprenticeships.education.gov.uk/vacancies/vacancy`) and v2 request contract. That documentation reference is separate from runtime activation: synchronization refuses to run unless the server-only `UK_API_CONTRACT_CONFIRMED=true` flag is explicitly configured alongside the API key. Germany BA ingestion is likewise disabled by default and requires server-only `BA_API_ENABLED=true`, `BA_API_URL`, and `BA_API_KEY`. No website scraping or guessed API contract is allowed.

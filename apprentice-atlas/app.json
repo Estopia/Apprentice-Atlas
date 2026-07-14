@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.estopiaengineering.apprenticeatlas",
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Apprentice Atlas uses your location to find nearby apprenticeship opportunities."
+        "NSLocationWhenInUseUsageDescription": "Apprentice Atlas uses your location to find nearby apprenticeship opportunities.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -24,7 +25,10 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -35,7 +39,9 @@
       "expo-location",
       [
         "expo-splash-screen",
-        { "backgroundColor": "#173B35" }
+        {
+          "backgroundColor": "#173B35"
+        }
       ]
     ],
     "experiments": {

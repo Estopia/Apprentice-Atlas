@@ -25,6 +25,7 @@ npx supabase db reset
 10. `20260714150000_enforce_source_listing_urls.sql` — HTTP(S) source URL checks and sync validation for jobs and source listings.
 11. `20260714160000_enforce_application_urls.sql` — optional strict HTTP(S) application destination checks for jobs.
 12. `20260714170000_user_assets_storage.sql` — private `user-assets` Storage bucket with owner-scoped policies for future authenticated-user assets.
+13. `20260714180000_index_favorites_job_id.sql` — covering index for favorite-to-job lookups.
 
 The preflight is required before locked `20260713092000` for existing imports because it repairs legacy source whitespace/blanks and normalized collisions; it is guarded and harmless on clean data. `20260713093000` is also guarded and can finish compatible intermediate schemas. Do not edit an existing migration or insert a new migration between these files; append later migrations with a newer timestamp. To inspect or validate migration state, use `npx supabase migration list --local` and `npx supabase db lint --local` where supported. Docker (or another Docker-compatible runtime) is required for the local stack.
 
