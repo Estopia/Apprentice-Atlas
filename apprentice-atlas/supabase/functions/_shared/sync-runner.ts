@@ -80,8 +80,10 @@ export async function runSync(options: SyncRunnerOptions) {
     // Expiration is reached only by a complete run and is itself one RPC
     // transaction across source retirement and related job expiration.
     if (complete) counts.expired_count = await options.repository.expireStaleListings(options.provider, startedAt);
-    await options.repository.finishRun(run.id, { ...counts, status: errors.length ? 'partial' : 'succeeded', error_count: errors.length, error_details: errors.length ? errors : null, finished_at: finishedAt() });
-    return { provider: options.provider, status: errors.length ? 'partial' as const : 'succeeded' as const, ...counts, errors };
+    counts.error_count = errors.length;
+    const status = errors.length ? ('partial' as const) : ('succeeded' as const);
+    await options.repository.finishRun(run.id, { ...counts, status, error_details: errors.length ? errors : null, finished_at: finishedAt() });
+    return { provider: options.provider, status, ...counts, errors };
   } catch (error) {
     const errorCode = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'SYNC_ERROR';
     const details = [{ code: errorCode, message: error instanceof Error ? error.message : String(error) }];

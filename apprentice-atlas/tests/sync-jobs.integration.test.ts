@@ -117,8 +117,13 @@ describe('sync-jobs lifecycle with a mocked repository', () => {
   it('preserves stale listings when the page bound makes the run incomplete', async () => {
     const repository = new MockRepository();
     await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });
-    await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['new'], nextCursor: '1', complete: false }, { ids: ['never-reached'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-02T00:00:00.000Z', finishedAt: () => '2026-01-02T00:00:00.000Z', maxPages: 1, pageDelayMs: 0 });
+    const result = await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['new'], nextCursor: '1', complete: false }, { ids: ['never-reached'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-02T00:00:00.000Z', finishedAt: () => '2026-01-02T00:00:00.000Z', maxPages: 1, pageDelayMs: 0 });
     expect(repository.runs[1].status).toBe('partial');
+    expect(result.status).toBe('partial');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].code).toBe('PAGE_BOUND_REACHED');
+    expect(result.error_count).toBe(result.errors.length);
+    expect(repository.runs[1].payload).toMatchObject({ error_count: result.errors.length, error_details: result.errors });
     expect(repository.jobs.get('generated-old')?.status).toBe('active');
     expect(repository.operations.filter((operation) => operation.startsWith('expire:'))).toHaveLength(1);
   });
