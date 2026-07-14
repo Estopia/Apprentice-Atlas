@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const migrationPath = 'supabase/migrations/20260714190000_application_tracker.sql';
 const hardeningMigrationPath = 'supabase/migrations/20260714191000_harden_application_privileges.sql';
+const ciWorkflowPath = '../.github/workflows/test.yml';
 
 function migration(): string {
   return readFileSync(migrationPath, 'utf8');
@@ -79,5 +80,11 @@ describe('application tracker schema and permissions', () => {
     expect(sql).not.toMatch(/on public\.applications for all/i);
     expect(sql).not.toMatch(/on public\.applications[\s\S]*?\bto\s+(anon|public)\b/i);
     expect(sql).not.toMatch(/(?:using|with check)\s*\(\s*(?:true|1\s*=\s*1)\s*\)/i);
+  });
+
+  it('gives PostgreSQL integration tests a session-aware auth.uid mock', () => {
+    const workflow = readFileSync(ciWorkflowPath, 'utf8');
+    expect(workflow.match(/current_setting\('request\.jwt\.claim\.sub', true\)/g)).toHaveLength(2);
+    expect(workflow).not.toMatch(/CREATE FUNCTION auth\.uid\(\) RETURNS uuid\s+LANGUAGE sql STABLE AS \$\$ SELECT null::uuid \$\$/i);
   });
 });

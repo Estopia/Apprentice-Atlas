@@ -49,7 +49,9 @@ jobs:
           CREATE SCHEMA auth;
           CREATE TABLE auth.users (id uuid primary key);
           CREATE FUNCTION auth.uid() RETURNS uuid
-          LANGUAGE sql STABLE AS $$ SELECT null::uuid $$;
+          LANGUAGE sql STABLE AS $$
+            SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
           SQL
       - name: Apply timestamped migrations
         env:
@@ -108,7 +110,9 @@ jobs:
           CREATE SCHEMA auth;
           CREATE TABLE auth.users (id uuid primary key);
           CREATE FUNCTION auth.uid() RETURNS uuid
-          LANGUAGE sql STABLE AS $$ SELECT null::uuid $$;
+          LANGUAGE sql STABLE AS $$
+            SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
           SQL
       - name: Apply initial schema and provenance fixture
         env:
