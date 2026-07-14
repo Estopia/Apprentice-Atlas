@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { localizeJobError, t } from '../src/lib/i18n';
 import { getBoundingBox, hasMapPosition, isWithinRadius, mergeJobs, serializeBoundingBox } from '../src/lib/job-filters';
-import { getJobsMapRegion } from '../src/lib/map-region';
+import * as mapRegion from '../src/lib/map-region';
 import { shouldCommitRequest } from '../src/lib/request-guard';
 
 describe('discovery client helpers', () => {
@@ -42,6 +42,15 @@ describe('discovery client helpers', () => {
     expect(shouldCommitRequest(1, 2, controller.signal)).toBe(false);
     controller.abort();
     expect(shouldCommitRequest(2, 2, controller.signal)).toBe(false);
-    expect(getJobsMapRegion([{ latitude: 52, longitude: 13 }, { latitude: 53, longitude: 14 }])).toMatchObject({ latitude: 52.5, longitude: 13.5 });
+    expect(mapRegion.getJobsMapRegion([{ latitude: 52, longitude: 13 }, { latitude: 53, longitude: 14 }])).toMatchObject({ latitude: 52.5, longitude: 13.5 });
+  });
+
+  it('refreshes map clusters only after a meaningful pan or zoom', () => {
+    const shouldRefresh = (mapRegion as typeof mapRegion & { hasMeaningfulRegionChange?: (previous: mapRegion.JobMapRegion, next: mapRegion.JobMapRegion) => boolean }).hasMeaningfulRegionChange;
+    const previous = { latitude: 52, longitude: 13, latitudeDelta: 1, longitudeDelta: 1 };
+    expect(shouldRefresh).toBeTypeOf('function');
+    expect(shouldRefresh?.(previous, { latitude: 52.04, longitude: 13.03, latitudeDelta: 1.05, longitudeDelta: 1.04 })).toBe(false);
+    expect(shouldRefresh?.(previous, { ...previous, latitude: 52.15 })).toBe(true);
+    expect(shouldRefresh?.(previous, { ...previous, latitudeDelta: 0.8, longitudeDelta: 0.8 })).toBe(true);
   });
 });

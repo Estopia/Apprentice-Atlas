@@ -7,7 +7,7 @@ import { Palette } from '@/constants/theme';
 import { t, useLocale } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
 import { clusterJobsForRegion, type JobCluster, type PositionedJob } from '@/lib/map-clusters';
-import { getJobsMapRegion, type JobMapRegion } from '@/lib/map-region';
+import { getJobsMapRegion, hasMeaningfulRegionChange, type JobMapRegion } from '@/lib/map-region';
 import type { Job } from '@/types/jobs';
 
 export type JobMapProps = { jobs: Job[]; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (center: { latitude: number; longitude: number }) => void };
@@ -18,6 +18,7 @@ export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }
   const markers = useMemo(() => jobs.filter(hasMapPosition) as PositionedJob[], [jobs]);
   const region = useMemo(() => getJobsMapRegion(jobs), [jobs]);
   const [visibleRegion, setVisibleRegion] = useState<JobMapRegion | null>(region);
+  const clusteredRegion = useRef<JobMapRegion | null>(region);
   const clusters = useMemo(() => visibleRegion ? clusterJobsForRegion(markers, visibleRegion) : [], [markers, visibleRegion]);
   const displayClusters = useMemo(() => {
     if (!visibleRegion || visibleRegion.latitudeDelta > 0.025) return clusters;
@@ -78,12 +79,16 @@ export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }
       pitchEnabled={false}
       rotateEnabled={false}
       onRegionChangeComplete={(next) => {
-        setVisibleRegion(next);
+        const shouldRefresh = !clusteredRegion.current || hasMeaningfulRegionChange(clusteredRegion.current, next);
+        if (shouldRefresh) {
+          clusteredRegion.current = next;
+          setVisibleRegion(next);
+        }
         if (ignoreNextRegionChange.current) {
           ignoreNextRegionChange.current = false;
           return;
         }
-        onRegionChange?.({ latitude: next.latitude, longitude: next.longitude });
+        if (shouldRefresh) onRegionChange?.({ latitude: next.latitude, longitude: next.longitude });
       }}
       showsCompass={false}
       showsMyLocationButton={false}
