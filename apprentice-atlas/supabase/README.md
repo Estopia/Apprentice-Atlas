@@ -24,6 +24,7 @@ npx supabase db reset
 9. `20260714140000_add_favorite_rpc.sql` — authenticated-owner favorite add/remove RPCs.
 10. `20260714150000_enforce_source_listing_urls.sql` — HTTP(S) source URL checks and sync validation for jobs and source listings.
 11. `20260714160000_enforce_application_urls.sql` — optional strict HTTP(S) application destination checks for jobs.
+12. `20260714170000_user_assets_storage.sql` — private `user-assets` Storage bucket with owner-scoped policies for future authenticated-user assets.
 
 The preflight is required before locked `20260713092000` for existing imports because it repairs legacy source whitespace/blanks and normalized collisions; it is guarded and harmless on clean data. `20260713093000` is also guarded and can finish compatible intermediate schemas. Do not edit an existing migration or insert a new migration between these files; append later migrations with a newer timestamp. To inspect or validate migration state, use `npx supabase migration list --local` and `npx supabase db lint --local` where supported. Docker (or another Docker-compatible runtime) is required for the local stack.
 
@@ -58,6 +59,8 @@ Production jobs may only be ingested by trusted Supabase Edge Functions or other
 No-scraping rule: Apprentice Atlas must not scrape either source's public website or bypass authentication, rate limits, robots controls, or terms of use. Ingestion is permitted only through a confirmed, authorized official API/feed or an explicitly approved server-side integration. Every adapter must keep credentials server-side, preserve the canonical source URL, and record the provider external ID.
 
 RLS exposes only active jobs and published translations to anonymous/authenticated clients. Favorites are private to the authenticated owner. `job_sources`, `sync_runs`, and cached AI content have no client read policies; ingestion and AI functions are responsible for privileged access.
+
+Storage includes a private `user-assets` bucket for future avatars or uploads. Authenticated users may insert, read, update, and delete only objects whose `storage.objects.owner_id` matches their `auth.uid()`. There is intentionally no anonymous or public read policy; the bucket remains private and its policies are applied by the migration above. No additional environment variable is required for this bucket. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
 
 AI Q&A uses `job_ai_qa_sessions` keyed by `(job_id, session_id)`. The client generates an opaque UUID per app session and the service-role-only `consume_job_ai_question` RPC atomically permits only the first two questions for each job/session pair. A new session UUID resets the allowance; no login is required and the client-supplied display count is not trusted for enforcement.
 
