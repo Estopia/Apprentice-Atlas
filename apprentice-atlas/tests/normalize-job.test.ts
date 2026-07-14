@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeJob } from '../supabase/functions/_shared/normalize-job';
 import { dedupeByExternalId } from '../supabase/functions/_shared/source-adapter';
-import { UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-apprenticeship-adapter';
+import { UK_OFFICIAL_CONTRACT_UNCONFIRMED, UkApprenticeshipAdapter } from '../supabase/functions/_shared/uk-apprenticeship-adapter';
 import { BA_OFFICIAL_CONTRACT_UNCONFIRMED, createBaAdapter } from '../supabase/functions/_shared/ba-adapter';
 
 const validRecord = {
@@ -54,7 +54,7 @@ describe('normalizeJob', () => {
   });
 
   it('accepts nationwide listings without addresses or coordinates', () => {
-    const normalized = normalizeJob({ ...validRecord, addresses: undefined, vacancyUrl: undefined }, { provider: 'test', defaultCountry: 'United Kingdom' });
+    const normalized = normalizeJob({ ...validRecord, addresses: undefined }, { provider: 'test', defaultCountry: 'United Kingdom' });
     expect(normalized?.job.latitude).toBeNull();
     expect(normalized?.job.longitude).toBeNull();
     expect(normalized?.job.city).toBe('Unknown');
@@ -62,11 +62,14 @@ describe('normalizeJob', () => {
 
   it('never copies an application destination into the official source URL', () => {
     const applicationOnly = normalizeJob({ ...validRecord, vacancyUrl: undefined, sourceUrl: undefined, applicationUrl: 'https://example.test/apply-only' }, { provider: 'test' });
-    expect(applicationOnly?.job.sourceUrl).toBeNull();
-    expect(applicationOnly?.job.applicationUrl).toBe('https://example.test/apply-only');
+    expect(applicationOnly).toBeNull();
     const missingBoth = normalizeJob({ ...validRecord, vacancyUrl: undefined, sourceUrl: undefined, applicationUrl: undefined }, { provider: 'test' });
-    expect(missingBoth?.job.sourceUrl).toBeNull();
-    expect(missingBoth?.job.applicationUrl).toBeNull();
+    expect(missingBoth).toBeNull();
+  });
+
+  it('rejects a blank or malformed official listing URL without copying applicationUrl', () => {
+    expect(normalizeJob({ ...validRecord, vacancyUrl: ' ', sourceUrl: undefined }, { provider: 'test' })).toBeNull();
+    expect(normalizeJob({ ...validRecord, vacancyUrl: 'not-a-url', sourceUrl: undefined }, { provider: 'test' })).toBeNull();
   });
 
   it('keeps the last occurrence of duplicate external IDs', () => {
@@ -78,7 +81,7 @@ describe('official source adapters', () => {
   it('uses the UK API key and v2 headers and extracts official URL/id', async () => {
     let request: Request | URL | string | undefined;
     let init: RequestInit | undefined;
-    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', pageSize: 2, fetcher: async (input, options) => {
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true, pageSize: 2, fetcher: async (input, options) => {
       request = input;
       init = options;
       return new Response(JSON.stringify({ vacancies: [validRecord], totalPages: 2 }), { status: 200 });
@@ -99,22 +102,26 @@ describe('official source adapters', () => {
   });
 
   it('completes UK pagination at totalPages', async () => {
-    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 2 }), { status: 200 }) });
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true, fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 2 }), { status: 200 }) });
     const page = await adapter.fetchPage('2');
     expect(page.nextCursor).toBeNull();
     expect(page.complete).toBe(true);
   });
 
   it('treats totalPages zero as a completed empty sync', async () => {
-    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 0 }), { status: 200 }) });
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true, fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 0 }), { status: 200 }) });
     await expect(adapter.fetchPage(null)).resolves.toEqual({ records: [], nextCursor: null, complete: true });
   });
 
   it('fails when UK totalPages metadata is missing or malformed', async () => {
     for (const metadata of [{}, { totalPages: 'not-a-number' }, { totalPages: 1.5 }]) {
-      const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [], ...metadata }), { status: 200 }) });
+      const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true, fetcher: async () => new Response(JSON.stringify({ vacancies: [], ...metadata }), { status: 200 }) });
       await expect(adapter.fetchPage(null)).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
     }
+  });
+
+  it('refuses UK synchronization until the official contract is explicitly confirmed', () => {
+    expect(() => new UkApprenticeshipAdapter({ apiKey: 'secret' })).toThrowError(expect.objectContaining({ code: UK_OFFICIAL_CONTRACT_UNCONFIRMED }));
   });
 
   it('fails BA ingestion clearly when its official read configuration is absent', async () => {

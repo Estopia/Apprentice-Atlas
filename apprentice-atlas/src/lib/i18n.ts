@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type Locale = 'de' | 'en';
 
@@ -209,6 +210,22 @@ const localeMessages: Record<Locale, Record<TranslationKey, string>> = messages;
 
 let currentLocale: Locale = 'de';
 const listeners = new Set<() => void>();
+export const LOCALE_STORAGE_KEY = 'apprentice-atlas.locale';
+
+const isLocale = (value: string | null): value is Locale => value === 'de' || value === 'en';
+
+export async function hydrateLocale(): Promise<Locale> {
+  try {
+    const stored = await AsyncStorage.getItem(LOCALE_STORAGE_KEY);
+    if (isLocale(stored) && stored !== currentLocale) {
+      currentLocale = stored;
+      listeners.forEach((listener) => listener());
+    }
+  } catch {
+    // DE is the intentional fallback when platform storage is unavailable.
+  }
+  return currentLocale;
+}
 
 export function getLocale(): Locale {
   return currentLocale;
@@ -218,6 +235,7 @@ export function setLocale(locale: Locale): void {
   if (locale === currentLocale) return;
   currentLocale = locale;
   listeners.forEach((listener) => listener());
+  void AsyncStorage.setItem(LOCALE_STORAGE_KEY, locale).catch(() => undefined);
 }
 
 export function t(locale: Locale, key: TranslationKey): string {

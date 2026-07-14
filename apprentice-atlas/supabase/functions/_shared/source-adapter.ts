@@ -12,7 +12,7 @@ export interface SourceRecord {
 
 export interface NormalizedSourceRecord {
   externalId: string;
-  sourceUrl: string | null;
+  sourceUrl: string;
   job: import('./normalize-job.ts').CanonicalJob;
   rawRecord: SourceRecord;
 }

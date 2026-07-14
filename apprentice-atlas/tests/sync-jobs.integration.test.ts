@@ -172,7 +172,7 @@ describe('sync-jobs lifecycle with a mocked repository', () => {
   it('fails malformed UK pagination before expiration', async () => {
     const repository = new MockRepository();
     await runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter: adapterFromIds([{ ids: ['old'], nextCursor: null, complete: true }]), repository, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: () => '2026-01-01T00:00:00.000Z', pageDelayMs: 0 });
-    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', fetcher: async () => new Response(JSON.stringify({ vacancies: [] }), { status: 200 }) });
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true, fetcher: async () => new Response(JSON.stringify({ vacancies: [] }), { status: 200 }) });
     await expect(runSync({ provider: 'find-apprenticeship', sourceKey: 'find-apprenticeship:default', adapter, repository, startedAt: '2026-01-02T00:00:00.000Z', pageDelayMs: 0 })).rejects.toMatchObject({ code: 'SOURCE_PAGINATION_ERROR' });
     expect(repository.jobs.get('generated-old')?.status).toBe('active');
     expect(repository.runs[1].status).toBe('failed');

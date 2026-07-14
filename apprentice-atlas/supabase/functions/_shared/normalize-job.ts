@@ -80,7 +80,9 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
     ?? pickNested(firstAddress, ['country', 'countryName'])
     ?? pickNested(nestedAddress, ['country', 'countryName']);
   const coordinates = coordinatePair(record);
-  if (!externalId || !title || !company || coordinates === 'invalid') return null;
+  // Ingested listings must retain a link to the official listing itself. An
+  // application destination is deliberately independent and may be absent.
+  if (!externalId || !sourceUrl || !/^https?:\/\/\S+$/i.test(sourceUrl) || !title || !company || coordinates === 'invalid') return null;
 
   const now = new Date().toISOString();
   const normalizedCountry = country ?? options.defaultCountry ?? 'Unknown';

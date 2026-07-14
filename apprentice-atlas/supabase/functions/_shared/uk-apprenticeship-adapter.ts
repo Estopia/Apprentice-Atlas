@@ -1,6 +1,8 @@
 import { normalizeJob } from './normalize-job.ts';
 import { extractRecords, firstString, getEnv, SourceConfigurationError, SourceFetchError, SourcePaginationError, type SourceAdapter, type SourceRecord, type SourcePage, type NormalizedSourceRecord } from './source-adapter.ts';
 
+export const UK_OFFICIAL_CONTRACT_UNCONFIRMED = 'UK_OFFICIAL_CONTRACT_UNCONFIRMED';
+
 export interface UkApprenticeshipRecord extends SourceRecord {}
 
 export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRecord> {
@@ -10,7 +12,9 @@ export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRe
   private readonly pageSize: number;
   private readonly fetcher: typeof fetch;
 
-  constructor(options: { endpoint?: string; apiKey?: string; pageSize?: number; fetcher?: typeof fetch } = {}) {
+  constructor(options: { endpoint?: string; apiKey?: string; pageSize?: number; fetcher?: typeof fetch; contractConfirmed?: boolean } = {}) {
+    const contractConfirmed = options.contractConfirmed ?? getEnv('UK_API_CONTRACT_CONFIRMED') === 'true';
+    if (!contractConfirmed) throw new SourceConfigurationError('UK synchronization is disabled until the official Display Advert API v2 contract is explicitly confirmed (set UK_API_CONTRACT_CONFIRMED=true).', UK_OFFICIAL_CONTRACT_UNCONFIRMED);
     this.endpoint = options.endpoint ?? getEnv('UK_APPRENTICESHIPS_API_URL') ?? 'https://api.apprenticeships.education.gov.uk/vacancies/vacancy';
     this.apiKey = options.apiKey ?? getEnv('UK_APPRENTICESHIPS_API_KEY') ?? getEnv('UK_APRENTICESHIPS_API_KEY') ?? '';
     this.pageSize = Math.min(Math.max(options.pageSize ?? 50, 1), 100);
@@ -44,7 +48,7 @@ export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRe
     if (!normalized) return null;
     const officialId = firstString(record, ['vacancyReference', 'vacancyReferenceNumber', 'vacancyId', 'id', 'externalId']);
     const officialUrl = firstString(record, ['vacancyUrl', 'sourceUrl', 'source_url']);
-    return officialId ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, job: { ...normalized.job, sourceUrl: officialUrl } } : null;
+    return officialId && officialUrl ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, job: { ...normalized.job, sourceUrl: officialUrl } } : null;
   }
 }
 

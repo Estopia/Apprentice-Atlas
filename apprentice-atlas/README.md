@@ -73,7 +73,7 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
   ```
 
 - AI explanations and Q&A are grounded in the selected job record. Q&A is limited server-side to two questions per job and opaque app session. Do not enter sensitive personal data into questions.
-- UK ingestion is pending confirmation of the official Display Advert API v2 contract and access details. The BA read API contract, availability, authentication, and reuse terms are also pending direct confirmation. No website scraping or guessed API contract is allowed.
+- UK ingestion uses the documented official Display Advert API v2 endpoint (`https://api.apprenticeships.education.gov.uk/vacancies/vacancy`) and v2 request contract. That documentation reference is separate from runtime activation: synchronization refuses to run unless the server-only `UK_API_CONTRACT_CONFIRMED=true` flag is explicitly configured alongside the API key. The BA read API remains disabled until its official contract, availability, authentication, and reuse terms are directly confirmed. No website scraping or guessed API contract is allowed.
 
 ## Codex and GPT-5.6 roles
 
