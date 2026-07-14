@@ -1,26 +1,39 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
+export const Palette = {
+  blue: '#155EEF',
+  bluePressed: '#004EEB',
+  blueDark: '#081F4D',
+  blueSoft: '#EAF1FF',
+  background: '#FFFFFF',
+  surface: '#F5F7FB',
+  surfaceStrong: '#EDF2F8',
+  text: '#0B1B3A',
+  textSecondary: '#64748B',
+  border: '#E2E8F0',
+  success: '#22A06B',
+  coral: '#FF6B57',
+  lime: '#83C93C',
+  danger: '#D92D20',
+  white: '#FFFFFF',
+} as const;
+
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: Palette.text,
+    background: Palette.background,
+    backgroundElement: Palette.surface,
+    backgroundSelected: Palette.blueSoft,
+    textSecondary: Palette.textSecondary,
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: Palette.text,
+    background: Palette.background,
+    backgroundElement: Palette.surface,
+    backgroundSelected: Palette.blueSoft,
+    textSecondary: Palette.textSecondary,
   },
 } as const;
 
@@ -28,13 +41,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -61,5 +70,21 @@ export const Spacing = {
   six: 64,
 } as const;
 
+export const Radius = {
+  small: 12,
+  medium: 18,
+  large: 24,
+  pill: 999,
+} as const;
+
+export const Shadows = {
+  floating: {
+    boxShadow: '0 12px 32px rgba(8, 31, 77, 0.16)',
+  },
+  subtle: {
+    boxShadow: '0 6px 18px rgba(8, 31, 77, 0.08)',
+  },
+} as const;
+
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const MaxContentWidth = 900;

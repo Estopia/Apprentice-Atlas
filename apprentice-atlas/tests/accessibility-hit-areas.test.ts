@@ -7,7 +7,7 @@ describe('interactive hit-area contracts', () => {
   it('keeps the reviewed web controls at explicit 44x44 minimums with semantics', () => {
     const controls = [
       ['src/components/jobs/job-qa.tsx', /accessibilityRole="button"[\s\S]+minHeight: 44[\s\S]+minWidth: 44/],
-      ['src/app/favorites.tsx', /saved.remove[\s\S]+minHeight: 44[\s\S]+minWidth: 44/],
+      ['src/app/(tabs)/favorites.tsx', /saved.remove[\s\S]+minHeight: 44[\s\S]+minWidth: 44/],
       ['src/app/job/[id].tsx', /actions\.back[\s\S]+backButton:[\s\S]+minHeight: 44[\s\S]+minWidth: 44/],
       ['src/components/app-tabs.web.tsx', /accessibilityRole="tab"[\s\S]+selected[\s\S]+minHeight: 44[\s\S]+minWidth: 44/],
       ['src/components/map/job-map.web.tsx', /accessibilityRole="button"[\s\S]+accessibilityState=\{\{ selected:[\s\S]+minHeight: 44[\s\S]+minWidth: 44/],

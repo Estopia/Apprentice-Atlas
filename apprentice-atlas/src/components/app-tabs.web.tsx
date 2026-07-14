@@ -1,18 +1,9 @@
-import {
-  Tabs,
-  TabList,
-  TabTrigger,
-  TabSlot,
-  TabTriggerSlotProps,
-  TabListProps,
-} from 'expo-router/ui';
-import { Pressable, View, StyleSheet } from 'react-native';
+import { TabList, TabSlot, Tabs, TabTrigger, type TabListProps, type TabTriggerSlotProps } from 'expo-router/ui';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ThemedText } from './themed-text';
-import { ThemedView } from './themed-view';
-
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useLocale, t } from '@/lib/i18n';
+import { AppIcon } from '@/components/ui/app-icon';
+import { Palette, Radius, Shadows } from '@/constants/theme';
+import { t, useLocale } from '@/lib/i18n';
 
 export default function AppTabs() {
   const [locale] = useLocale();
@@ -21,89 +12,33 @@ export default function AppTabs() {
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
-          <TabTrigger name="index" href="/" asChild>
-          <TabButton>{t(locale, 'tabs.discover')}</TabButton>
-          </TabTrigger>
-          <TabTrigger name="favorites" href="/favorites" asChild>
-          <TabButton>{t(locale, 'tabs.saved')}</TabButton>
-          </TabTrigger>
+          <TabTrigger name="index" href="/" asChild><TabButton icon="map">{t(locale, 'tabs.discover')}</TabButton></TabTrigger>
+          <TabTrigger name="favorites" href="/favorites" asChild><TabButton icon="bookmark">{t(locale, 'tabs.saved')}</TabButton></TabTrigger>
         </CustomTabList>
       </TabList>
     </Tabs>
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+function TabButton({ children, isFocused, icon, ...props }: TabTriggerSlotProps & { icon: 'map' | 'bookmark' }) {
   return (
-    <Pressable {...props} accessibilityRole="tab" accessibilityState={{ selected: Boolean(isFocused) }} style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}>
-      <ThemedView
-        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
-          {children}
-        </ThemedText>
-      </ThemedView>
+    <Pressable {...props} accessibilityRole="tab" accessibilityState={{ selected: Boolean(isFocused) }} style={({ pressed }) => [styles.tabButton, isFocused && styles.tabButtonActive, pressed && styles.pressed]}>
+      <AppIcon name={icon === 'map' ? { ios: 'map.fill', android: 'map', web: 'map' } : { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }} size={18} tintColor={isFocused ? Palette.white : Palette.textSecondary} />
+      <Text style={[styles.tabText, isFocused && styles.tabTextActive]}>{children}</Text>
     </Pressable>
   );
 }
 
-export function CustomTabList(props: TabListProps) {
-  return (
-    <View {...props} style={styles.tabListContainer}>
-      <ThemedView type="backgroundElement" style={styles.innerContainer}>
-          <ThemedText type="smallBold" style={styles.brandText}>
-          Apprentice Atlas
-        </ThemedText>
-
-        {props.children}
-
-      </ThemedView>
-    </View>
-  );
+function CustomTabList(props: TabListProps) {
+  return <View {...props} style={styles.tabListContainer}><View style={[styles.innerContainer, Shadows.floating]}>{props.children}</View></View>;
 }
 
 const styles = StyleSheet.create({
-  tabListContainer: {
-    position: 'absolute',
-    width: '100%',
-    padding: Spacing.three,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  innerContainer: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.five,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexGrow: 1,
-    gap: Spacing.two,
-    maxWidth: MaxContentWidth,
-  },
-  brandText: {
-    marginRight: 'auto',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  tabButtonView: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-  },
-  tabButton: {
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-  },
-  externalPressable: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.one,
-    marginLeft: Spacing.three,
-  },
+  tabListContainer: { position: 'absolute', left: 0, right: 0, bottom: 18, zIndex: 50, alignItems: 'center', pointerEvents: 'box-none' },
+  innerContainer: { flexDirection: 'row', padding: 5, gap: 4, borderRadius: Radius.pill, backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
+  tabButton: { height: 46, minHeight: 44, width: 120, minWidth: 44, paddingHorizontal: 18, borderRadius: Radius.pill, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  tabButtonActive: { backgroundColor: Palette.blue },
+  tabText: { color: Palette.textSecondary, fontSize: 13, fontWeight: '800' },
+  tabTextActive: { color: Palette.white },
+  pressed: { opacity: 0.72 },
 });

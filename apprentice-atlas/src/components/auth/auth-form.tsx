@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { signIn, signUp, getReadableAuthError, type AuthError } from '@/lib/auth';
-import { useLocale, t } from '@/lib/i18n';
+import { Palette, Radius } from '@/constants/theme';
+import { getReadableAuthError, signIn, signUp, type AuthError } from '@/lib/auth';
+import { t, useLocale } from '@/lib/i18n';
 
 export function AuthForm({ onSuccess }: { onSuccess: (mode: 'login' | 'signup') => void }) {
   const [locale] = useLocale();
@@ -28,15 +29,35 @@ export function AuthForm({ onSuccess }: { onSuccess: (mode: 'login' | 'signup') 
     setLoading(false);
   };
 
-  return <View style={styles.form} accessibilityLabel={t(locale, 'auth.form')}>
-    <View style={styles.switcher}><ModeButton active={mode === 'login'} label={t(locale, 'auth.login')} onPress={() => setMode('login')} /><ModeButton active={mode === 'signup'} label={t(locale, 'auth.signup')} onPress={() => setMode('signup')} /></View>
-    <TextInput accessibilityLabel={t(locale, 'auth.email')} autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder={t(locale, 'auth.email')} style={styles.input} />
-    <TextInput accessibilityLabel={t(locale, 'auth.password')} secureTextEntry value={password} onChangeText={setPassword} placeholder={t(locale, 'auth.password')} style={styles.input} />
-    {error && <Text accessibilityRole="alert" style={styles.error}>{getReadableAuthError(error, locale)}</Text>}
-    {notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
-    <Pressable accessibilityRole="button" accessibilityLabel={mode === 'login' ? t(locale, 'auth.login') : t(locale, 'auth.signup')} disabled={loading} onPress={() => void submit()} style={styles.submit}><Text style={styles.submitText}>{loading ? t(locale, 'auth.working') : mode === 'login' ? t(locale, 'auth.login') : t(locale, 'auth.signup')}</Text></Pressable>
-  </View>;
+  return (
+    <View style={styles.form} accessibilityLabel={t(locale, 'auth.form')}>
+      <View style={styles.switcher}><ModeButton active={mode === 'login'} label={t(locale, 'auth.login')} onPress={() => setMode('login')} /><ModeButton active={mode === 'signup'} label={t(locale, 'auth.signup')} onPress={() => setMode('signup')} /></View>
+      <View><Text style={styles.label}>{t(locale, 'auth.email')}</Text><TextInput accessibilityLabel={t(locale, 'auth.email')} autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={Palette.textSecondary} style={styles.input} /></View>
+      <View><Text style={styles.label}>{t(locale, 'auth.password')}</Text><TextInput accessibilityLabel={t(locale, 'auth.password')} secureTextEntry value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={Palette.textSecondary} style={styles.input} /></View>
+      {error && <Text accessibilityRole="alert" style={styles.error}>{getReadableAuthError(error, locale)}</Text>}
+      {notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
+      <Pressable accessibilityRole="button" accessibilityLabel={mode === 'login' ? t(locale, 'auth.login') : t(locale, 'auth.signup')} disabled={loading} onPress={() => void submit()} style={({ pressed }) => [styles.submit, pressed && styles.pressed, loading && styles.disabled]}><Text style={styles.submitText}>{loading ? t(locale, 'auth.working') : mode === 'login' ? t(locale, 'auth.login') : t(locale, 'auth.signup')}</Text></Pressable>
+    </View>
+  );
 }
 
-function ModeButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) { return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }} onPress={onPress} style={[styles.mode, active && styles.modeActive]}><Text style={[styles.modeText, active && styles.modeTextActive]}>{label}</Text></Pressable>; }
-const styles = StyleSheet.create({ form: { width: '100%', maxWidth: 430, gap: 12 }, switcher: { flexDirection: 'row', gap: 8, marginBottom: 4 }, mode: { flex: 1, minHeight: 44, padding: 11, borderRadius: 10, backgroundColor: '#e9f1ed', alignItems: 'center', justifyContent: 'center' }, modeActive: { backgroundColor: '#173b35' }, modeText: { color: '#36534b', fontWeight: '800' }, modeTextActive: { color: '#fff' }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd7ce', borderRadius: 10, paddingHorizontal: 13, paddingVertical: 12, minHeight: 44 }, error: { color: '#b33e2e' }, notice: { color: '#36534b' }, submit: { backgroundColor: '#d95d39', borderRadius: 10, alignItems: 'center', padding: 13, minHeight: 44, minWidth: 44, justifyContent: 'center' }, submitText: { color: '#fff', fontWeight: '800' } });
+function ModeButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }} onPress={onPress} style={[styles.mode, active && styles.modeActive]}><Text style={[styles.modeText, active && styles.modeTextActive]}>{label}</Text></Pressable>;
+}
+
+const styles = StyleSheet.create({
+  form: { width: '100%', gap: 15 },
+  switcher: { flexDirection: 'row', padding: 4, backgroundColor: Palette.surface, borderRadius: 16, marginBottom: 2 },
+  mode: { flex: 1, minHeight: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  modeActive: { backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
+  modeText: { color: Palette.textSecondary, fontWeight: '800' },
+  modeTextActive: { color: Palette.blue },
+  label: { color: Palette.blueDark, fontSize: 12, fontWeight: '900', marginBottom: 7 },
+  input: { minHeight: 52, backgroundColor: Palette.surface, borderWidth: 1, borderColor: Palette.border, borderRadius: Radius.medium, paddingHorizontal: 15, color: Palette.text, fontSize: 15 },
+  error: { color: Palette.danger, fontWeight: '700' },
+  notice: { color: Palette.success, lineHeight: 20, fontWeight: '700' },
+  submit: { minHeight: 54, backgroundColor: Palette.blue, borderRadius: Radius.medium, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  submitText: { color: Palette.white, fontWeight: '900', fontSize: 15 },
+  pressed: { backgroundColor: Palette.bluePressed },
+  disabled: { opacity: 0.55 },
+});

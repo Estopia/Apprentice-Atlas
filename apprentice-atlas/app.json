@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "apprenticeatlas",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.estopiaengineering.apprenticeatlas",
       "supportsTablet": true,
@@ -40,7 +40,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#173B35"
+          "backgroundColor": "#FFFFFF"
         }
       ]
     ],
