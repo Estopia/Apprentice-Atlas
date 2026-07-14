@@ -1,5 +1,5 @@
 import { normalizeJob } from './normalize-job.ts';
-import { extractRecords, firstString, getEnv, SourceConfigurationError, SourceFetchError, SourcePaginationError, type SourceAdapter, type SourceRecord, type SourcePage, type NormalizedSourceRecord } from './source-adapter.ts';
+import { asRecord, asString, extractRecords, firstString, getEnv, SourceConfigurationError, SourceFetchError, SourcePaginationError, type SourceAdapter, type SourceRecord, type SourcePage, type NormalizedSourceRecord } from './source-adapter.ts';
 
 export const UK_OFFICIAL_CONTRACT_UNCONFIRMED = 'UK_OFFICIAL_CONTRACT_UNCONFIRMED';
 
@@ -44,12 +44,35 @@ export class UkApprenticeshipAdapter implements SourceAdapter<UkApprenticeshipRe
   }
 
   normalize(record: UkApprenticeshipRecord): NormalizedSourceRecord | null {
-    const normalized = normalizeJob(record, { provider: this.provider, defaultCountry: 'United Kingdom' });
+    const firstAddress = Array.isArray(record.addresses) ? asRecord(record.addresses[0]) : null;
+    const course = asRecord(record.course);
+    const city = firstAddress ? firstString(firstAddress, ['addressLine3', 'addressLine2', 'addressLine4', 'postcode']) : null;
+    const courseTitle = course ? firstString(course, ['title']) : null;
+    const route = course ? firstString(course, ['route']) : null;
+    const apprenticeshipLevel = asString(record.apprenticeshipLevel);
+    const category = canonicalCategory(route ?? courseTitle ?? '');
+    const enriched: UkApprenticeshipRecord = {
+      ...record,
+      city: city ?? record.city,
+      jobType: 'apprenticeship',
+      level: 'entry',
+      category,
+      tags: [route, courseTitle, apprenticeshipLevel].filter((item): item is string => Boolean(item)),
+    };
+    const normalized = normalizeJob(enriched, { provider: this.provider, defaultCountry: 'United Kingdom', defaultJobType: 'apprenticeship', defaultLevel: 'entry' });
     if (!normalized) return null;
     const officialId = firstString(record, ['vacancyReference', 'vacancyReferenceNumber', 'vacancyId', 'id', 'externalId']);
     const officialUrl = firstString(record, ['vacancyUrl', 'sourceUrl', 'source_url']);
-    return officialId && officialUrl ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, job: { ...normalized.job, sourceUrl: officialUrl } } : null;
+    return officialId && officialUrl ? { ...normalized, externalId: officialId, sourceUrl: officialUrl, rawRecord: record, job: { ...normalized.job, sourceUrl: officialUrl, sourceName: 'Find an apprenticeship' } } : null;
   }
+}
+
+function canonicalCategory(value: string): string {
+  const normalized = value.toLocaleLowerCase('en');
+  if (/digital|technology|comput|software|data/.test(normalized)) return 'technology';
+  if (/business|administration|sales|marketing|finance|account|legal|management/.test(normalized)) return 'business';
+  if (/construction|engineering|manufactur|transport|logistics|agriculture|environment|trade/.test(normalized)) return 'skilled-trades';
+  return 'general';
 }
 
 export const createUkApprenticeshipAdapter = (options?: ConstructorParameters<typeof UkApprenticeshipAdapter>[0]) => new UkApprenticeshipAdapter(options);

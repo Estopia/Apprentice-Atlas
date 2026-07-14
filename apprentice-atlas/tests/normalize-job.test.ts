@@ -123,6 +123,33 @@ describe('official source adapters', () => {
     expect(page.complete).toBe(false);
   });
 
+  it('normalizes the Display Advert API v2 address and course fields', () => {
+    const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true });
+    const normalized = adapter.normalize({
+      vacancyReference: '1000270243',
+      vacancyUrl: 'https://www.findapprenticeship.service.gov.uk/apprenticeship/reference/1000270243',
+      title: 'Apprentice Maintenance Engineer',
+      employerName: 'Atlas Engineering Ltd',
+      description: '<p>Learn planned &amp; reactive maintenance.</p><ul><li>Work safely</li></ul>',
+      apprenticeshipLevel: 'Intermediate',
+      course: { level: 2, route: 'Engineering and manufacturing', title: 'Engineering operative (level 2)' },
+      addresses: [{ addressLine2: 'Hanley', addressLine3: 'Stoke-On-Trent', postcode: 'ST1 5HR', latitude: 53.02715, longitude: -2.17969 }],
+    });
+    expect(normalized?.job).toMatchObject({
+      city: 'Stoke-On-Trent',
+      country: 'United Kingdom',
+      jobType: 'apprenticeship',
+      level: 'entry',
+      category: 'skilled-trades',
+      sourceName: 'Find an apprenticeship',
+      latitude: 53.02715,
+      longitude: -2.17969,
+      tags: ['Engineering and manufacturing', 'Engineering operative (level 2)', 'Intermediate'],
+    });
+    expect(normalized?.rawRecord).not.toHaveProperty('city');
+    expect(normalized?.job.rawDescription).toBe('Learn planned & reactive maintenance.\n• Work safely');
+  });
+
   it('completes UK pagination at totalPages', async () => {
     const adapter = new UkApprenticeshipAdapter({ apiKey: 'secret', contractConfirmed: true, fetcher: async () => new Response(JSON.stringify({ vacancies: [], totalPages: 2 }), { status: 200 }) });
     const page = await adapter.fetchPage('2');

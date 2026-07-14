@@ -24,6 +24,24 @@ const numberValue = (value: unknown): number | null => {
   return Number.isFinite(number) ? number : null;
 };
 
+export function plainText(value: string): string {
+  return value
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<li(?:\s[^>]*)?>/gi, '• ')
+    .replace(/<\/(?:p|li|div|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 const coordinatePair = (record: SourceRecord): { latitude: number; longitude: number } | null | 'invalid' => {
   const candidates: SourceRecord[] = [record];
   if (Array.isArray(record.addresses)) {
@@ -89,7 +107,7 @@ export function normalizeJob(record: SourceRecord, options: NormalizeOptions): N
   const now = new Date().toISOString();
   const normalizedCountry = country ?? options.defaultCountry ?? 'Unknown';
   const normalizedCity = city ?? 'Unknown';
-  const description = firstString(record, ['rawDescription', 'description', 'shortDescription', 'displayText']) ?? '';
+  const description = plainText(firstString(record, ['rawDescription', 'description', 'shortDescription', 'displayText']) ?? '');
   const expiresAt = firstString(record, ['expiresAt', 'expiryDate', 'closingDate']);
   const job: CanonicalJob = {
     id: crypto.randomUUID(),

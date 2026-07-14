@@ -38,6 +38,7 @@ yarn-error.*
 !/.env.*.example
 supabase/.env
 supabase/.env.*
+supabase/.temp/
 !supabase/.env.example
 !supabase/.env.*.example
 

@@ -11,6 +11,7 @@ export default function AppTabs() {
       backgroundColor={Palette.white}
       iconColor={{ default: Palette.textSecondary, selected: Palette.blue }}
       indicatorColor={Palette.blueSoft}
+      minimizeBehavior="onScrollDown"
       labelStyle={{ default: { color: Palette.textSecondary }, selected: { color: Palette.blue, fontWeight: '700' } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>{t(locale, 'tabs.discover')}</NativeTabs.Trigger.Label>
@@ -20,7 +21,7 @@ export default function AppTabs() {
         />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="favorites">
+      <NativeTabs.Trigger name="favorites" role="bookmarks">
         <NativeTabs.Trigger.Label>{t(locale, 'tabs.saved')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'bookmark', selected: 'bookmark.fill' }}

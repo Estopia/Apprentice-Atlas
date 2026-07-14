@@ -18,8 +18,10 @@ export default function TabLayout() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Palette.background } }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="auth" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="auth" options={{ presentation: 'modal', headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="job/[id]" />
+        <Stack.Screen name="filters" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.85, 1], sheetGrabberVisible: true, headerShown: true, headerShadowVisible: false }} />
+        <Stack.Screen name="location" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.55, 0.85], sheetGrabberVisible: true, headerShown: true, headerShadowVisible: false }} />
       </Stack>
     </ThemeProvider>
   );

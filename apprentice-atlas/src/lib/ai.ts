@@ -14,7 +14,11 @@ async function invoke<T>(name: string, body: Record<string, unknown>, validate: 
   try {
     const functionsClient = client ?? (await import('./supabase')).getSupabaseClient() as unknown as FunctionsClient;
     const result = await functionsClient.functions.invoke(name, { body });
-    if (result.error || !validate(result.data)) return { data: null, error: responseError(result.error, result.data) };
+    let errorData = result.data;
+    if (result.error?.context) {
+      try { errorData = await result.error.context.clone().json(); } catch { /* Keep the SDK error message when the response has no JSON body. */ }
+    }
+    if (result.error || !validate(result.data)) return { data: null, error: responseError(result.error, errorData) };
     return { data: result.data, error: null };
   } catch (error) { return { data: null, error: { code: 'configuration', message: error instanceof Error ? error.message : 'The AI service is unavailable.' } }; }
 }

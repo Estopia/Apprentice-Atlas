@@ -15,6 +15,20 @@ const messages = {
     'discovery.refine': 'Suche verfeinern',
     'discovery.nearby': 'In deiner Nähe',
     'discovery.or': 'oder',
+    'discovery.opportunityType': 'Art der Chance',
+    'discovery.apprenticeship': 'Ausbildung',
+    'discovery.entryLevel': 'Einstiegsjob',
+    'discovery.level': 'Erfahrungslevel',
+    'discovery.beginner': 'Für Einsteiger',
+    'discovery.sort': 'Sortierung',
+    'discovery.sortRecent': 'Neueste zuerst',
+    'discovery.sortDistance': 'Nächste zuerst',
+    'discovery.sortTitle': 'Titel A–Z',
+    'discovery.resetFilters': 'Alle Filter zurücksetzen',
+    'discovery.searchArea': 'Diesen Bereich durchsuchen',
+    'discovery.nearbyShort': 'In der Nähe',
+    'discovery.details': 'Details ansehen',
+    'discovery.distanceNeedsLocation': 'Wähle zuerst deinen Standort oder einen Kartenausschnitt.',
     'discovery.jobs': 'Ausbildungen',
     'discovery.map': 'Karte',
     'discovery.list': 'Liste',
@@ -46,6 +60,7 @@ const messages = {
     'auth.login': 'Anmelden',
     'auth.signup': 'Registrieren',
     'auth.title': 'Anmelden oder registrieren',
+    'auth.account': 'Konto',
     'auth.description': 'Erstelle ein Konto, um Ausbildungen zu speichern und zu vergleichen.',
     'auth.email': 'E-Mail-Adresse',
     'auth.password': 'Passwort',
@@ -63,6 +78,7 @@ const messages = {
     'errors.query': 'Ausbildungen konnten nicht geladen werden. Bitte versuche es erneut.',
     'errors.invalidLocation': 'Für die Entfernungssuche fehlt ein gültiger Standort.',
     'errors.jobNotFound': 'Diese Ausbildung ist nicht mehr verfügbar.',
+    'errors.aiUnavailable': 'Die KI-Hilfe ist gerade nicht verfügbar. Die Originalanzeige bleibt vollständig lesbar.',
     'map.title': 'Kartenansicht',
     'map.webHelper': 'Web-Vorschau – wähle eine Kartenposition aus, um den Eintrag zu öffnen.',
     'map.noPositions': 'Keine Ausbildungen mit Kartenposition verfügbar.',
@@ -94,11 +110,14 @@ const messages = {
     'actions.apply': 'Jetzt bewerben',
     'actions.back': 'Zurück',
     'actions.close': 'Schließen',
+    'actions.done': 'Fertig',
+    'actions.share': 'Teilen',
     'job.lastUpdated': 'Zuletzt aktualisiert',
     'job.description': 'Beschreibung',
     'job.requirements': 'Voraussetzungen',
     'job.openSource': 'Offizielle Quelle öffnen',
     'ai.explanation': 'Warum passt diese Ausbildung?',
+    'ai.simpleWords': 'Einfach erklärt',
     'ai.goodIf': 'Das passt gut, wenn du …',
     'ai.notSoGoodIf': 'Weniger passend, wenn du …',
     'ai.fitReasons': 'Das spricht für dich',
@@ -120,6 +139,20 @@ const messages = {
     'discovery.refine': 'Refine your search',
     'discovery.nearby': 'Near you',
     'discovery.or': 'or',
+    'discovery.opportunityType': 'Opportunity type',
+    'discovery.apprenticeship': 'Apprenticeship',
+    'discovery.entryLevel': 'Entry-level job',
+    'discovery.level': 'Experience level',
+    'discovery.beginner': 'Beginner friendly',
+    'discovery.sort': 'Sort order',
+    'discovery.sortRecent': 'Newest first',
+    'discovery.sortDistance': 'Nearest first',
+    'discovery.sortTitle': 'Title A–Z',
+    'discovery.resetFilters': 'Reset all filters',
+    'discovery.searchArea': 'Search this area',
+    'discovery.nearbyShort': 'Nearby',
+    'discovery.details': 'View details',
+    'discovery.distanceNeedsLocation': 'Choose your location or a map area first.',
     'discovery.jobs': 'Apprenticeships',
     'discovery.map': 'Map',
     'discovery.list': 'List',
@@ -151,6 +184,7 @@ const messages = {
     'auth.login': 'Log in',
     'auth.signup': 'Create account',
     'auth.title': 'Log in or create an account',
+    'auth.account': 'Account',
     'auth.description': 'Create an account to save and compare apprenticeships.',
     'auth.email': 'Email address',
     'auth.password': 'Password',
@@ -168,6 +202,7 @@ const messages = {
     'errors.query': 'Could not load apprenticeships. Please try again.',
     'errors.invalidLocation': 'A valid location is needed for distance search.',
     'errors.jobNotFound': 'This apprenticeship is no longer available.',
+    'errors.aiUnavailable': 'AI help is temporarily unavailable. The original listing remains fully available.',
     'map.title': 'Map preview',
     'map.webHelper': 'Web preview — select a map position to focus its listing.',
     'map.noPositions': 'No apprenticeships with map positions are available.',
@@ -199,11 +234,14 @@ const messages = {
     'actions.apply': 'Apply now',
     'actions.back': 'Back',
     'actions.close': 'Close',
+    'actions.done': 'Done',
+    'actions.share': 'Share',
     'job.lastUpdated': 'Last updated',
     'job.description': 'Description',
     'job.requirements': 'Requirements',
     'job.openSource': 'Open official source',
     'ai.explanation': 'Why might this fit you?',
+    'ai.simpleWords': 'In simple words',
     'ai.goodIf': 'Good if you …',
     'ai.notSoGoodIf': 'Not so good if you …',
     'ai.fitReasons': 'Reasons it may fit',
@@ -257,6 +295,23 @@ export function t(locale: Locale, key: TranslationKey): string {
 export function localizeCategory(locale: Locale, category: string): string {
   const key = `category.${category}` as TranslationKey;
   return key in localeMessages[locale] ? t(locale, key) : category;
+}
+
+export function localizeJobType(locale: Locale, jobType: string): string {
+  if (jobType === 'apprenticeship') return t(locale, 'discovery.apprenticeship');
+  if (jobType === 'entry-level') return t(locale, 'discovery.entryLevel');
+  return jobType;
+}
+
+export function localizeJobLevel(locale: Locale, level: string): string {
+  if (level === 'entry') return t(locale, 'discovery.beginner');
+  return level;
+}
+
+export function localizeCountry(locale: Locale, country: string): string {
+  if (locale === 'de' && country === 'Germany') return 'Deutschland';
+  if (locale === 'de' && country === 'United Kingdom') return 'Vereinigtes Königreich';
+  return country;
 }
 
 export function localizeJobError(locale: Locale, code: 'configuration' | 'query' | 'invalid-filter'): string {

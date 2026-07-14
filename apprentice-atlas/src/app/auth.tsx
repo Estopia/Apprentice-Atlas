@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthForm } from '@/components/auth/auth-form';
 import { AppIcon } from '@/components/ui/app-icon';
-import { Palette, Radius, Shadows } from '@/constants/theme';
+import { Palette } from '@/constants/theme';
 import { isSafeReturnPath } from '@/lib/auth';
 import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
@@ -27,35 +26,31 @@ export default function AuthScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.back')} onPress={() => router.back()} style={styles.backButton}>
-          <AppIcon name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }} size={20} tintColor={Palette.blueDark} />
-        </Pressable>
+    <>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+        {process.env.EXPO_OS !== 'ios' && <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.close')} onPress={() => router.back()} style={styles.close}><AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={19} tintColor={Palette.text} /></Pressable>}
         <View style={styles.intro}>
-          <View style={styles.logo}><AppIcon name={{ ios: 'person.crop.circle.badge.checkmark', android: 'account_circle', web: 'account_circle' }} size={34} tintColor={Palette.white} /></View>
-          <Text style={styles.eyebrow}>APPRENTICE ATLAS</Text>
           <Text style={styles.title}>{t(locale, 'auth.title')}</Text>
           <Text style={styles.copy}>{t(locale, 'auth.description')}</Text>
         </View>
-        <View style={[styles.card, Shadows.floating]}>
+        <View style={styles.formGroup}>
           {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <AuthForm onSuccess={() => void complete()} />
         </View>
       </ScrollView>
-    </SafeAreaView>
+      <Stack.Screen options={{ title: t(locale, 'auth.account'), headerShown: true, headerShadowVisible: false }} />
+      {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="xmark" onPress={() => router.back()} /></Stack.Toolbar>}
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Palette.surface },
-  content: { flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center', padding: 20, paddingBottom: 80, justifyContent: 'center' },
-  backButton: { position: 'absolute', top: 20, left: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
-  intro: { alignItems: 'center', paddingHorizontal: 20, marginBottom: 24 },
-  logo: { width: 66, height: 66, borderRadius: 22, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
-  eyebrow: { color: Palette.blue, fontSize: 11, letterSpacing: 1.5, fontWeight: '900' },
-  title: { color: Palette.blueDark, fontSize: 32, lineHeight: 38, fontWeight: '900', textAlign: 'center', marginTop: 7 },
-  copy: { color: Palette.textSecondary, lineHeight: 21, textAlign: 'center', maxWidth: 420, marginTop: 9 },
-  card: { backgroundColor: Palette.white, borderRadius: Radius.large, padding: 20, borderWidth: 1, borderColor: Palette.border },
-  error: { color: Palette.danger, marginBottom: 12, fontWeight: '700' },
+  screen: { flex: 1, backgroundColor: Palette.surface },
+  content: { flexGrow: 1, width: '100%', maxWidth: 520, alignSelf: 'center', padding: 20, paddingBottom: 60 },
+  close: { width: 44, height: 44, borderRadius: 22, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
+  intro: { gap: 8, marginBottom: 24 },
+  title: { color: Palette.text, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.4 },
+  copy: { color: Palette.textSecondary, lineHeight: 21, maxWidth: 420 },
+  formGroup: { backgroundColor: Palette.white, borderRadius: 16, borderCurve: 'continuous', padding: 16 },
+  error: { color: Palette.danger, marginBottom: 12, fontWeight: '600' },
 });

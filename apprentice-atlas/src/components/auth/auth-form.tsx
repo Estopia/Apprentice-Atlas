@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Palette, Radius } from '@/constants/theme';
+import { Palette } from '@/constants/theme';
 import { getReadableAuthError, signIn, signUp, type AuthError } from '@/lib/auth';
 import { t, useLocale } from '@/lib/i18n';
 
@@ -47,17 +47,17 @@ function ModeButton({ active, label, onPress }: { active: boolean; label: string
 
 const styles = StyleSheet.create({
   form: { width: '100%', gap: 15 },
-  switcher: { flexDirection: 'row', padding: 4, backgroundColor: Palette.surface, borderRadius: 16, marginBottom: 2 },
-  mode: { flex: 1, minHeight: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  modeActive: { backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
-  modeText: { color: Palette.textSecondary, fontWeight: '800' },
+  switcher: { flexDirection: 'row', padding: 3, backgroundColor: Palette.surface, borderRadius: 10, marginBottom: 2 },
+  mode: { flex: 1, minHeight: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  modeActive: { backgroundColor: Palette.white, borderWidth: StyleSheet.hairlineWidth, borderColor: Palette.border },
+  modeText: { color: Palette.textSecondary, fontWeight: '600' },
   modeTextActive: { color: Palette.blue },
-  label: { color: Palette.blueDark, fontSize: 12, fontWeight: '900', marginBottom: 7 },
-  input: { minHeight: 52, backgroundColor: Palette.surface, borderWidth: 1, borderColor: Palette.border, borderRadius: Radius.medium, paddingHorizontal: 15, color: Palette.text, fontSize: 15 },
-  error: { color: Palette.danger, fontWeight: '700' },
-  notice: { color: Palette.success, lineHeight: 20, fontWeight: '700' },
-  submit: { minHeight: 54, backgroundColor: Palette.blue, borderRadius: Radius.medium, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  submitText: { color: Palette.white, fontWeight: '900', fontSize: 15 },
+  label: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 7 },
+  input: { minHeight: 50, backgroundColor: Palette.surface, borderRadius: 11, paddingHorizontal: 14, color: Palette.text, fontSize: 16 },
+  error: { color: Palette.danger, fontWeight: '600' },
+  notice: { color: Palette.success, lineHeight: 20, fontWeight: '600' },
+  submit: { minHeight: 50, backgroundColor: Palette.blue, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  submitText: { color: Palette.white, fontWeight: '700', fontSize: 16 },
   pressed: { backgroundColor: Palette.bluePressed },
   disabled: { opacity: 0.55 },
 });

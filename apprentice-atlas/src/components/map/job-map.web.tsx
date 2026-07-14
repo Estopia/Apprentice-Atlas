@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import { AppIcon } from '@/components/ui/app-icon';
 import { Palette, Shadows } from '@/constants/theme';
 import { t, useLocale } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
@@ -26,21 +25,14 @@ export default function JobMap({ jobs, selectedJobId, onSelect }: JobMapProps) {
         <WebMarker key={job.id} job={job} position={markerPositions[index]} selected={job.id === selectedJobId} onPress={() => onSelect(job)} />
       ))}
       {!markers.length && <View style={styles.empty}><Text style={styles.emptyText}>{t(locale, 'map.noPositions')}</Text></View>}
-      <View style={styles.webNote}><AppIcon name={{ ios: 'map', android: 'map', web: 'map' }} size={14} tintColor={Palette.blue} /><Text style={styles.webNoteText}>{t(locale, 'map.webHelper')}</Text></View>
     </View>
   );
 }
 
 function WebMarker({ job, position, selected, onPress }: { job: Job; position: { left: string; top: string }; selected: boolean; onPress: () => void }) {
-  const accent = job.category === 'technology' ? Palette.blue : job.category === 'business' ? Palette.coral : Palette.lime;
-  const iconName = job.category === 'technology'
-    ? { ios: 'chevron.left.forwardslash.chevron.right' as const, android: 'code' as const, web: 'code' as const }
-    : job.category === 'business'
-      ? { ios: 'briefcase.fill' as const, android: 'work' as const, web: 'work' as const }
-      : { ios: 'wrench.and.screwdriver.fill' as const, android: 'construction' as const, web: 'construction' as const };
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${job.title}, ${job.company}, ${job.city}, ${job.country}`} accessibilityState={{ selected: selected }} onPress={onPress} style={[styles.marker, position as ViewStyle, selected && styles.markerSelected, Shadows.floating]}>
-      <View style={[styles.markerInner, { backgroundColor: accent }]}><AppIcon name={iconName} size={selected ? 20 : 17} tintColor={Palette.white} /></View>
+      <View style={[styles.markerInner, { backgroundColor: selected ? Palette.blueDark : Palette.blue }]}><View style={styles.markerDot} /></View>
     </Pressable>
   );
 }
@@ -63,8 +55,7 @@ const styles = StyleSheet.create({
   marker: { position: 'absolute', width: 48, height: 48, minHeight: 44, minWidth: 44, marginLeft: -24, marginTop: -24, borderRadius: 24, backgroundColor: Palette.white, borderWidth: 3, borderColor: Palette.white, padding: 3, zIndex: 4 },
   markerSelected: { width: 58, height: 58, marginLeft: -29, marginTop: -29, borderRadius: 29, borderColor: Palette.blueDark, zIndex: 6 },
   markerInner: { flex: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  markerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Palette.white },
   empty: { position: 'absolute', alignSelf: 'center', top: '46%', backgroundColor: Palette.white, borderRadius: 18, padding: 18 },
   emptyText: { color: Palette.textSecondary },
-  webNote: { position: 'absolute', left: 16, bottom: 16, flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  webNoteText: { color: Palette.textSecondary, fontSize: 10, fontWeight: '700' },
 });

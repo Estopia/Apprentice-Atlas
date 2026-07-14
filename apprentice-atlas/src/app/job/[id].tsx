@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 
 import { AiExplanation } from '@/components/jobs/ai-explanation';
 import { JobQa } from '@/components/jobs/job-qa';
 import { AppIcon } from '@/components/ui/app-icon';
-import { Palette, Radius, Shadows } from '@/constants/theme';
+import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
 import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
-import { t, useLocale } from '@/lib/i18n';
+import { localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
 import { getJob } from '@/lib/jobs';
 import { getValidHttpUrl } from '@/lib/official-listing-url';
@@ -41,7 +40,7 @@ export default function JobDetailScreen() {
       else {
         setState((current) => ({ ...current, job: result.data, aiLoading: true, loading: false, error: null, aiError: null, explanation: null }));
         const ai = await explainJob(result.data.id, locale);
-        if (mounted) setState((current) => ({ ...current, explanation: ai.data, aiError: ai.error?.message ?? null, aiLoading: false }));
+        if (mounted) setState((current) => ({ ...current, explanation: ai.data, aiError: ai.error ? t(locale, 'errors.aiUnavailable') : null, aiLoading: false }));
       }
     })();
     return () => { mounted = false; };
@@ -78,39 +77,37 @@ export default function JobDetailScreen() {
   if (error || !job) return <State text={error ?? t(locale, 'errors.jobNotFound')} locale={locale} back={() => router.back()} />;
   const sourceUrl = getOriginalListingUrl(job);
   const applicationUrl = getValidHttpUrl(job.applicationUrl);
-  const accent = job.category === 'technology' ? Palette.blue : job.category === 'business' ? Palette.coral : Palette.lime;
+  const shareJob = () => void Share.share({ title: job.title, message: `${job.title} — ${job.company}\n${applicationUrl ?? sourceUrl ?? ''}` });
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="never">
-        <View style={styles.topBar}>
-          <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.back')} onPress={() => router.back()} style={styles.backButton}><AppIcon name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }} size={20} tintColor={Palette.blueDark} /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={activeFavorite ? t(locale, 'actions.saved') : favoriteBusy ? t(locale, 'actions.saving') : t(locale, 'actions.save')} accessibilityState={{ selected: Boolean(activeFavorite), disabled: favoriteBusy }} disabled={favoriteBusy} onPress={() => void toggleFavorite()} style={[styles.roundButton, activeFavorite && styles.roundButtonSaved]}><AppIcon name={activeFavorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={20} tintColor={activeFavorite ? Palette.white : Palette.blueDark} /></Pressable>
-        </View>
-
-        <View style={[styles.hero, Shadows.floating]}>
-          <View style={[styles.heroIcon, { backgroundColor: accent }]}><AppIcon name={{ ios: 'briefcase.fill', android: 'work', web: 'work' }} size={28} tintColor={Palette.white} /></View>
-          <Text style={styles.heroEyebrow}>{job.jobType} · {job.level}</Text>
-          <Text style={styles.title}>{job.title.replace(/\s+-\s+/, '\n')}</Text>
-          <Text style={styles.company}>{job.company}</Text>
-          <View style={styles.heroLocation}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={17} tintColor="#BFD2FF" /><Text style={styles.heroLocationText}>{job.city}, {job.country}</Text></View>
+    <>
+      <ScrollView style={styles.safe} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+        <View style={styles.hero}>
+          <Text style={styles.jobType}>{localizeJobType(locale, job.jobType)} · {localizeJobLevel(locale, job.level)}</Text>
+          <Text selectable style={styles.title}>{job.title}</Text>
+          <Text selectable style={styles.company}>{job.company}</Text>
+          <View style={styles.heroLocation}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={16} tintColor={Palette.textSecondary} /><Text style={styles.heroLocationText}>{job.city}, {localizeCountry(locale, job.country)}</Text></View>
         </View>
 
         {favoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(favoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
+
+        {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel={activeFavorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')} onPress={() => void toggleFavorite()} style={styles.utilityButton}><AppIcon name={activeFavorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
 
         <View style={styles.actionRow}>
           {applicationUrl && <Pressable accessibilityRole="link" accessibilityLabel={t(locale, 'actions.apply')} onPress={() => void Linking.openURL(applicationUrl)} style={styles.apply}><Text style={styles.applyText}>{t(locale, 'actions.apply')}</Text><AppIcon name={{ ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' }} size={17} tintColor={Palette.white} /></Pressable>}
           {sourceUrl && <Pressable accessibilityRole="link" accessibilityLabel={t(locale, 'job.openSource')} onPress={() => void Linking.openURL(sourceUrl)} style={styles.sourceLink}><Text style={styles.sourceLinkText}>{t(locale, 'job.openSource')}</Text></Pressable>}
         </View>
 
-        <View style={styles.source}><View style={styles.sourceIcon}><AppIcon name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }} size={20} tintColor={Palette.blue} /></View><View style={styles.sourceCopy}><Text style={styles.sourceText}>{job.sourceName}</Text><Text style={styles.updated}>{t(locale, 'job.lastUpdated')}: {new Date(job.updatedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text></View></View>
+        <View style={styles.source}><AppIcon name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }} size={19} tintColor={Palette.blue} /><View style={styles.sourceCopy}><Text style={styles.sourceText}>{job.sourceName}</Text><Text style={styles.updated}>{t(locale, 'job.lastUpdated')}: {new Date(job.updatedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text></View></View>
 
+        <AiExplanation explanation={explanation} loading={aiLoading} error={aiError} />
         <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.description')}</Text><Text style={styles.body}>{job.rawDescription || t(locale, 'ai.unknown')}</Text></View>
         <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.requirements')}</Text>{job.requirements.length ? job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>) : <Text style={styles.body}>{t(locale, 'ai.unknown')}</Text>}</View>
-        <AiExplanation explanation={explanation} loading={aiLoading} error={aiError} />
         <JobQa jobId={job.id} />
       </ScrollView>
-    </SafeAreaView>
+      <Stack.Screen options={{ title: '', headerShown: true, headerTransparent: true, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }} />
+      {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={shareJob} /><Stack.Toolbar.Button icon={activeFavorite ? 'bookmark.fill' : 'bookmark'} selected={Boolean(activeFavorite)} disabled={favoriteBusy} onPress={() => void toggleFavorite()} /></Stack.Toolbar>}
+    </>
   );
 }
 
@@ -120,31 +117,27 @@ function State({ text, back, locale }: { text: string; back?: () => void; locale
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Palette.background },
-  content: { maxWidth: 760, width: '100%', alignSelf: 'center', padding: 16, paddingBottom: 120 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-  backButton: { width: 46, height: 46, minHeight: 44, minWidth: 44, borderRadius: 23, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
-  roundButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
-  roundButtonSaved: { backgroundColor: Palette.blue },
-  hero: { backgroundColor: Palette.blueDark, borderRadius: 28, padding: 22, overflow: 'hidden' },
-  heroIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  heroEyebrow: { color: '#BFD2FF', fontSize: 11, lineHeight: 16, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
-  title: { color: Palette.white, fontSize: 26, lineHeight: 32, fontWeight: '900', marginTop: 7 },
-  company: { color: '#D7E2FA', fontSize: 17, fontWeight: '700', marginTop: 9 },
+  content: { maxWidth: 720, width: '100%', alignSelf: 'center', paddingHorizontal: 18, paddingBottom: 120 },
+  hero: { paddingTop: 14, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
+  jobType: { color: Palette.textSecondary, fontSize: 14, marginBottom: 7 },
+  title: { color: Palette.text, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.5 },
+  company: { color: Palette.text, fontSize: 17, fontWeight: '600', marginTop: 9 },
   heroLocation: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 },
-  heroLocationText: { color: '#BFD2FF', fontSize: 13, fontWeight: '700' },
+  heroLocationText: { color: Palette.textSecondary, fontSize: 14 },
   error: { color: Palette.danger, marginTop: 12, fontWeight: '700' },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 },
-  apply: { minHeight: 52, flexGrow: 1, borderRadius: Radius.medium, paddingHorizontal: 18, backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  applyText: { color: Palette.white, fontWeight: '900', fontSize: 15 },
-  sourceLink: { minHeight: 52, flexGrow: 1, borderRadius: Radius.medium, paddingHorizontal: 18, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  sourceLinkText: { color: Palette.blue, fontWeight: '900' },
-  source: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: Palette.surface, borderRadius: Radius.medium, padding: 14, marginTop: 16, borderWidth: 1, borderColor: Palette.border },
-  sourceIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  utilityRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 12 },
+  utilityButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 16 },
+  apply: { minHeight: 50, flexGrow: 1, borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 18, backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  applyText: { color: Palette.white, fontWeight: '700', fontSize: 16 },
+  sourceLink: { minHeight: 50, flexGrow: 1, borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 18, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
+  sourceLinkText: { color: Palette.blue, fontWeight: '700' },
+  source: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 15, marginTop: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   sourceCopy: { flex: 1 },
-  sourceText: { color: Palette.blueDark, fontWeight: '900' },
+  sourceText: { color: Palette.text, fontWeight: '600' },
   updated: { color: Palette.textSecondary, marginTop: 4, fontSize: 11 },
-  section: { marginTop: 24 },
-  heading: { color: Palette.blueDark, fontWeight: '900', fontSize: 21 },
+  section: { paddingTop: 24 },
+  heading: { color: Palette.text, fontWeight: '700', fontSize: 21 },
   body: { color: Palette.text, lineHeight: 23, marginTop: 10, fontSize: 15 },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
   bullet: { width: 8, height: 8, borderRadius: 4, backgroundColor: Palette.blue, marginTop: 7 },
@@ -152,5 +145,5 @@ const styles = StyleSheet.create({
   state: { flex: 1, backgroundColor: Palette.background, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
   stateIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   stateText: { color: Palette.textSecondary, textAlign: 'center', lineHeight: 21 },
-  stateButton: { minHeight: 44, borderRadius: 15, backgroundColor: Palette.blueSoft, paddingHorizontal: 18, justifyContent: 'center' },
+  stateButton: { minHeight: 44, borderRadius: 12, backgroundColor: Palette.blueSoft, paddingHorizontal: 18, justifyContent: 'center' },
 });

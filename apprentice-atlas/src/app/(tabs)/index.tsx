@@ -1,318 +1,231 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { JobCard } from '@/components/jobs/job-card';
-import { JobFilters } from '@/components/jobs/job-filters';
 import JobMap from '@/components/map/job-map';
 import { AppIcon } from '@/components/ui/app-icon';
-import { Palette, Radius, Shadows } from '@/constants/theme';
+import { Palette } from '@/constants/theme';
+import { useAuth } from '@/hooks/use-auth';
 import { useJobs } from '@/hooks/use-jobs';
-import { useLocation, type LocationStatus } from '@/hooks/use-location';
-import { localizeCategory, localizeJobError, setLocale, t, useLocale, type Locale } from '@/lib/i18n';
-import { applyDeviceLocationFilters, applyManualLocationFilters } from '@/lib/location';
-import type { Job, JobFilter } from '@/types/jobs';
+import { getDiscoveryState, updateDiscoveryFilters, useDiscoveryState } from '@/lib/discovery-state';
+import { addFavorite, getFavoriteForJob, removeFavorite } from '@/lib/favorites';
+import { localizeCountry, localizeJobError, localizeJobType, t, useLocale } from '@/lib/i18n';
+import type { FavoriteJob, Job } from '@/types/jobs';
 
 type ViewMode = 'map' | 'list';
+type MapCenter = { latitude: number; longitude: number };
 
 export default function DiscoveryScreen() {
   const insets = useSafeAreaInsets();
   const [locale] = useLocale();
-  const [filters, setFilters] = useState<JobFilter>({});
-  const [search, setSearch] = useState('');
+  const { filters, sort } = useDiscoveryState();
+  const [searchState, setSearchState] = useState({ draft: filters.search ?? '', external: filters.search });
+  const search = searchState.external === filters.search ? searchState.draft : filters.search ?? '';
+  const setSearch = (draft: string) => setSearchState({ draft, external: filters.search });
   const [selectedJobId, setSelectedJobId] = useState<string>();
-  const [manualCity, setManualCity] = useState('');
-  const [manualCountry, setManualCountry] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('map');
-  const [showFilters, setShowFilters] = useState(false);
-  const [showLocation, setShowLocation] = useState(false);
+  const [mapCenter, setMapCenter] = useState<MapCenter | null>(null);
+  const [showSearchArea, setShowSearchArea] = useState(false);
+  const [favorite, setFavorite] = useState<FavoriteJob | null>(null);
+  const [favoriteForJobId, setFavoriteForJobId] = useState<string | null>(null);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const auth = useAuth();
   const { jobs, loading, error, reload } = useJobs(filters);
-  const location = useLocation();
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setFilters((current) => ({ ...current, search: search.trim() || undefined }));
-    }, 350);
+    const timer = setTimeout(() => updateDiscoveryFilters({ search: search.trim() || undefined }), 300);
     return () => clearTimeout(timer);
   }, [search]);
 
-  const selectedJob = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0],
-    [jobs, selectedJobId],
-  );
+  const sortedJobs = useMemo(() => sortJobs(jobs, sort, filters.latitude, filters.longitude), [filters.latitude, filters.longitude, jobs, sort]);
+  const mapJobs = useMemo(() => sortedJobs.slice(0, 120), [sortedJobs]);
+  const selectedJob = useMemo(() => sortedJobs.find((job) => job.id === selectedJobId) ?? sortedJobs[0], [selectedJobId, sortedJobs]);
 
-  const handleUseDeviceLocation = async () => {
-    const next = await location.requestLocation();
-    if (next && 'latitude' in next) {
-      setFilters((current) => applyDeviceLocationFilters(current, next.latitude, next.longitude));
-      setManualCity('');
-      setManualCountry('');
-      setShowLocation(false);
-    }
-  };
-
-  const useManualLocation = () => {
-    const nextFilters = applyManualLocationFilters(filters, manualCity, manualCountry);
-    if (nextFilters && location.setManualLocation(manualCity, manualCountry)) {
-      setFilters(nextFilters);
-      setShowLocation(false);
-    }
-  };
-
-  const toggleFilters = () => {
-    setShowLocation(false);
-    setShowFilters((current) => !current);
-  };
-
-  const toggleLocation = () => {
-    setShowFilters(false);
-    setShowLocation((current) => !current);
-  };
+  useEffect(() => {
+    if (!auth.session || !selectedJob) return;
+    let mounted = true;
+    void getFavoriteForJob(selectedJob.id).then((result) => { if (mounted) { setFavoriteForJobId(selectedJob.id); setFavorite(result.data); } });
+    return () => { mounted = false; };
+  }, [auth.session, selectedJob]);
 
   const openJob = (job: Job) => router.push(`/job/${job.id}`);
-  const activeFilterCount = [filters.category, filters.radiusKm, filters.city, filters.country].filter(Boolean).length;
+  const activeFavorite = favoriteForJobId === selectedJob?.id ? favorite : null;
+  const activeFilterCount = [filters.country, filters.city, filters.category, filters.jobType, filters.level, filters.radiusKm].filter(Boolean).length;
+  const locationLabel = filters.city || filters.country || t(locale, 'discovery.nearbyShort');
+
+  const handleMapChange = (center: MapCenter) => {
+    setMapCenter(center);
+    const previous = getDiscoveryState().filters;
+    const moved = previous.latitude === undefined || previous.longitude === undefined || Math.abs(previous.latitude - center.latitude) > 0.01 || Math.abs(previous.longitude - center.longitude) > 0.01;
+    setShowSearchArea(moved);
+  };
+
+  const searchMapArea = () => {
+    if (!mapCenter) return;
+    updateDiscoveryFilters({ latitude: mapCenter.latitude, longitude: mapCenter.longitude, radiusKm: filters.radiusKm ?? 50, city: undefined, country: undefined });
+    setShowSearchArea(false);
+  };
+
+  const toggleFavorite = async () => {
+    if (!selectedJob || favoriteBusy) return;
+    if (!auth.session) {
+      router.push({ pathname: '/auth', params: { returnTo: '/', pendingAction: 'save', jobId: selectedJob.id } });
+      return;
+    }
+    setFavoriteForJobId(selectedJob.id);
+    setFavoriteBusy(true);
+    if (activeFavorite) {
+      const previous = activeFavorite;
+      setFavorite(null);
+      const result = await removeFavorite(selectedJob.id);
+      if (result.error) setFavorite(previous);
+    } else {
+      const result = await addFavorite(selectedJob.id);
+      if (!result.error) setFavorite(result.data);
+    }
+    setFavoriteBusy(false);
+  };
 
   return (
     <View style={styles.screen}>
       {viewMode === 'map' ? (
-        <JobMap jobs={jobs} selectedJobId={selectedJob?.id} onSelect={(job) => setSelectedJobId(job.id)} />
+        <JobMap jobs={mapJobs} selectedJobId={selectedJob?.id} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
       ) : (
-        <ScrollView
+        <FlatList
+          data={sortedJobs}
           style={styles.listScreen}
-          contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 174 }]}
-          contentInsetAdjustmentBehavior="never">
-          <View style={styles.listHeadingRow}>
-            <View>
-              <Text style={styles.listEyebrow}>{t(locale, 'discovery.results')}</Text>
-              <Text style={styles.listTitle}>{jobs.length} {locale === 'de' ? t(locale, 'discovery.jobs') : t(locale, 'discovery.jobs').toLowerCase()}</Text>
-            </View>
-            <View style={styles.countBadge}><Text style={styles.countBadgeText}>{jobs.length}</Text></View>
-          </View>
-          {loading ? <StatePanel loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : !jobs.length ? <StatePanel text={t(locale, 'discovery.noResults')} /> : <View style={styles.cards}>{jobs.map((job) => <JobCard key={job.id} job={job} selected={job.id === selectedJob?.id} onPress={() => openJob(job)} />)}</View>}
-        </ScrollView>
-      )}
-
-      <View pointerEvents="box-none" style={[styles.topControls, { top: insets.top + 10 }]}>
-        <View style={styles.brandRow}>
-          <View style={styles.brand}>
-            <View style={styles.logoMark}>
-              <AppIcon name={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }} size={18} tintColor={Palette.white} />
-            </View>
-            <Text style={styles.brandText}>APPRENTICE ATLAS</Text>
-          </View>
-          <LanguageSwitcher locale={locale} />
-        </View>
-
-        <View style={[styles.searchBar, Shadows.floating]}>
-          <AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={20} tintColor={Palette.textSecondary} />
-          <TextInput
-            accessibilityLabel={t(locale, 'discovery.searchPlaceholder')}
-            autoCapitalize="none"
-            clearButtonMode="while-editing"
-            onChangeText={setSearch}
-            placeholder={t(locale, 'discovery.searchPlaceholder')}
-            placeholderTextColor={Palette.textSecondary}
-            returnKeyType="search"
-            style={styles.searchInput}
-            value={search}
-          />
-          <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'discovery.filters')} onPress={toggleFilters} style={[styles.iconButton, showFilters && styles.iconButtonActive]}>
-            <AppIcon name={{ ios: 'slider.horizontal.3', android: 'tune', web: 'tune' }} size={19} tintColor={showFilters ? Palette.white : Palette.blueDark} />
-            {activeFilterCount > 0 && <View style={styles.filterCount}><Text style={styles.filterCountText}>{activeFilterCount}</Text></View>}
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={() => setViewMode((current) => current === 'map' ? 'list' : 'map')} style={styles.iconButton}>
-            <AppIcon name={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map.fill', android: 'map', web: 'map' }} size={19} tintColor={Palette.blueDark} />
-          </Pressable>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickFilters}>
-          <QuickChip active={!filters.category} label={t(locale, 'discovery.all')} onPress={() => setFilters((current) => ({ ...current, category: undefined }))} />
-          {['technology', 'business', 'skilled-trades'].map((category) => (
-            <QuickChip key={category} active={filters.category === category} label={localizeCategory(locale, category)} onPress={() => setFilters((current) => ({ ...current, category }))} />
-          ))}
-        </ScrollView>
-      </View>
-
-      {showFilters && (
-        <View style={[styles.popover, styles.filterPopover, { top: insets.top + 144 }, Shadows.floating]}>
-          <View style={styles.popoverHeading}>
-            <View><Text style={styles.popoverEyebrow}>{t(locale, 'discovery.refine')}</Text><Text style={styles.popoverTitle}>{t(locale, 'discovery.filters')}</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.close')} onPress={() => setShowFilters(false)} style={styles.closeButton}>
-              <AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={17} tintColor={Palette.blueDark} />
-            </Pressable>
-          </View>
-          <JobFilters value={filters} onChange={setFilters} />
-        </View>
-      )}
-
-      {showLocation && (
-        <LocationPanel
-          city={manualCity}
-          country={manualCountry}
-          locale={locale}
-          onChangeCity={setManualCity}
-          onChangeCountry={setManualCountry}
-          onClose={() => setShowLocation(false)}
-          onManual={useManualLocation}
-          onUseDevice={() => void handleUseDeviceLocation()}
-          status={location.status}
-          top={insets.top + 144}
+          contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 132 }]}
+          contentInsetAdjustmentBehavior="never"
+          initialNumToRender={12}
+          keyExtractor={(job) => job.id}
+          maxToRenderPerBatch={16}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={Palette.blue} />}
+          renderItem={({ item }) => <JobCard job={item} onPress={() => openJob(item)} />}
+          windowSize={9}
+          ListHeaderComponent={<View style={styles.listHeader}>
+            <Text style={styles.listCount}>{sortedJobs.length} {locale === 'de' ? t(locale, 'discovery.jobs') : t(locale, 'discovery.jobs').toLowerCase()}</Text>
+            <Text style={styles.sortLabel}>{sortLabel(locale, sort)}</Text>
+          </View>}
+          ListEmptyComponent={loading ? <StatePanel loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : <StatePanel text={t(locale, 'discovery.noResults')} />}
         />
       )}
 
-      {viewMode === 'map' && (
-        <View pointerEvents="box-none" style={[styles.mapFooter, { bottom: Math.max(insets.bottom, 12) + 72 }]}>
-          <View style={styles.mapMetaRow}>
-            <View style={[styles.resultsPill, Shadows.subtle]}>
-              <View style={styles.liveDot} />
-              <Text style={styles.resultsPillText}>{loading ? t(locale, 'loading.jobs') : `${jobs.length} ${t(locale, 'discovery.results').toLowerCase()}`}</Text>
-            </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'location.chooseLocation')} onPress={toggleLocation} style={[styles.locationButton, Shadows.floating]}>
-              <AppIcon name={{ ios: 'location.fill', android: 'my_location', web: 'my_location' }} size={22} tintColor={Palette.blue} />
-            </Pressable>
+      <View pointerEvents="box-none" style={[styles.top, { top: insets.top + 8 }]}>
+        <View style={styles.searchRow}>
+          <View style={styles.searchBar}>
+            <AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={19} tintColor={Palette.textSecondary} />
+            <TextInput
+              accessibilityLabel={t(locale, 'discovery.searchPlaceholder')}
+              autoCapitalize="none"
+              clearButtonMode="while-editing"
+              onChangeText={setSearch}
+              placeholder={t(locale, 'discovery.searchPlaceholder')}
+              placeholderTextColor={Palette.textSecondary}
+              returnKeyType="search"
+              style={styles.searchInput}
+              value={search}
+            />
           </View>
+        </View>
+        <View style={styles.controls}>
+          <ControlButton icon={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }} label={locationLabel} onPress={() => router.push('/location')} />
+          <ControlButton badge={activeFilterCount} icon={{ ios: 'line.3.horizontal.decrease', android: 'filter_list', web: 'filter_list' }} label={locale === 'de' ? 'Filter' : 'Filters'} onPress={() => router.push('/filters')} />
+          <ControlButton icon={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map', android: 'map', web: 'map' }} label={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={() => setViewMode((current) => current === 'map' ? 'list' : 'map')} />
+        </View>
+        {viewMode === 'map' && showSearchArea && <Pressable accessibilityRole="button" onPress={searchMapArea} style={({ pressed }) => [styles.searchArea, pressed && styles.pressed]}><AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={15} tintColor={Palette.white} /><Text style={styles.searchAreaText}>{t(locale, 'discovery.searchArea')}</Text></Pressable>}
+      </View>
 
-          {loading ? <StatePanel compact loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel compact text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : selectedJob ? <JobPreview job={selectedJob} locale={locale} onPress={() => openJob(selectedJob)} /> : <StatePanel compact text={t(locale, 'discovery.noResults')} />}
+      {viewMode === 'map' && (
+        <View pointerEvents="box-none" style={[styles.bottom, { bottom: Math.max(insets.bottom, 10) + 66 }]}>
+          <View style={styles.mapActions}>
+            <View style={styles.resultLabel}><Text style={styles.resultLabelText}>{loading ? t(locale, 'loading.jobs') : `${sortedJobs.length} ${t(locale, 'discovery.results').toLowerCase()}`}</Text></View>
+            <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'location.chooseLocation')} onPress={() => router.push('/location')} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}><AppIcon name={{ ios: 'location.fill', android: 'my_location', web: 'my_location' }} size={21} tintColor={Palette.blue} /></Pressable>
+          </View>
+          {loading && !selectedJob ? <StatePanel compact loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel compact text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : selectedJob ? <JobPreview favorite={Boolean(activeFavorite)} favoriteBusy={favoriteBusy} job={selectedJob} locale={locale} onDetails={() => openJob(selectedJob)} onFavorite={() => void toggleFavorite()} /> : <StatePanel compact text={t(locale, 'discovery.noResults')} />}
         </View>
       )}
     </View>
   );
 }
 
-function JobPreview({ job, locale, onPress }: { job: Job; locale: Locale; onPress: () => void }) {
-  const categoryColor = job.category === 'technology' ? Palette.blue : job.category === 'business' ? Palette.coral : Palette.lime;
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${job.title}, ${job.company}`} onPress={onPress} style={[styles.preview, Shadows.floating]}>
-      <View style={[styles.previewIcon, { backgroundColor: categoryColor }]}>
-        <AppIcon name={{ ios: job.category === 'technology' ? 'chevron.left.forwardslash.chevron.right' : job.category === 'business' ? 'briefcase.fill' : 'wrench.and.screwdriver.fill', android: job.category === 'technology' ? 'code' : job.category === 'business' ? 'work' : 'construction', web: job.category === 'technology' ? 'code' : job.category === 'business' ? 'work' : 'construction' }} size={25} tintColor={Palette.white} />
-      </View>
-      <View style={styles.previewCopy}>
-        <View style={styles.previewTopline}>
-          <Text style={styles.previewCategory}>{localizeCategory(locale, job.category)}</Text>
-          <Text style={styles.previewSource} numberOfLines={1}>{job.sourceName}</Text>
-        </View>
-        <Text style={styles.previewTitle} numberOfLines={2}>{job.title}</Text>
-        <Text style={styles.previewCompany} numberOfLines={1}>{job.company}</Text>
-        <View style={styles.previewLocationRow}>
-          <AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={15} tintColor={Palette.textSecondary} />
-          <Text style={styles.previewLocation} numberOfLines={1}>{job.city}, {job.country}</Text>
-        </View>
-      </View>
-      <View style={styles.previewArrow}>
-        <AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={19} tintColor={Palette.white} />
-      </View>
-    </Pressable>
-  );
+function ControlButton({ badge, icon, label, onPress }: { badge?: number; icon: { ios: string; android: string; web: string }; label: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.control, pressed && styles.pressed]}><AppIcon name={icon as never} size={16} tintColor={Palette.text} /><Text style={styles.controlText} numberOfLines={1}>{label}</Text>{Boolean(badge) && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}</Pressable>;
 }
 
-function LocationPanel({ city, country, locale, onChangeCity, onChangeCountry, onClose, onManual, onUseDevice, status, top }: { city: string; country: string; locale: Locale; onChangeCity: (value: string) => void; onChangeCountry: (value: string) => void; onClose: () => void; onManual: () => void; onUseDevice: () => void; status: LocationStatus; top: number }) {
+function JobPreview({ favorite, favoriteBusy, job, locale, onDetails, onFavorite }: { favorite: boolean; favoriteBusy: boolean; job: Job; locale: 'de' | 'en'; onDetails: () => void; onFavorite: () => void }) {
   return (
-    <View style={[styles.popover, { top }, Shadows.floating]}>
-      <View style={styles.popoverHeading}>
-        <View><Text style={styles.popoverEyebrow}>{t(locale, 'discovery.nearby')}</Text><Text style={styles.popoverTitle}>{t(locale, 'discovery.location')}</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.close')} onPress={onClose} style={styles.closeButton}>
-          <AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={17} tintColor={Palette.blueDark} />
-        </Pressable>
+    <View style={styles.sheet}>
+      <View style={styles.grabber} />
+      <Text style={styles.previewTitle} numberOfLines={2}>{job.title}</Text>
+      <Text style={styles.previewCompany} numberOfLines={1}>{job.company}</Text>
+      <Text style={styles.previewMeta} numberOfLines={1}>{job.city}, {localizeCountry(locale, job.country)} · {localizeJobType(locale, job.jobType)}</Text>
+      <View style={styles.previewActions}>
+        <Pressable accessibilityRole="button" accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy} onPress={onFavorite} style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>{favoriteBusy ? <ActivityIndicator color={Palette.blue} /> : <AppIcon name={favorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={20} tintColor={Palette.blue} />}<Text style={styles.saveButtonText}>{favorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')}</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={onDetails} style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}><Text style={styles.detailsButtonText}>{t(locale, 'discovery.details')}</Text></Pressable>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'location.useLocation')} disabled={status === 'requesting'} onPress={onUseDevice} style={styles.primaryAction}>
-        {status === 'requesting' ? <ActivityIndicator color={Palette.white} /> : <AppIcon name={{ ios: 'location.fill', android: 'my_location', web: 'my_location' }} size={18} tintColor={Palette.white} />}
-        <Text style={styles.primaryActionText}>{t(locale, 'location.useLocation')}</Text>
-      </Pressable>
-      <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>{t(locale, 'discovery.or')}</Text><View style={styles.divider} /></View>
-      <View style={styles.manualRow}>
-        <TextInput accessibilityLabel={t(locale, 'discovery.city')} onChangeText={onChangeCity} placeholder={t(locale, 'discovery.city')} placeholderTextColor={Palette.textSecondary} style={styles.locationInput} value={city} />
-        <TextInput accessibilityLabel={t(locale, 'discovery.country')} onChangeText={onChangeCountry} placeholder={t(locale, 'discovery.country')} placeholderTextColor={Palette.textSecondary} style={styles.locationInput} value={country} />
-      </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'discovery.useManual')} onPress={onManual} style={styles.secondaryAction}><Text style={styles.secondaryActionText}>{t(locale, 'discovery.useManual')}</Text></Pressable>
-      {(status === 'denied' || status === 'unavailable') && <Text style={styles.locationStatus}>{t(locale, 'location.denied')} {t(locale, 'location.fallback')}</Text>}
     </View>
   );
 }
 
-function LanguageSwitcher({ locale }: { locale: Locale }) {
-  return <View style={styles.language}><LanguageButton active={locale === 'de'} label="DE" onPress={() => setLocale('de')} /><LanguageButton active={locale === 'en'} label="EN" onPress={() => setLocale('en')} /></View>;
-}
-
-function LanguageButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label === 'DE' ? 'Deutsch' : 'English'} accessibilityState={{ selected: active }} onPress={onPress} style={[styles.langButton, active && styles.langActive]}><Text style={[styles.langText, active && styles.langActiveText]}>{label}</Text></Pressable>;
-}
-
-function QuickChip({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }} onPress={onPress} style={[styles.quickChip, active && styles.quickChipActive, Shadows.subtle]}><Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>{label}</Text></Pressable>;
-}
-
 function StatePanel({ text, action, onPress, loading, compact }: { text: string; action?: string; onPress?: () => void; loading?: boolean; compact?: boolean }) {
-  return <View style={[styles.state, compact && styles.stateCompact, Shadows.subtle]} accessibilityRole="alert">{loading && <ActivityIndicator color={Palette.blue} />}<Text style={styles.stateText}>{text}</Text>{action && onPress && <Pressable accessibilityRole="button" accessibilityLabel={action} onPress={onPress} style={styles.retryButton}><Text style={styles.retryText}>{action}</Text></Pressable>}</View>;
+  return <View style={[styles.state, compact && styles.stateCompact]} accessibilityRole="alert">{loading && <ActivityIndicator color={Palette.blue} />}<Text style={styles.stateText}>{text}</Text>{action && onPress && <Pressable accessibilityRole="button" onPress={onPress} style={styles.retry}><Text style={styles.retryText}>{action}</Text></Pressable>}</View>;
+}
+
+function sortLabel(locale: 'de' | 'en', sort: 'recent' | 'distance' | 'title') {
+  return t(locale, sort === 'distance' ? 'discovery.sortDistance' : sort === 'title' ? 'discovery.sortTitle' : 'discovery.sortRecent');
+}
+
+function sortJobs(jobs: Job[], sort: 'recent' | 'distance' | 'title', latitude?: number, longitude?: number) {
+  const next = [...jobs];
+  if (sort === 'title') return next.sort((a, b) => a.title.localeCompare(b.title));
+  if (sort === 'distance' && latitude !== undefined && longitude !== undefined) return next.sort((a, b) => distance(a, latitude, longitude) - distance(b, latitude, longitude));
+  return next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function distance(job: Job, latitude: number, longitude: number) {
+  if (job.latitude === null || job.longitude === null) return Number.POSITIVE_INFINITY;
+  return (job.latitude - latitude) ** 2 + (job.longitude - longitude) ** 2;
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Palette.background },
-  listScreen: { flex: 1, backgroundColor: Palette.background },
-  listContent: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 16, paddingBottom: 130 },
-  listHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, marginBottom: 16 },
-  listEyebrow: { color: Palette.blue, fontSize: 12, fontWeight: '800', letterSpacing: 1.4, textTransform: 'uppercase' },
-  listTitle: { color: Palette.blueDark, fontSize: 30, lineHeight: 36, fontWeight: '900', marginTop: 3 },
-  countBadge: { width: 46, height: 46, borderRadius: 23, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  countBadgeText: { color: Palette.blue, fontWeight: '900', fontSize: 16 },
-  cards: { gap: 10 },
-  topControls: { position: 'absolute', left: 14, right: 14, gap: 10, zIndex: 20, maxWidth: 900, alignSelf: 'center' },
-  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: Radius.pill, paddingVertical: 6, paddingLeft: 6, paddingRight: 13 },
-  logoMark: { width: 32, height: 32, borderRadius: 16, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center' },
-  brandText: { color: Palette.blueDark, fontWeight: '900', fontSize: 11, letterSpacing: 1.15 },
-  language: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: Radius.pill, padding: 3 },
-  langButton: { minHeight: 34, minWidth: 38, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
-  langActive: { backgroundColor: Palette.blueDark },
-  langText: { color: Palette.textSecondary, fontWeight: '800', fontSize: 11 },
-  langActiveText: { color: Palette.white },
-  searchBar: { height: 58, paddingLeft: 17, paddingRight: 7, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: Radius.large, backgroundColor: Palette.white, borderWidth: 1, borderColor: 'rgba(226,232,240,0.9)' },
-  searchInput: { flex: 1, height: '100%', color: Palette.text, fontSize: 16, fontWeight: '600' },
-  iconButton: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.surface, position: 'relative' },
-  iconButtonActive: { backgroundColor: Palette.blue },
-  filterCount: { position: 'absolute', right: -3, top: -3, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: Palette.coral, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Palette.white },
-  filterCountText: { color: Palette.white, fontSize: 9, fontWeight: '900' },
-  quickFilters: { gap: 8, paddingRight: 14 },
-  quickChip: { minHeight: 40, paddingHorizontal: 16, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.96)', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(226,232,240,0.9)' },
-  quickChipActive: { backgroundColor: Palette.blueDark, borderColor: Palette.blueDark },
-  quickChipText: { color: Palette.blueDark, fontSize: 13, fontWeight: '800' },
-  quickChipTextActive: { color: Palette.white },
-  popover: { position: 'absolute', left: 14, right: 14, zIndex: 30, maxWidth: 520, alignSelf: 'center', backgroundColor: Palette.white, borderRadius: Radius.large, padding: 18, borderWidth: 1, borderColor: Palette.border },
-  filterPopover: { maxWidth: 600 },
-  popoverHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  popoverEyebrow: { color: Palette.blue, fontSize: 11, fontWeight: '900', letterSpacing: 1.2, textTransform: 'uppercase' },
-  popoverTitle: { color: Palette.blueDark, fontSize: 22, fontWeight: '900', marginTop: 2 },
-  closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
-  primaryAction: { minHeight: 50, borderRadius: 16, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9 },
-  primaryActionText: { color: Palette.white, fontWeight: '900', fontSize: 15 },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
-  divider: { flex: 1, height: 1, backgroundColor: Palette.border },
-  dividerText: { color: Palette.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  manualRow: { flexDirection: 'row', gap: 9 },
-  locationInput: { flex: 1, minHeight: 48, borderRadius: 15, borderWidth: 1, borderColor: Palette.border, paddingHorizontal: 14, color: Palette.text, backgroundColor: Palette.surface },
-  secondaryAction: { minHeight: 48, borderRadius: 15, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
-  secondaryActionText: { color: Palette.blue, fontWeight: '900' },
-  locationStatus: { color: Palette.danger, fontSize: 12, lineHeight: 18, marginTop: 10 },
-  mapFooter: { position: 'absolute', left: 14, right: 14, zIndex: 15, maxWidth: 680, alignSelf: 'center', gap: 10 },
-  mapMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  resultsPill: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.96)' },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Palette.success },
-  resultsPillText: { color: Palette.blueDark, fontSize: 12, fontWeight: '800' },
-  locationButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
-  preview: { minHeight: 142, borderRadius: 26, padding: 16, backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  previewIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  previewCopy: { flex: 1, minWidth: 0 },
-  previewTopline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  previewCategory: { color: Palette.blue, fontSize: 10, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
-  previewSource: { flex: 1, color: Palette.textSecondary, fontSize: 10, textAlign: 'right' },
-  previewTitle: { color: Palette.blueDark, fontSize: 19, lineHeight: 23, fontWeight: '900', marginTop: 5 },
-  previewCompany: { color: Palette.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
-  previewLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 7 },
-  previewLocation: { flex: 1, color: Palette.textSecondary, fontSize: 12 },
-  previewArrow: { width: 42, height: 42, borderRadius: 21, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center' },
-  state: { minHeight: 220, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: Palette.white, borderRadius: Radius.large, padding: 22 },
-  stateCompact: { minHeight: 110, borderWidth: 1, borderColor: Palette.border },
+  screen: { flex: 1, backgroundColor: Palette.white },
+  top: { position: 'absolute', left: 12, right: 12, zIndex: 10, gap: 8 },
+  searchRow: { flexDirection: 'row' },
+  searchBar: { flex: 1, height: 50, borderRadius: 15, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, boxShadow: '0 2px 10px rgba(15, 23, 42, 0.14)' },
+  searchInput: { flex: 1, height: '100%', color: Palette.text, fontSize: 16 },
+  controls: { flexDirection: 'row', gap: 7 },
+  control: { minHeight: 38, maxWidth: 160, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6, boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
+  controlText: { flexShrink: 1, color: Palette.text, fontSize: 13, fontWeight: '600' },
+  badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText: { color: Palette.white, fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  searchArea: { alignSelf: 'center', minHeight: 38, borderRadius: 19, backgroundColor: Palette.blue, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 7, boxShadow: '0 2px 8px rgba(21, 94, 239, 0.24)' },
+  searchAreaText: { color: Palette.white, fontSize: 13, fontWeight: '700' },
+  listScreen: { flex: 1, backgroundColor: Palette.white },
+  listContent: { paddingHorizontal: 16, paddingBottom: 120 },
+  listHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
+  listCount: { color: Palette.text, fontSize: 17, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  sortLabel: { color: Palette.textSecondary, fontSize: 13 },
+  bottom: { position: 'absolute', left: 12, right: 12, zIndex: 9, gap: 8 },
+  mapActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  resultLabel: { minHeight: 36, borderRadius: 18, backgroundColor: Palette.white, paddingHorizontal: 12, justifyContent: 'center', boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
+  resultLabelText: { color: Palette.text, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  roundButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(15, 23, 42, 0.16)' },
+  sheet: { backgroundColor: Palette.white, borderRadius: 22, borderCurve: 'continuous', paddingHorizontal: 18, paddingTop: 9, paddingBottom: 16, boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)' },
+  grabber: { width: 36, height: 5, borderRadius: 3, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 10 },
+  previewTitle: { color: Palette.text, fontSize: 20, lineHeight: 24, fontWeight: '700', letterSpacing: -0.25 },
+  previewCompany: { color: Palette.text, fontSize: 14, fontWeight: '500', marginTop: 4 },
+  previewMeta: { color: Palette.textSecondary, fontSize: 13, marginTop: 4 },
+  previewActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
+  saveButton: { minHeight: 46, minWidth: 112, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  saveButtonText: { color: Palette.blue, fontSize: 15, fontWeight: '700' },
+  detailsButton: { flex: 1, minHeight: 46, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center' },
+  detailsButtonText: { color: Palette.white, fontSize: 15, fontWeight: '700' },
+  state: { minHeight: 200, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, backgroundColor: Palette.white },
+  stateCompact: { minHeight: 104, borderRadius: 18, borderCurve: 'continuous', boxShadow: '0 5px 20px rgba(15, 23, 42, 0.14)' },
   stateText: { color: Palette.textSecondary, textAlign: 'center', lineHeight: 20 },
-  retryButton: { minHeight: 42, paddingHorizontal: 15, borderRadius: 14, backgroundColor: Palette.blueSoft, justifyContent: 'center' },
-  retryText: { color: Palette.blue, fontWeight: '900' },
+  retry: { minHeight: 42, paddingHorizontal: 14, justifyContent: 'center' },
+  retryText: { color: Palette.blue, fontWeight: '700' },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.96 }] },
 });
