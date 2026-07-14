@@ -10,7 +10,10 @@ SplashScreen.preventAutoHideAsync();
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  useEffect(() => { void hydrateLocale(); }, []);
+  useEffect(() => {
+    void hydrateLocale();
+    void SplashScreen.hideAsync();
+  }, []);
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AppTabs />
