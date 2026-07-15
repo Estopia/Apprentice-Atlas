@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AiExplanation } from '@/components/jobs/ai-explanation';
@@ -254,7 +254,7 @@ export default function JobDetailScreen() {
     const lineCount = event.nativeEvent.lines.length;
     setDescriptionMeasurement((current) => current?.key === descriptionKey && current.lineCount === lineCount ? current : { key: descriptionKey, lineCount });
   };
-  const shareJob = () => void Share.share({ title: job.title, message: `${job.title} — ${job.company}\n${applicationUrl ?? sourceUrl ?? ''}` });
+  const openSharePreview = () => router.push({ pathname: '/share/[jobId]', params: { jobId: job.id } } as never);
 
   return (
     <>
@@ -301,7 +301,7 @@ export default function JobDetailScreen() {
 
         {activeFavoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(activeFavoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
 
-        {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
+        {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={openSharePreview} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
 
         {primaryUrl && <View style={styles.topActions}>
           <Pressable accessibilityRole="link" accessibilityLabel={primaryLabel} onPress={() => void Linking.openURL(primaryUrl)} style={({ pressed }) => [styles.topPrimary, pressed && styles.pressed]}><Text style={styles.topPrimaryText}>{primaryLabel}</Text><AppIcon name={{ ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' }} size={17} tintColor={Palette.white} /></Pressable>
@@ -369,7 +369,7 @@ export default function JobDetailScreen() {
         </View>
       </SafeAreaView>
       <Stack.Screen options={{ title: '', headerShown: true, headerTransparent: false, headerStyle: { backgroundColor: Palette.white }, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }} />
-      {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={shareJob} /></Stack.Toolbar>}
+      {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={openSharePreview} /></Stack.Toolbar>}
     </>
   );
 }

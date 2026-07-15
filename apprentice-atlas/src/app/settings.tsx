@@ -1,13 +1,15 @@
 import Constants from 'expo-constants';
+import * as Print from 'expo-print';
 import { router, Stack } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { Palette, Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { usePreferences } from '@/hooks/use-preferences';
-import { buildAccountExport, deleteAccount, retryAccountCleanup, type AccountCleanupWarning } from '@/lib/account';
+import { buildAccountExport, buildAccountPdfHtml, deleteAccount, retryAccountCleanup, type AccountCleanupWarning, type AccountExport } from '@/lib/account';
 import { listApplications } from '@/lib/applications';
 import { listFavorites } from '@/lib/favorites';
 import { localizeCountry, t, useLocale } from '@/lib/i18n';
@@ -16,7 +18,7 @@ export default function SettingsScreen() {
   const [locale] = useLocale();
   const auth = useAuth();
   const { preferences, savePreferences, completeOnboarding } = usePreferences();
-  const [busy, setBusy] = useState<'export' | 'delete' | 'signout' | null>(null);
+  const [busy, setBusy] = useState<'export-json' | 'export-pdf' | 'delete' | 'signout' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const chooseLanguage = () => Alert.alert(t(locale, 'settings.selectLanguage'), undefined, [
@@ -30,20 +32,54 @@ export default function SettingsScreen() {
     { text: t(locale, 'settings.cancel'), style: 'cancel' },
   ]);
 
-  const exportData = async () => {
-    if (!auth.user || busy) return;
-    setError(null); setBusy('export');
+  const collectAccountData = async (): Promise<AccountExport | null> => {
+    if (!auth.user) return null;
     const userId = auth.session?.user.id;
     const [favorites, applications] = await Promise.all([
       listFavorites(userId ? { expectedUserId: userId } : undefined),
       listApplications(userId ? { expectedUserId: userId } : undefined),
     ]);
     if (favorites.error || applications.error || !favorites.data || !applications.data) {
-      setError(t(locale, 'settings.exportError')); setBusy(null); return;
+      setError(t(locale, 'settings.exportError'));
+      return null;
     }
-    const data = buildAccountExport({ user: auth.user, preferences, favorites: favorites.data, applications: applications.data });
+    return buildAccountExport({ user: auth.user, preferences, favorites: favorites.data, applications: applications.data });
+  };
+
+  const exportData = async () => {
+    if (!auth.user || busy) return;
+    setError(null); setBusy('export-json');
     try {
+      const data = await collectAccountData();
+      if (!data) return;
       await Share.share({ title: t(locale, 'settings.exportReady'), message: JSON.stringify(data, null, 2) });
+    } catch {
+      setError(t(locale, 'settings.exportError'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const exportPdf = async () => {
+    if (!auth.user || busy) return;
+    if (Platform.OS === 'web') {
+      Alert.alert(t(locale, 'settings.pdfWebTitle'), t(locale, 'settings.pdfWebFallback'));
+      return;
+    }
+    setError(null); setBusy('export-pdf');
+    try {
+      const data = await collectAccountData();
+      if (!data) return;
+      if (!await Sharing.isAvailableAsync()) {
+        setError(t(locale, 'settings.pdfShareUnavailable'));
+        return;
+      }
+      const { uri } = await Print.printToFileAsync({ html: buildAccountPdfHtml(data, locale) });
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
+        dialogTitle: t(locale, 'settings.pdfReady'),
+      });
     } catch {
       setError(t(locale, 'settings.exportError'));
     } finally {
@@ -126,7 +162,8 @@ export default function SettingsScreen() {
               <View style={styles.rowCopy}><Text style={styles.rowLabel}>{auth.user?.email}</Text><Text style={styles.rowDetail}>{t(locale, 'settings.account')}</Text></View>
             </View>
             <SettingsRow icon={{ ios: 'rectangle.portrait.and.arrow.right', android: 'logout', web: 'logout' }} label={busy === 'signout' ? t(locale, 'auth.signingOut') : t(locale, 'auth.signOut')} disabled={Boolean(busy)} onPress={() => void signOut()} />
-            <SettingsRow icon={{ ios: 'square.and.arrow.up', android: 'ios_share', web: 'share' }} label={busy === 'export' ? t(locale, 'settings.exporting') : t(locale, 'settings.export')} detail={t(locale, 'settings.exportHint')} disabled={Boolean(busy)} onPress={() => void exportData()} />
+            <SettingsRow icon={{ ios: 'doc.richtext.fill', android: 'picture_as_pdf', web: 'picture_as_pdf' }} label={busy === 'export-pdf' ? t(locale, 'settings.pdfExporting') : t(locale, 'settings.exportPdf')} detail={t(locale, 'settings.exportPdfHint')} disabled={Boolean(busy)} onPress={() => void exportPdf()} />
+            <SettingsRow icon={{ ios: 'curlybraces.square.fill', android: 'data_object', web: 'data_object' }} label={busy === 'export-json' ? t(locale, 'settings.exporting') : t(locale, 'settings.exportJson')} detail={t(locale, 'settings.exportJsonHint')} disabled={Boolean(busy)} onPress={() => void exportData()} />
             <SettingsRow icon={{ ios: 'trash.fill', android: 'delete', web: 'delete' }} label={busy === 'delete' ? t(locale, 'settings.deleting') : t(locale, 'settings.deleteAccount')} detail={t(locale, 'settings.deleteHint')} danger disabled={Boolean(busy)} onPress={confirmDelete} last />
           </>
         ) : (

@@ -36,4 +36,46 @@ describe('App Store readiness contracts', () => {
     expect(settings).toMatch(/exportData/);
     expect(settings).toMatch(/deleteAccount/);
   });
+
+  it('documents preparation, device-local state, calendar handoff, share assets, and PDF export in both legal locales', () => {
+    const legal = read('src/lib/legal.ts');
+    for (const phrase of [
+      'store: false',
+      'lokaler Entwurf',
+      'local draft',
+      'Benachrichtigungs-IDs',
+      'notification identifiers',
+      'Kalender',
+      'calendar',
+      'Share-Grafiken',
+      'share images',
+      'PDF-Export',
+      'PDF export',
+    ]) expect(legal).toContain(phrase);
+  });
+
+  it('registers a share preview route and opens it from job detail', () => {
+    const layout = read('src/app/_layout.tsx');
+    const detail = read('src/app/job/[id].tsx');
+    const preview = read('src/app/share/[jobId].tsx');
+
+    expect(layout).toContain('<Stack.Screen name="share/[jobId]"');
+    expect(detail).toContain("pathname: '/share/[jobId]'");
+    expect(detail).not.toContain('Share.share({ title: job.title');
+    expect(preview).toContain("from 'react-native-view-shot'");
+    expect(preview).toContain("from 'expo-sharing'");
+    expect(preview).toMatch(/width:\s*SHARE_CARD_WIDTH/);
+    expect(preview).toMatch(/height:\s*SHARE_CARD_HEIGHT/);
+    expect(preview).toContain("mimeType: 'image/png'");
+  });
+
+  it('uses native PDF generation and sharing while retaining the JSON export', () => {
+    const settings = read('src/app/settings.tsx');
+    expect(settings).toContain("from 'expo-print'");
+    expect(settings).toContain("from 'expo-sharing'");
+    expect(settings).toContain('printToFileAsync');
+    expect(settings).toContain("mimeType: 'application/pdf'");
+    expect(settings).toContain('JSON.stringify(data, null, 2)');
+    expect(settings).toContain("Platform.OS === 'web'");
+  });
 });

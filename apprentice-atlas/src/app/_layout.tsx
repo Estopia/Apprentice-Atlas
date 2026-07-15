@@ -64,6 +64,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth" options={{ presentation: 'modal', headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="auth-callback" options={{ gestureEnabled: false }} />
         <Stack.Screen name="job/[id]" />
+        <Stack.Screen name="share/[jobId]" options={{ headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="prepare/[jobId]" options={{ headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="settings" options={{ headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="legal/[document]" options={{ headerShown: true, headerShadowVisible: false }} />
