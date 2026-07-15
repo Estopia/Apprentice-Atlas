@@ -4,17 +4,19 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
-import { t, useLocale } from '@/lib/i18n';
+import { shouldUpdateMapCamera } from '@/lib/discovery-presentation';
+import { localizeCountry, t, useLocale } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
 import { clusterJobsForRegion, type JobCluster, type PositionedJob } from '@/lib/map-clusters';
 import { getJobsMapRegion, hasMeaningfulRegionChange, type JobMapRegion } from '@/lib/map-region';
 import type { Job } from '@/types/jobs';
 
-export type JobMapProps = { jobs: Job[]; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (center: { latitude: number; longitude: number }) => void };
-export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }: JobMapProps) {
+export type JobMapProps = { jobs: Job[]; cameraIntent: string; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (center: { latitude: number; longitude: number }) => void };
+export default function JobMap({ jobs, cameraIntent, selectedJobId, onSelect, onRegionChange }: JobMapProps) {
   const [locale] = useLocale();
   const mapRef = useRef<MapView>(null);
   const ignoreNextRegionChange = useRef(true);
+  const appliedCameraIntent = useRef<string | null>(null);
   const markers = useMemo(() => jobs.filter(hasMapPosition) as PositionedJob[], [jobs]);
   const region = useMemo(() => getJobsMapRegion(jobs), [jobs]);
   const [visibleRegion, setVisibleRegion] = useState<JobMapRegion | null>(region);
@@ -37,19 +39,23 @@ export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }
   }, [clusters, visibleRegion]);
 
   useEffect(() => {
-    if (region) {
-      ignoreNextRegionChange.current = true;
-      mapRef.current?.animateToRegion(region, 350);
-    }
-  }, [region]);
+    if (!shouldUpdateMapCamera(appliedCameraIntent.current, cameraIntent, Boolean(region)) || !region) return;
+    appliedCameraIntent.current = cameraIntent;
+    ignoreNextRegionChange.current = true;
+    clusteredRegion.current = region;
+    setVisibleRegion(region);
+    mapRef.current?.animateToRegion(region, 350);
+  }, [cameraIntent, region]);
 
+  const selected = markers.find((job) => job.id === selectedJobId);
+  const selectedCameraKey = selected ? `${selected.id}:${selected.latitude.toFixed(5)},${selected.longitude.toFixed(5)}` : null;
+  const selectedLatitude = selected?.latitude;
+  const selectedLongitude = selected?.longitude;
   useEffect(() => {
-    const selected = markers.find((job) => job.id === selectedJobId);
-    if (selected) {
-      ignoreNextRegionChange.current = true;
-      mapRef.current?.animateCamera({ center: { latitude: selected.latitude, longitude: selected.longitude } }, { duration: 260 });
-    }
-  }, [markers, selectedJobId]);
+    if (selectedLatitude === undefined || selectedLongitude === undefined || !selectedCameraKey) return;
+    ignoreNextRegionChange.current = true;
+    mapRef.current?.animateCamera({ center: { latitude: selectedLatitude, longitude: selectedLongitude } }, { duration: 260 });
+  }, [selectedCameraKey, selectedLatitude, selectedLongitude]);
 
   const selectCluster = (cluster: JobCluster) => {
     if (cluster.jobs.length === 1) {
@@ -100,7 +106,7 @@ export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }
         return (
           <Marker
             key={cluster.id}
-            accessibilityLabel={grouped ? `${cluster.jobs.length} ${t(locale, 'discovery.jobs')}` : `${job.title}, ${job.company}, ${job.city}, ${job.country}`}
+            accessibilityLabel={grouped ? `${cluster.jobs.length} ${t(locale, 'discovery.jobs')}` : `${job.title}, ${job.company}, ${job.city}, ${localizeCountry(locale, job.country)}`}
             accessibilityState={{ selected }}
             anchor={{ x: 0.5, y: 0.5 }}
             coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}

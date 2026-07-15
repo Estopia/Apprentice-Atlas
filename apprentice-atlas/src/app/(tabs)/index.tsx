@@ -11,8 +11,9 @@ import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useJobs } from '@/hooks/use-jobs';
 import { getDiscoveryState, updateDiscoveryFilters, useDiscoveryState } from '@/lib/discovery-state';
+import { getDiscoveryLocationLabel, getMapCameraIntent } from '@/lib/discovery-presentation';
 import { addFavorite, getFavoriteForJob, removeFavorite } from '@/lib/favorites';
-import { localizeCategory, localizeCountry, localizeJobError, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
+import { localizeCountry, localizeJobError, localizeJobType, t, useLocale } from '@/lib/i18n';
 import type { FavoriteJob, Job } from '@/types/jobs';
 
 type ViewMode = 'map' | 'list';
@@ -42,7 +43,7 @@ export default function DiscoveryScreen() {
 
   const sortedJobs = useMemo(() => sortJobs(jobs, sort, filters.latitude, filters.longitude), [filters.latitude, filters.longitude, jobs, sort]);
   const mapJobs = useMemo(() => sortedJobs.slice(0, 400), [sortedJobs]);
-  const selectedJob = useMemo(() => sortedJobs.find((job) => job.id === selectedJobId) ?? sortedJobs[0], [selectedJobId, sortedJobs]);
+  const selectedJob = useMemo(() => sortedJobs.find((job) => job.id === selectedJobId), [selectedJobId, sortedJobs]);
 
   useEffect(() => {
     if (!auth.session || !selectedJob) return;
@@ -54,7 +55,8 @@ export default function DiscoveryScreen() {
   const openJob = (job: Job) => router.push(`/job/${job.id}`);
   const activeFavorite = favoriteForJobId === selectedJob?.id ? favorite : null;
   const activeFilterCount = [filters.country, filters.city, filters.category, filters.jobType, filters.level, filters.radiusKm].filter(Boolean).length;
-  const locationLabel = filters.city || filters.country || t(locale, 'discovery.nearbyShort');
+  const locationLabel = getDiscoveryLocationLabel(locale, filters);
+  const cameraIntent = getMapCameraIntent(filters);
 
   const handleMapChange = (center: MapCenter) => {
     setMapCenter(center);
@@ -92,12 +94,12 @@ export default function DiscoveryScreen() {
   return (
     <View style={styles.screen}>
       {viewMode === 'map' ? (
-        <JobMap jobs={mapJobs} selectedJobId={selectedJob?.id} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
+        <JobMap cameraIntent={cameraIntent} jobs={mapJobs} selectedJobId={selectedJob?.id} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
       ) : (
         <FlatList
           data={sortedJobs}
           style={styles.listScreen}
-          contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 132 }]}
+          contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 120 }]}
           contentInsetAdjustmentBehavior="never"
           initialNumToRender={12}
           keyExtractor={(job) => job.id}
@@ -132,7 +134,7 @@ export default function DiscoveryScreen() {
         </View>
         <View style={styles.controls}>
           <ControlButton icon={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }} label={locationLabel} onPress={() => router.push('/location')} />
-          <ControlButton badge={activeFilterCount} icon={{ ios: 'line.3.horizontal.decrease', android: 'filter_list', web: 'filter_list' }} label={locale === 'de' ? 'Filter' : 'Filters'} onPress={() => router.push('/filters')} />
+          <ControlButton badge={activeFilterCount} icon={{ ios: 'line.3.horizontal.decrease', android: 'filter_list', web: 'filter_list' }} label={t(locale, 'discovery.filtersShort')} onPress={() => router.push('/filters')} />
           <ControlButton icon={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map', android: 'map', web: 'map' }} label={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={() => setViewMode((current) => current === 'map' ? 'list' : 'map')} />
         </View>
         {viewMode === 'map' && showSearchArea && <Pressable accessibilityRole="button" onPress={searchMapArea} style={({ pressed }) => [styles.searchArea, pressed && styles.pressed]}><AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={15} tintColor={Palette.white} /><Text style={styles.searchAreaText}>{t(locale, 'discovery.searchArea')}</Text></Pressable>}
@@ -140,11 +142,8 @@ export default function DiscoveryScreen() {
 
       {viewMode === 'map' && (
         <View pointerEvents="box-none" style={[styles.bottom, { bottom: Math.max(insets.bottom, 10) + 66 }]}>
-          <View style={styles.mapActions}>
-            <View style={styles.resultLabel}><Text style={styles.resultLabelText}>{loading ? t(locale, 'loading.jobs') : `${new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB').format(sortedJobs.length)} ${t(locale, 'discovery.results').toLowerCase()}`}</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'location.chooseLocation')} onPress={() => router.push('/location')} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}><AppIcon name={{ ios: 'location.fill', android: 'my_location', web: 'my_location' }} size={21} tintColor={Palette.blue} /></Pressable>
-          </View>
-          {loading && !selectedJob ? <StatePanel compact loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel compact text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : selectedJob ? <JobPreview favorite={Boolean(activeFavorite)} favoriteBusy={favoriteBusy} job={selectedJob} locale={locale} onDetails={() => openJob(selectedJob)} onFavorite={() => void toggleFavorite()} /> : <StatePanel compact text={t(locale, 'discovery.noResults')} />}
+          {!selectedJob && <View style={styles.resultLabel}><Text style={styles.resultLabelText}>{loading ? t(locale, 'loading.jobs') : `${new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB').format(sortedJobs.length)} ${t(locale, 'discovery.results').toLowerCase()}`}</Text></View>}
+          {loading && !selectedJob ? <StatePanel compact loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel compact text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : selectedJob ? <JobPreview favorite={Boolean(activeFavorite)} favoriteBusy={favoriteBusy} job={selectedJob} locale={locale} onDetails={() => openJob(selectedJob)} onFavorite={() => void toggleFavorite()} /> : sortedJobs.length === 0 ? <StatePanel compact text={t(locale, 'discovery.noResults')} /> : null}
         </View>
       )}
     </View>
@@ -159,26 +158,16 @@ function JobPreview({ favorite, favoriteBusy, job, locale, onDetails, onFavorite
   return (
     <Animated.View key={job.id} entering={FadeInUp.duration(180)} exiting={FadeOut.duration(120)} style={styles.sheet}>
       <View style={styles.grabber} />
-      <View style={styles.previewHeader}>
-        <View style={styles.previewLogo}><Text style={styles.previewLogoText}>{job.company.slice(0, 1).toUpperCase()}</Text></View>
-        <View style={styles.previewCopy}><Text style={styles.previewTitle} numberOfLines={2}>{job.title}</Text><Text style={styles.previewCompany} numberOfLines={1}>{job.company}</Text></View>
-      </View>
-      <View style={styles.previewMetaRow}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={14} tintColor={Palette.textSecondary} /><Text style={styles.previewMeta} numberOfLines={1}>{job.city}, {localizeCountry(locale, job.country)} · {localizeJobType(locale, job.jobType)}</Text></View>
-      <View style={styles.previewFacts}>
-        <PreviewFact icon={{ ios: 'square.grid.2x2', android: 'category', web: 'category' }} label={localizeCategory(locale, job.category)} />
-        <PreviewFact icon={{ ios: 'figure.walk', android: 'school', web: 'school' }} label={localizeJobLevel(locale, job.level)} />
-        {job.expiresAt && <PreviewFact icon={{ ios: 'calendar', android: 'event', web: 'event' }} label={new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short' })} />}
-      </View>
+      <Text style={styles.previewEyebrow}>{localizeJobType(locale, job.jobType)}</Text>
+      <Text style={styles.previewTitle} numberOfLines={2}>{job.title}</Text>
+      <Text style={styles.previewCompany} numberOfLines={1}>{job.company}</Text>
+      <View style={styles.previewMetaRow}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={15} tintColor={Palette.textSecondary} /><Text style={styles.previewMeta} numberOfLines={1}>{job.city}, {localizeCountry(locale, job.country)}</Text></View>
       <View style={styles.previewActions}>
-        <Pressable accessibilityRole="button" accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy} onPress={onFavorite} style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>{favoriteBusy ? <ActivityIndicator color={Palette.blue} /> : <AppIcon name={favorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={20} tintColor={Palette.blue} />}<Text style={styles.saveButtonText}>{favorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')}</Text></Pressable>
+        <Pressable accessibilityLabel={favorite ? t(locale, 'actions.saved') : t(locale, 'actions.save')} accessibilityRole="button" accessibilityState={{ selected: favorite, disabled: favoriteBusy }} disabled={favoriteBusy} onPress={onFavorite} style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>{favoriteBusy ? <ActivityIndicator color={Palette.blue} /> : <AppIcon name={favorite ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={21} tintColor={Palette.blue} />}</Pressable>
         <Pressable accessibilityRole="button" onPress={onDetails} style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}><Text style={styles.detailsButtonText}>{t(locale, 'discovery.details')}</Text></Pressable>
       </View>
     </Animated.View>
   );
-}
-
-function PreviewFact({ icon, label }: { icon: { ios: string; android: string; web: string }; label: string }) {
-  return <View style={styles.previewFact}><AppIcon name={icon as never} size={13} tintColor={Palette.blue} /><Text style={styles.previewFactText} numberOfLines={2}>{label}</Text></View>;
 }
 
 function StatePanel({ text, action, onPress, loading, compact }: { text: string; action?: string; onPress?: () => void; loading?: boolean; compact?: boolean }) {
@@ -203,47 +192,38 @@ function distance(job: Job, latitude: number, longitude: number) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
-  top: { position: 'absolute', left: 12, right: 12, zIndex: 10, gap: 8 },
+  top: { position: 'absolute', left: 14, right: 14, zIndex: 10, gap: 8 },
   searchRow: { flexDirection: 'row' },
   searchBar: { flex: 1, height: 50, borderRadius: 15, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, boxShadow: '0 2px 10px rgba(15, 23, 42, 0.14)' },
   searchInput: { flex: 1, height: '100%', color: Palette.text, fontSize: 16 },
-  controls: { flexDirection: 'row', gap: 7 },
-  control: { minHeight: 38, maxWidth: 160, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6, boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
+  controls: { flexDirection: 'row', gap: 8 },
+  control: { minHeight: 44, maxWidth: 170, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 7, boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
   controlText: { flexShrink: 1, color: Palette.text, fontSize: 13, fontWeight: '600' },
   badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: Palette.white, fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  searchArea: { alignSelf: 'center', minHeight: 38, borderRadius: 19, backgroundColor: Palette.blue, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 7, boxShadow: '0 2px 8px rgba(21, 94, 239, 0.24)' },
+  searchArea: { alignSelf: 'center', minHeight: 44, borderRadius: 22, backgroundColor: Palette.blue, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, boxShadow: '0 2px 8px rgba(21, 94, 239, 0.24)' },
   searchAreaText: { color: Palette.white, fontSize: 13, fontWeight: '700' },
   listScreen: { flex: 1, backgroundColor: Palette.white },
   listContent: { paddingHorizontal: 16, paddingBottom: 120 },
   listHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   listCount: { color: Palette.text, fontSize: 17, fontWeight: '700', fontVariant: ['tabular-nums'] },
   sortLabel: { color: Palette.textSecondary, fontSize: 13 },
-  bottom: { position: 'absolute', left: 12, right: 12, zIndex: 9, gap: 8 },
-  mapActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  resultLabel: { minHeight: 36, borderRadius: 18, backgroundColor: Palette.white, paddingHorizontal: 12, justifyContent: 'center', boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
-  resultLabelText: { color: Palette.text, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  roundButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(15, 23, 42, 0.16)' },
-  sheet: { backgroundColor: Palette.white, borderRadius: 22, borderCurve: 'continuous', paddingHorizontal: 18, paddingTop: 9, paddingBottom: 16, boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)' },
-  grabber: { width: 36, height: 5, borderRadius: 3, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 10 },
-  previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  previewLogo: { width: 46, height: 46, borderRadius: 13, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  previewLogoText: { color: Palette.blue, fontSize: 18, fontWeight: '800' },
-  previewCopy: { flex: 1, minWidth: 0 },
+  bottom: { position: 'absolute', left: 14, right: 14, zIndex: 9, gap: 8, alignItems: 'flex-start' },
+  resultLabel: { minHeight: 36, borderRadius: 18, backgroundColor: Palette.white, paddingHorizontal: 13, justifyContent: 'center', boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
+  resultLabelText: { color: Palette.text, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  sheet: { width: '100%', backgroundColor: Palette.white, borderRadius: 22, borderCurve: 'continuous', paddingHorizontal: 18, paddingTop: 8, paddingBottom: 16, boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)' },
+  grabber: { width: 34, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 9 },
+  previewEyebrow: { color: Palette.blue, fontSize: 13, fontWeight: '700', marginBottom: 4 },
   previewTitle: { color: Palette.text, fontSize: 19, lineHeight: 23, fontWeight: '700', letterSpacing: -0.25 },
-  previewCompany: { color: Palette.text, fontSize: 13, fontWeight: '500', marginTop: 3 },
-  previewMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
-  previewMeta: { flex: 1, color: Palette.textSecondary, fontSize: 12 },
-  previewFacts: { flexDirection: 'row', gap: 6, marginTop: 10 },
-  previewFact: { flex: 1, minWidth: 0, minHeight: 34, borderRadius: 9, borderCurve: 'continuous', backgroundColor: Palette.surface, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  previewFactText: { flexShrink: 1, color: Palette.text, fontSize: 10, lineHeight: 12, fontWeight: '600' },
-  previewActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  saveButton: { minHeight: 46, minWidth: 112, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  saveButtonText: { color: Palette.blue, fontSize: 15, fontWeight: '700' },
-  detailsButton: { flex: 1, minHeight: 46, borderRadius: 12, borderCurve: 'continuous', backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center' },
+  previewCompany: { color: Palette.text, fontSize: 14, fontWeight: '600', marginTop: 4 },
+  previewMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  previewMeta: { flex: 1, color: Palette.textSecondary, fontSize: 13 },
+  previewActions: { flexDirection: 'row', gap: 9, marginTop: 13 },
+  saveButton: { width: 48, minHeight: 48, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  detailsButton: { flex: 1, minHeight: 48, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center' },
   detailsButtonText: { color: Palette.white, fontSize: 15, fontWeight: '700' },
   state: { minHeight: 200, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, backgroundColor: Palette.white },
-  stateCompact: { minHeight: 104, borderRadius: 18, borderCurve: 'continuous', boxShadow: '0 5px 20px rgba(15, 23, 42, 0.14)' },
+  stateCompact: { width: '100%', minHeight: 104, borderRadius: 18, borderCurve: 'continuous', boxShadow: '0 5px 20px rgba(15, 23, 42, 0.14)' },
   stateText: { color: Palette.textSecondary, textAlign: 'center', lineHeight: 20 },
   retry: { minHeight: 42, paddingHorizontal: 14, justifyContent: 'center' },
   retryText: { color: Palette.blue, fontWeight: '700' },
