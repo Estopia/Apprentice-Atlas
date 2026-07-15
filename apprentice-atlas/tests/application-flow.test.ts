@@ -9,9 +9,11 @@ import {
   deriveApplicationJourney,
   isCurrentWorkflowOperation,
   isApplicationDraftValid,
+  reconcileApplicationRemovalReminder,
   resolveApplicationSheetLoad,
   validatedPendingTrackJobId,
 } from '../src/lib/application-flow';
+import { getFavoriteForJob, type FavoriteClient } from '../src/lib/favorites';
 
 const jobId = '11111111-1111-4111-8111-111111111111';
 
@@ -82,6 +84,7 @@ describe('application form helpers', () => {
       jobId,
       status: 'interview' as const,
       note: 'Keep this private note',
+      interviewAt: null,
       createdAt: '2026-07-14T10:00:00.000Z',
       updatedAt: '2026-07-14T11:00:00.000Z',
     };
@@ -107,6 +110,112 @@ describe('application form helpers', () => {
     const accept = vi.fn(() => true);
     expect(confirmApplicationRemovalOnWeb(accept, 'Remove application?', 'This cannot be undone.', remove)).toBe(true);
     expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it('restores the official deadline reminder after removing an application that remains favorited', async () => {
+    const getFavorite = vi.fn(async () => ({ data: { jobId }, error: null }));
+    const reconcile = vi.fn(async () => ({ state: 'scheduled' }));
+
+    await expect(reconcileApplicationRemovalReminder({
+      userId: 'user-1',
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      title: 'Application deadline',
+      body: 'Three days remain.',
+      getFavorite,
+      reconcile,
+    })).resolves.toBeUndefined();
+
+    expect(getFavorite).toHaveBeenCalledWith(jobId);
+    expect(reconcile).toHaveBeenCalledWith({
+      userId: 'user-1',
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      applicationStatus: null,
+      saved: true,
+      title: 'Application deadline',
+      body: 'Three days remain.',
+    });
+  });
+
+  it('cancels the reminder after removal when the job is not favorited or favorite lookup fails', async () => {
+    for (const getFavorite of [
+      vi.fn(async () => ({ data: null, error: null })),
+      vi.fn(async () => { throw new Error('offline'); }),
+    ]) {
+      const reconcile = vi.fn(async () => ({ state: 'not-scheduled' }));
+      await reconcileApplicationRemovalReminder({
+        userId: 'user-1',
+        jobId,
+        deadlineAt: '2026-07-22T10:00:00.000Z',
+        title: 'Application deadline',
+        body: 'Three days remain.',
+        getFavorite,
+        reconcile,
+      });
+      expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({
+        applicationStatus: null,
+        saved: false,
+      }));
+    }
+  });
+
+  it('cancels account A reminder when a deferred favorite lookup resolves after switching to account B', async () => {
+    const accountA = '33333333-3333-4333-8333-333333333333';
+    const accountB = '44444444-4444-4444-8444-444444444444';
+    let activeUserId = accountA;
+    let releaseSession!: () => void;
+    const sessionLookup = new Promise<void>((resolve) => { releaseSession = resolve; });
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => {
+          await sessionLookup;
+          return {
+            data: { session: { access_token: `token-${activeUserId}`, user: { id: activeUserId } } },
+            error: null,
+          };
+        }),
+      },
+      from: vi.fn(),
+    } as unknown as FavoriteClient;
+    const reconcile = vi.fn(async () => ({ state: 'not-scheduled' }));
+
+    const reconciliation = reconcileApplicationRemovalReminder({
+      userId: accountA,
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      title: 'Application deadline',
+      body: 'Three days remain.',
+      getFavorite: (requestedJobId) => getFavoriteForJob(requestedJobId, {
+        client,
+        expectedUserId: accountA,
+        bindClient: () => client,
+      }),
+      reconcile,
+    });
+    activeUserId = accountB;
+    releaseSession();
+    await reconciliation;
+
+    expect(client.from).not.toHaveBeenCalled();
+    expect(client.auth.getSession).toHaveBeenCalledOnce();
+    expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({
+      userId: accountA,
+      jobId,
+      saved: false,
+    }));
+  });
+
+  it('keeps reminder restoration best-effort when native reconciliation fails', async () => {
+    await expect(reconcileApplicationRemovalReminder({
+      userId: 'user-1',
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      title: 'Application deadline',
+      body: 'Three days remain.',
+      getFavorite: vi.fn(async () => ({ data: { jobId }, error: null })),
+      reconcile: vi.fn(async () => { throw new Error('notifications unavailable'); }),
+    })).resolves.toBeUndefined();
   });
 });
 

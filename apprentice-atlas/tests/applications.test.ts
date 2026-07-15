@@ -34,6 +34,7 @@ const applicationRow = {
   job_id: jobId,
   status: 'interview',
   note: 'Bring portfolio',
+  interview_at: '2026-07-21T09:30:00.000Z',
   created_at: '2026-07-14T10:00:00.000Z',
   updated_at: '2026-07-14T11:00:00.000Z',
   jobs: jobRow,
@@ -54,7 +55,7 @@ describe('application operations', () => {
 
   it('lists only the current user rows, maps valid data, and preserves a missing job', async () => {
     const { listApplications } = await import(modulePath);
-    const unavailableRow = { ...applicationRow, id: '44444444-4444-4444-8444-444444444444', job_id: '55555555-5555-4555-8555-555555555555', status: 'closed', note: null, jobs: null };
+    const unavailableRow = { ...applicationRow, id: '44444444-4444-4444-8444-444444444444', job_id: '55555555-5555-4555-8555-555555555555', status: 'closed', note: null, interview_at: null, jobs: null };
     const client = createClient({ listData: [applicationRow, unavailableRow] });
 
     const result = await listApplications(client as never);
@@ -67,6 +68,7 @@ describe('application operations', () => {
         jobId,
         status: 'interview',
         note: 'Bring portfolio',
+        interviewAt: '2026-07-21T09:30:00.000Z',
         createdAt: applicationRow.created_at,
         updatedAt: applicationRow.updated_at,
         job: expect.objectContaining({ id: jobId, title: 'Frontend apprentice', jobType: 'apprenticeship' }),
@@ -77,12 +79,13 @@ describe('application operations', () => {
         jobId: unavailableRow.job_id,
         status: 'closed',
         note: null,
+        interviewAt: null,
         createdAt: unavailableRow.created_at,
         updatedAt: unavailableRow.updated_at,
         job: undefined,
       },
     ]);
-    expect(client.query.select).toHaveBeenCalledWith(expect.stringMatching(/jobs\(\*\)/));
+    expect(client.query.select).toHaveBeenCalledWith(expect.stringMatching(/interview_at.*jobs\(\*\)/));
     expect(client.query.eq).toHaveBeenCalledWith('user_id', userId);
     expect(client.query.order).toHaveBeenCalledWith('updated_at', { ascending: false });
   });
@@ -113,16 +116,47 @@ describe('application operations', () => {
     const { upsertApplication } = await import(modulePath);
     const client = createClient({ singleData: { ...applicationRow, status: 'preparing', note: null } });
 
-    const result = await upsertApplication(jobId, 'preparing', '   ', client as never);
+    const result = await upsertApplication(jobId, 'preparing', '   ', null, client as never);
 
     expect(result.data).toMatchObject({ userId, jobId, status: 'preparing', note: null });
     expect(client.rpc).toHaveBeenCalledWith('upsert_application', {
       p_job_id: jobId,
       p_status: 'preparing',
       p_note: null,
+      p_interview_at: null,
     });
     const rpcArgs = (client.rpc.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0][1];
     expect(rpcArgs).not.toHaveProperty('user_id');
+  });
+
+  it('normalizes and maps a valid interview timestamp through the RPC', async () => {
+    const { upsertApplication } = await import(modulePath);
+    const client = createClient({ singleData: applicationRow });
+
+    const result = await upsertApplication(
+      jobId,
+      'interview',
+      'Bring portfolio',
+      '2026-07-21T11:30:00+02:00',
+      client as never,
+    );
+
+    expect(result.data?.interviewAt).toBe('2026-07-21T09:30:00.000Z');
+    expect(client.rpc).toHaveBeenCalledWith('upsert_application', {
+      p_job_id: jobId,
+      p_status: 'interview',
+      p_note: 'Bring portfolio',
+      p_interview_at: '2026-07-21T09:30:00.000Z',
+    });
+  });
+
+  it('rejects malformed interview timestamps without calling the RPC', async () => {
+    const { upsertApplication } = await import(modulePath);
+    const client = createClient();
+
+    await expect(upsertApplication(jobId, 'interview', null, 'not-a-date', client as never))
+      .resolves.toMatchObject({ data: null, error: { code: 'validation' } });
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it('rejects invalid statuses and notes longer than 500 Unicode characters without querying', async () => {
@@ -190,12 +224,13 @@ function createClient(options: { userId?: string | null; listData?: unknown[]; s
   return {
     auth: {
       getSession: vi.fn(async () => ({
-        data: { session: resolvedUserId ? { user: { id: resolvedUserId } } : null },
+          data: { session: resolvedUserId ? { access_token: `token-${resolvedUserId}`, user: { id: resolvedUserId } } : null },
         error: options.authError ?? null,
       })),
     },
     from: vi.fn(() => { operation = 'read'; equalityCount = 0; return query; }),
     rpc: vi.fn(async () => ({ data: options.singleData ?? null, error: options.error ?? null })),
     query,
+    createAuthBoundClient() { return this; },
   };
 }

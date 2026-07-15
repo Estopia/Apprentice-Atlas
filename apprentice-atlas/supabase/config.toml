@@ -1,0 +1,5 @@
+project_id = "apprentice-atlas"
+
+[functions.ai-prepare]
+# The gateway verifies JWTs first; the handler also calls auth.getUser(token).
+verify_jwt = true

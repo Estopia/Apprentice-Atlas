@@ -20,7 +20,7 @@ import {
 import { t, useLocale } from '@/lib/i18n';
 import { createSingleFlightGate, runSingleFlightAction } from '@/lib/single-flight-gate';
 
-export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void | Promise<void>; redirectTo: string }) {
+export function AuthForm({ onSuccess, redirectTo }: { onSuccess: (userId: string) => void | Promise<void>; redirectTo: string }) {
   const [locale] = useLocale();
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
@@ -81,7 +81,8 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void | Pr
           fullName: credential.fullName,
         });
         if (result.error) setError(result.error);
-        else await onSuccess();
+        else if (!result.data?.user.id) setError({ code: 'provider', message: 'Apple did not return an authenticated user.' });
+        else await onSuccess(result.data.user.id);
       } catch (caught) {
         const code = typeof caught === 'object' && caught && 'code' in caught ? String(caught.code) : '';
         if (code !== 'ERR_REQUEST_CANCELED') {

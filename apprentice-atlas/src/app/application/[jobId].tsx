@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
@@ -21,10 +23,17 @@ import {
   isCurrentWorkflowOperation,
   isApplicationDraftValid,
   isValidApplicationJobId,
+  normalizeInterviewDateSelection,
+  reconcileApplicationRemovalReminder,
   resolveApplicationSheetLoad,
 } from '@/lib/application-flow';
+import { buildCalendarEventPayload, openCalendarEventForm } from '@/lib/calendar-sync';
+import { beginDeadlineReminderReconciliation, reconcileDeadlineReminder } from '@/lib/deadline-reminders';
+import { buildDeadlineReminderCopy, getFavoriteForJob } from '@/lib/favorites';
 import { localizeApplicationStatus, t, useLocale, type TranslationKey } from '@/lib/i18n';
 import { getJob } from '@/lib/jobs';
+import { errorFeedback, selectionFeedback, successFeedback } from '@/lib/native-feedback';
+import { requestAppReviewAfterOfferTransition } from '@/lib/review-prompt';
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
 
 export default function ApplicationSheet() {
@@ -38,6 +47,11 @@ export default function ApplicationSheet() {
   const [application, setApplication] = useState<TrackedApplication | null>(null);
   const [status, setStatus] = useState<ApplicationStatus>('interested');
   const [note, setNote] = useState('');
+  const [interviewAt, setInterviewAt] = useState<string | null>(null);
+  const [showInterviewPicker, setShowInterviewPicker] = useState(false);
+  const [androidPickerMode, setAndroidPickerMode] = useState<'date' | 'time'>('date');
+  const [pendingInterviewDate, setPendingInterviewDate] = useState<Date | null>(null);
+  const [calendarMessage, setCalendarMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadedWorkflowKey, setLoadedWorkflowKey] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -76,7 +90,7 @@ export default function ApplicationSheet() {
 
     let active = true;
     const operationKey = workflowKey;
-    void Promise.all([getJob(routeJobId, undefined, locale), getApplicationForJob(routeJobId)]).then(([jobResult, applicationResult]) => {
+    void Promise.all([getJob(routeJobId, undefined, locale), getApplicationForJob(routeJobId, { expectedUserId: authUserId! })]).then(([jobResult, applicationResult]) => {
       if (!active || !mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
       const resolution = resolveApplicationSheetLoad(jobResult, applicationResult);
       if (resolution.kind === 'redirect') {
@@ -98,13 +112,16 @@ export default function ApplicationSheet() {
         setApplication(existing);
         setStatus(existing?.status ?? 'interested');
         setNote(existing?.note ?? '');
+        setInterviewAt(existing?.interviewAt ?? null);
+        setShowInterviewPicker(false);
+        setCalendarMessage(null);
       }
       setBusyOperation(null);
       setLoadedWorkflowKey(operationKey);
       setLoading(false);
     });
     return () => { active = false; };
-  }, [auth.loading, loadAttempt, locale, redirectToAuth, routeJobId, validJobId, workflowKey]);
+  }, [auth.loading, authUserId, loadAttempt, locale, redirectToAuth, routeJobId, validJobId, workflowKey]);
 
   const noteLength = applicationNoteLength(note);
   const noteTooLong = noteLength > 500;
@@ -112,6 +129,7 @@ export default function ApplicationSheet() {
   const workflowReady = workflowKey !== null && loadedWorkflowKey === workflowKey;
 
   const handleOperationError = (operation: ApplicationsOperation, operationError: ApplicationsError) => {
+    void errorFeedback();
     if (operationError.code === 'auth-required') {
       setBusyOperation(null);
       redirectToAuth();
@@ -123,34 +141,148 @@ export default function ApplicationSheet() {
 
   const save = async () => {
     const operationKey = workflowKey;
+    const operationUserId = authUserId;
     if (!validJobId || !workflowReady || !operationKey || busy) return;
     if (!isApplicationDraftValid(status, note)) {
+      void errorFeedback();
       setError(t(locale, 'application.noteTooLong'));
       return;
     }
     setError(null);
     setBusyOperation('save');
-    const result = await upsertApplication(routeJobId, status, note);
+    const result = await upsertApplication(routeJobId, status, note, interviewAt, { expectedUserId: operationUserId! });
+    const reminderGeneration = !result.error && operationUserId
+      ? beginDeadlineReminderReconciliation(operationUserId, routeJobId)
+      : null;
     if (!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
     if (result.error) {
       handleOperationError('save', result.error);
       return;
+    }
+    void successFeedback();
+    if (operationUserId) {
+      const copy = buildDeadlineReminderCopy(locale, job?.title ?? t(locale, 'application.listingUnavailableTitle'));
+      if (status === 'interested' || status === 'preparing') {
+        void getFavoriteForJob(routeJobId, { expectedUserId: operationUserId }).then((favoriteResult) => {
+          return reconcileDeadlineReminder({
+            userId: operationUserId,
+            jobId: routeJobId,
+            deadlineAt: job?.expiresAt ?? null,
+            applicationStatus: status,
+            saved: !favoriteResult.error && Boolean(favoriteResult.data),
+            generation: reminderGeneration,
+            ...copy,
+          });
+        });
+      } else {
+        void reconcileDeadlineReminder({
+          userId: operationUserId,
+          jobId: routeJobId,
+          deadlineAt: job?.expiresAt ?? null,
+          applicationStatus: status,
+          saved: false,
+          generation: reminderGeneration,
+          ...copy,
+        });
+      }
+    }
+    if (application?.status !== 'offer' && status === 'offer') {
+      setTimeout(() => {
+        void requestAppReviewAfterOfferTransition(application?.status ?? null, status);
+      }, 650);
     }
     router.back();
   };
 
   const remove = async () => {
     const operationKey = workflowKey;
+    const operationUserId = authUserId;
     if (!validJobId || !workflowReady || !operationKey || busy) return;
     setError(null);
     setBusyOperation('remove');
-    const result = await removeApplication(routeJobId);
+    const result = await removeApplication(routeJobId, { expectedUserId: operationUserId! });
+    const reminderGeneration = !result.error && operationUserId
+      ? beginDeadlineReminderReconciliation(operationUserId, routeJobId)
+      : null;
     if (!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
     if (result.error) {
       handleOperationError('remove', result.error);
       return;
     }
+    void successFeedback();
+    if (operationUserId) {
+      const copy = buildDeadlineReminderCopy(locale, job?.title ?? t(locale, 'application.listingUnavailableTitle'));
+      void reconcileApplicationRemovalReminder({
+        userId: operationUserId,
+        jobId: routeJobId,
+        deadlineAt: job?.expiresAt ?? null,
+        ...copy,
+        generation: reminderGeneration,
+        getFavorite: (jobId) => getFavoriteForJob(jobId, { expectedUserId: operationUserId }),
+        reconcile: reconcileDeadlineReminder,
+      });
+    }
     router.back();
+  };
+
+  const openInterviewPicker = () => {
+    const existingTime = interviewAt ? Date.parse(interviewAt) : Number.NaN;
+    const initialDate = Number.isFinite(existingTime)
+      ? new Date(existingTime)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000);
+    setPendingInterviewDate(initialDate);
+    setAndroidPickerMode('date');
+    setShowInterviewPicker(true);
+    setCalendarMessage(null);
+  };
+
+  const changeInterviewDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (event.type === 'dismissed' || !selectedDate) {
+      setShowInterviewPicker(false);
+      setPendingInterviewDate(null);
+      return;
+    }
+
+    if (Platform.OS === 'android' && androidPickerMode === 'date') {
+      const base = pendingInterviewDate ?? selectedDate;
+      const combined = new Date(selectedDate);
+      combined.setHours(base.getHours(), base.getMinutes(), 0, 0);
+      setPendingInterviewDate(combined);
+      setAndroidPickerMode('time');
+      setShowInterviewPicker(true);
+      return;
+    }
+
+    let candidate = selectedDate;
+    if (Platform.OS === 'android' && pendingInterviewDate) {
+      candidate = new Date(pendingInterviewDate);
+      candidate.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+    }
+    const normalized = normalizeInterviewDateSelection(candidate);
+    setShowInterviewPicker(false);
+    setPendingInterviewDate(null);
+    if (!normalized) {
+      void errorFeedback();
+      setError(t(locale, 'application.interviewDateInvalid'));
+      return;
+    }
+    setInterviewAt(normalized);
+    setError(null);
+    setCalendarMessage(null);
+    void selectionFeedback();
+  };
+
+  const addInterviewToCalendar = async () => {
+    if (!job || !interviewAt) return;
+    const payload = buildCalendarEventPayload('interview', {
+      title: job.title,
+      company: job.company,
+      deadlineAt: job.expiresAt,
+      interviewAt,
+    });
+    const opened = payload ? await openCalendarEventForm(payload) : false;
+    setCalendarMessage(t(locale, opened ? 'application.calendarAdded' : 'application.calendarUnavailable'));
+    void (opened ? successFeedback() : errorFeedback());
   };
 
   const confirmRemove = () => {
@@ -238,36 +370,87 @@ export default function ApplicationSheet() {
                 const label = localizeApplicationStatus(locale, candidate);
                 const hint = t(locale, `application.statusHint.${candidate}` as TranslationKey);
                 return (
-                  <Pressable
-                    key={candidate}
-                    accessibilityLabel={label}
-                    accessibilityHint={hint}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: selected, disabled: busy }}
-                    disabled={busy}
-                    onPress={() => { setStatus(candidate); setError(null); }}
-                    style={({ pressed }) => [styles.statusRow, terminal && styles.terminalRow, pressed && styles.pressed]}
+                  <Animated.View
+                    entering={FadeIn.duration(140)}
+                    key={`${candidate}-${selected}-${completed}`}
+                    layout={LinearTransition.duration(180)}
                   >
-                    <View style={styles.stepRail}>
-                      {!terminal && candidate !== 'offer' && <View style={[styles.stepLine, completed && styles.stepLineComplete]} />}
-                      <View style={[styles.stepCircle, terminal && styles.terminalCircle, (selected || completed) && styles.stepCircleActive]}>
-                        {terminal
-                          ? <AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={14} tintColor={selected ? Palette.white : Palette.textSecondary} />
-                          : completed
-                          ? <AppIcon name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={14} tintColor={Palette.white} />
-                          : <Text style={[styles.stepNumber, selected && styles.stepNumberActive]}>{index + 1}</Text>}
+                    <Pressable
+                      accessibilityLabel={label}
+                      accessibilityHint={hint}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected, disabled: busy }}
+                      disabled={busy}
+                      onPress={() => {
+                        if (candidate !== status) void selectionFeedback();
+                        setStatus(candidate);
+                        setShowInterviewPicker(false);
+                        setError(null);
+                      }}
+                      style={({ pressed }) => [styles.statusRow, terminal && styles.terminalRow, pressed && styles.pressed]}
+                    >
+                      <View style={styles.stepRail}>
+                        {!terminal && candidate !== 'offer' && <View style={[styles.stepLine, completed && styles.stepLineComplete]} />}
+                        <View style={[styles.stepCircle, terminal && styles.terminalCircle, (selected || completed) && styles.stepCircleActive]}>
+                          {terminal
+                            ? <AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={14} tintColor={selected ? Palette.white : Palette.textSecondary} />
+                            : completed
+                            ? <AppIcon name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={14} tintColor={Palette.white} />
+                            : <Text style={[styles.stepNumber, selected && styles.stepNumberActive]}>{index + 1}</Text>}
+                        </View>
                       </View>
-                    </View>
-                    <View style={styles.statusCopy}>
-                      <Text style={[styles.statusText, selected && styles.statusTextSelected]}>{label}</Text>
-                      <Text style={styles.statusHint}>{hint}</Text>
-                    </View>
-                    {selected && <View style={styles.currentPill}><Text style={styles.currentPillText}>{t(locale, 'application.current')}</Text></View>}
-                  </Pressable>
+                      <View style={styles.statusCopy}>
+                        <Text style={[styles.statusText, selected && styles.statusTextSelected]}>{label}</Text>
+                        <Text style={styles.statusHint}>{hint}</Text>
+                      </View>
+                      {selected && <Animated.View entering={FadeIn.duration(140)} style={styles.currentPill}><Text style={styles.currentPillText}>{t(locale, 'application.current')}</Text></Animated.View>}
+                    </Pressable>
+                  </Animated.View>
                 );
               })}
             </View>
           </View>
+
+          {status === 'interview' && (
+            <Animated.View entering={FadeIn.duration(160)} style={styles.section}>
+              <Text style={styles.sectionLabel}>{t(locale, 'application.interviewDate')}</Text>
+              <View style={styles.interviewCard}>
+                <View style={styles.interviewDateRow}>
+                  <AppIcon name={{ ios: 'calendar.badge.clock', android: 'event', web: 'event' }} size={20} tintColor={Palette.blue} />
+                  <Text selectable style={styles.interviewDateText}>{interviewAt
+                    ? new Date(interviewAt).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+                    : t(locale, 'application.interviewDateUnset')}</Text>
+                </View>
+                {process.env.EXPO_OS !== 'web' && (
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={openInterviewPicker} style={({ pressed }) => [styles.toolButton, pressed && styles.pressed]}>
+                    <Text style={styles.toolButtonText}>{t(locale, 'application.setInterviewDate')}</Text>
+                  </Pressable>
+                )}
+                {showInterviewPicker && pendingInterviewDate && process.env.EXPO_OS !== 'web' && (
+                  <DateTimePicker
+                    display={Platform.OS === 'ios' ? 'compact' : 'default'}
+                    minimumDate={new Date()}
+                    mode={Platform.OS === 'ios' ? 'datetime' : androidPickerMode}
+                    onChange={changeInterviewDate}
+                    value={pendingInterviewDate}
+                  />
+                )}
+                {interviewAt && (
+                  <View style={styles.toolActions}>
+                    <Pressable accessibilityRole="button" disabled={busy} onPress={() => { setInterviewAt(null); setCalendarMessage(null); void selectionFeedback(); }} style={({ pressed }) => [styles.inlineToolButton, pressed && styles.pressed]}>
+                      <Text style={styles.inlineToolText}>{t(locale, 'application.clearInterviewDate')}</Text>
+                    </Pressable>
+                    {job && (
+                      <Pressable accessibilityRole="button" disabled={busy} onPress={() => void addInterviewToCalendar()} style={({ pressed }) => [styles.inlineToolButton, pressed && styles.pressed]}>
+                        <Text style={styles.inlineToolText}>{t(locale, 'application.addInterviewCalendar')}</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+                {calendarMessage && <Text accessibilityLiveRegion="polite" style={styles.toolMessage}>{calendarMessage}</Text>}
+              </View>
+            </Animated.View>
+          )}
 
           <View style={styles.section}>
             <View style={styles.labelRow}>
@@ -364,6 +547,15 @@ const styles = StyleSheet.create({
   statusHint: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   currentPill: { minHeight: 28, borderRadius: 14, backgroundColor: Palette.blueSoft, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
   currentPillText: { color: Palette.blue, fontSize: 13, fontWeight: '700' },
+  interviewCard: { gap: 10, borderWidth: 1, borderColor: Palette.border, borderRadius: 16, borderCurve: 'continuous', padding: 13, backgroundColor: Palette.white },
+  interviewDateRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  interviewDateText: { flex: 1, color: Palette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  toolButton: { minHeight: 44, borderRadius: 13, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, backgroundColor: Palette.blueSoft },
+  toolButtonText: { color: Palette.blue, fontSize: 14, fontWeight: '700' },
+  toolActions: { gap: 4 },
+  inlineToolButton: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 4 },
+  inlineToolText: { color: Palette.blue, fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  toolMessage: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   noteInput: { minHeight: 126, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white, color: Palette.text, fontSize: 15, lineHeight: 21, padding: 14 },
   noteInputInvalid: { borderColor: Palette.danger },
   validationError: { color: Palette.danger, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },

@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
-import { advanceFavoriteOwnership, beginFavoriteRemoval, buildComparisonRows, createFavoriteOwnership, favoriteOwnershipKey, getReadableFavoritesError, isCurrentFavoriteOperation, isFavoritesLoading, listFavorites, removeFavorite, rollbackFavoriteRemoval, type FavoritesError } from '@/lib/favorites';
+import { getDeadlineReminderState, reconcileDeadlineReminder, type DeadlineReminderState } from '@/lib/deadline-reminders';
+import { advanceFavoriteOwnership, beginFavoriteRemoval, buildComparisonRows, buildDeadlineReminderCopy, createFavoriteOwnership, favoriteOwnershipKey, getReadableFavoritesError, isCurrentFavoriteOperation, isFavoritesLoading, listFavorites, removeFavorite, rollbackFavoriteRemoval, type FavoritesError } from '@/lib/favorites';
 import { localizeCountry, localizeJobType, t, useLocale, type Locale } from '@/lib/i18n';
 import type { FavoriteJob } from '@/types/jobs';
 
@@ -20,6 +21,7 @@ export default function FavoritesScreen() {
   const [errorOperation, setErrorOperation] = useState<'save' | 'remove'>('save');
   const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set());
+  const [reminderStates, setReminderStates] = useState<Record<string, DeadlineReminderState>>({});
   const pendingOperationIdsRef = useRef(new Set<string>());
   const listRevisionRef = useRef(0);
   const userId = auth.session?.user.id ?? null;
@@ -46,6 +48,7 @@ export default function FavoritesScreen() {
     const operationKey = ownershipKey;
     const listRevision = ++listRevisionRef.current;
     setFavorites([]);
+    setReminderStates({});
     setError(null);
     setLoadedForOwnershipKey(null);
     const operationPrefix = `${operationKey}\u0000`;
@@ -54,15 +57,26 @@ export default function FavoritesScreen() {
         .filter((operationId) => operationId.startsWith(operationPrefix))
         .map((operationId) => operationId.slice(operationPrefix.length)),
     ));
-    void listFavorites().then((result) => {
+    void listFavorites({ expectedUserId: userId! }).then((result) => {
       if (!active || listRevision !== listRevisionRef.current || !isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
-      setFavorites(result.data ?? []);
+      const loadedFavorites = result.data ?? [];
+      setFavorites(loadedFavorites);
       setError(result.error);
       setErrorOperation('save');
       setLoadedForOwnershipKey(operationKey);
+      if (!result.error && userId) {
+        void Promise.all(loadedFavorites.map(async (favorite) => [
+          favorite.jobId,
+          await getDeadlineReminderState(userId, favorite.jobId),
+        ] as const)).then((entries) => {
+          if (active && listRevision === listRevisionRef.current && isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) {
+            setReminderStates(Object.fromEntries(entries));
+          }
+        });
+      }
     });
     return () => { active = false; };
-  }, [ownershipKey, refreshAttempt]);
+  }, [ownershipKey, refreshAttempt, userId]);
 
   useFocusEffect(loadFavorites);
 
@@ -77,7 +91,7 @@ export default function FavoritesScreen() {
     setPendingJobIds((current) => new Set(current).add(favorite.jobId));
     setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
     setError(null);
-    const result = await removeFavorite(favorite.jobId);
+    const result = await removeFavorite(favorite.jobId, { expectedUserId: userId! });
     listRevisionRef.current += 1;
     pendingOperationIdsRef.current.delete(operationId);
     if (!isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
@@ -92,6 +106,10 @@ export default function FavoritesScreen() {
       setErrorOperation('remove');
     } else {
       setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
+      if (userId) {
+        const copy = buildDeadlineReminderCopy(locale, favorite.job?.title ?? t(locale, 'saved.unavailable'));
+        void reconcileDeadlineReminder({ userId, jobId: favorite.jobId, deadlineAt: favorite.job?.expiresAt ?? null, applicationStatus: null, saved: false, generation: result.reminderGeneration, ...copy });
+      }
     }
   };
 
@@ -143,6 +161,7 @@ export default function FavoritesScreen() {
                   onOpen={() => favorite.job && router.push(`/job/${favorite.job.id}`)}
                   onRemove={() => void remove(favorite)}
                   pending={pendingJobIds.has(favorite.jobId)}
+                  reminderState={reminderStates[favorite.jobId] ?? 'not-scheduled'}
                 />
               ))}
             </View>
@@ -154,7 +173,7 @@ export default function FavoritesScreen() {
   );
 }
 
-function FavoriteCard({ favorite, onRemove, onOpen, pending, locale }: { favorite: FavoriteJob; onRemove: () => void; onOpen: () => void; pending: boolean; locale: Locale }) {
+function FavoriteCard({ favorite, onRemove, onOpen, pending, reminderState, locale }: { favorite: FavoriteJob; onRemove: () => void; onOpen: () => void; pending: boolean; reminderState: DeadlineReminderState; locale: Locale }) {
   const job = favorite.job;
   const archived = t(locale, 'saved.archived');
   return (
@@ -176,6 +195,18 @@ function FavoriteCard({ favorite, onRemove, onOpen, pending, locale }: { favorit
             <Text numberOfLines={1} style={styles.meta}>{job ? `${job.city}, ${localizeCountry(locale, job.country)} · ${localizeJobType(locale, job.jobType)}` : archived}</Text>
           </View>
           <Text style={styles.date}>{job?.sourceName ?? archived} · {new Date(job?.lastSeenAt || favorite.createdAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text>
+          {job?.expiresAt && (
+            <View style={styles.deadlineState}>
+              <Text style={styles.deadlineDate}>{t(locale, 'job.closingDate')}: {new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium' })}</Text>
+              <Text style={styles.reminderState}>{t(locale, reminderState === 'scheduled'
+                ? 'deadline.reminder.scheduled'
+                : reminderState === 'permission-denied'
+                  ? 'deadline.reminder.permissionDenied'
+                  : reminderState === 'unavailable'
+                    ? 'deadline.reminder.unavailable'
+                    : 'deadline.reminder.notScheduled')}</Text>
+            </View>
+          )}
         </View>
       </Pressable>
       <Pressable
@@ -254,6 +285,9 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', gap: 4, alignItems: 'center', marginTop: 6 },
   meta: { flex: 1, color: Palette.textSecondary, fontSize: 13 },
   date: { color: Palette.textSecondary, marginTop: 6, fontSize: 13, lineHeight: 18 },
+  deadlineState: { gap: 2, marginTop: 7 },
+  deadlineDate: { color: Palette.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  reminderState: { color: Palette.textSecondary, fontSize: 12, lineHeight: 17 },
   remove: { width: 44, height: 44, minHeight: 44, minWidth: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   compare: { marginTop: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
   compareHeading: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

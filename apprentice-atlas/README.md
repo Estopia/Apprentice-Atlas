@@ -8,6 +8,10 @@ Apprentice Atlas helps students and university dropouts turn nearby opportunitie
 - Complete a three-step first-run setup for audience, interests, country, and language. Preferences persist locally and preconfigure discovery after a cold start.
 - Open a job for its official description, source metadata, application link, simple AI explanation, fit guidance, and limited grounded Q&A.
 - Save jobs or track a private application after signing in. The application journey covers interested, preparing, applied, interview, offer, and closed, with an optional private note.
+- Prepare for a specific interview with 3–5 grounded practice questions and an honest skill-gap view. The editable background/skills draft stays on the device; it is sent transiently for the requested analysis and is not written to the shared job AI cache.
+- Set an interview date, hand application deadlines or interviews to the native calendar, and receive an optional device-local reminder three days before a saved listing closes. Notification identifiers never sync to the account.
+- Export a human-readable, high-contrast A4 account PDF or retain the versioned JSON export. The PDF includes account preferences, saved opportunities, and application progress, but excludes full listing descriptions, auth credentials, local notification identifiers, and the career-profile draft.
+- Open a 9:16 share preview for a job and share a locally generated PNG with title, company, location, original source attribution, and a validated `apprenticeatlas://job/<uuid>` link. Web and devices without file sharing use localized plain text instead.
 - Use My Atlas / Mein Atlas as the personal hub for progress, active and completed applications, preferences, and account controls. Expired listings already in a journey remain manageable.
 
 Browsing does not require login. Favorites, application tracking, and other private account data do. Authentication returns users to the exact safe route and pending action they started.
@@ -45,6 +49,8 @@ npx expo start --dev-client
 
 `GOOGLE_MAPS_API_KEY` is an Android-only EAS environment value. Create it in the `development` environment with `sensitive` visibility because that is the environment used by the `development` build profile. Restrict it in Google Cloud to the Android application and Maps SDK services. iOS uses Apple Maps and remains buildable without this key. Do not put it in an `EXPO_PUBLIC_*` variable or commit it.
 
+Calendar handoff, local notifications, haptics, StoreKit review prompts, PDF generation, file sharing, and share-card capture use native Expo modules. After changing those dependencies or plugins, install a fresh development build before testing them on a device; an older Expo Go/development client cannot gain native modules from JavaScript alone. Calendar access is write-only and opens/creates only user-requested deadline or interview events. Notifications are local only; remote background notifications are disabled. PDF and PNG file sharing are native features with honest localized web fallbacks, while JSON/plain-text sharing remains available where the platform supports it.
+
 ## Supabase setup and migrations
 
 The hosted project is `apprentice-atlas` (`zslmbyxmvyzuropzxjjy`) in `eu-central-1`. The local `.env.local` is configured with its public URL and publishable key. Never commit that file or any server secret.
@@ -75,6 +81,9 @@ Clean databases apply every timestamp migration in filename order, then `supabas
 13. `20260714180000_index_favorites_job_id.sql`
 14. `20260714190000_application_tracker.sql`
 15. `20260714191000_harden_application_privileges.sql`
+16. `20260715142000_scope_user_assets_to_user_folder.sql`
+17. `20260715150000_ai_prepare_quota.sql`
+18. `20260715160128_application_interview_date.sql`
 
 The preflight is required before the locked schema hardening migration because it repairs legacy whitespace/blanks and normalized source collisions. The guarded post-release migration is safe on clean data and completes compatibility, audit, and constraint hardening. The application tracker migration and its privilege-hardening follow-up are applied to the hosted project. They enforce owner-only RLS, immutable application identity, restricted column updates, and authenticated access to the validated upsert RPC. The local-only `supabase/fixtures/preflight_source_provenance.sql` fixture is for testing the legacy repair path; load it after the initial schema and before the preflight, then apply the remaining timestamp migrations. Never load fixtures or `seed.sql` into production.
 
@@ -83,7 +92,7 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
 ## Data, auth, AI, and source boundaries
 
 - The browser/mobile client receives only active jobs and published translations through RLS. Jobs remain discoverable with canonical title, description, and location fields when a requested published translation is absent. Favorites and applications are private to the signed-in owner.
-- Application creation uses a validated security-definer RPC. Direct client inserts, table-wide updates, identity-column changes, and anonymous access are revoked; owners may read/delete their rows and update only status/note through the allowed boundary.
+- Application creation uses a validated security-definer RPC. Direct client inserts, table-wide updates, identity-column changes, and anonymous access are revoked; owners may read/delete their rows and update only status, note, and optional interview date through the allowed boundary.
 - `job_sources`, `sync_runs`, provider payloads, cached AI content, and the Supabase service-role key are server-side only.
 - Edge Functions use `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY`; `OPENAI_MODEL=gpt-5.6` is optional and defaults to that model in the handlers. Configure them as Supabase project secrets, never as `EXPO_PUBLIC_*` values:
 
@@ -93,7 +102,8 @@ If a remote project has old `001`/`002`/`003` history, back it up and inspect th
 
 The hosted `ai-explain`, `ai-qa`, and `sync-jobs` Edge Functions are deployed. Before using AI or live source synchronization, add the server-only OpenAI, UK, and optional BA credentials through Supabase project secrets; the public app key is already configured locally.
 
-- AI explanations and Q&A are grounded in the selected job record. Q&A is limited server-side to two questions per job and opaque app session. Do not enter sensitive personal data into questions.
+- AI explanations and Q&A are grounded in the selected job record. Q&A is limited server-side to two questions per job and opaque app session. Job-specific preparation is authenticated, fetches the canonical listing server-side, validates a structured response, and calls OpenAI with `store: false`; the submitted personal background is processed transiently and is not persisted by the Edge Function. Do not enter sensitive personal data into questions or the local preparation draft.
+- Preferences, the preparation draft, review gating, and local reminder identifiers use device storage. Only authenticated account data such as favorites, application status/note, and interview date syncs to Supabase. Calendar events, PDF reports, and share-card PNGs are created only after a user action and handed to the selected native destination.
 - UK ingestion uses the documented official Display Advert API v2 endpoint (`https://api.apprenticeships.education.gov.uk/vacancies/vacancy`) and v2 request contract. That documentation reference is separate from runtime activation: synchronization refuses to run unless the server-only `UK_API_CONTRACT_CONFIRMED=true` flag is explicitly configured alongside the API key. Germany ingestion uses BA-hosted Jobsuche search and detail endpoints and remains server-only; `BA_API_ENABLED`, `BA_API_URL`, `BA_DETAIL_API_URL`, and `BA_API_KEY` configure it, while `BA_SYNC_MAX_PAGES` and bounded detail concurrency keep each run controlled. No website scraping is used.
 
 ## Codex and GPT-5.6 roles

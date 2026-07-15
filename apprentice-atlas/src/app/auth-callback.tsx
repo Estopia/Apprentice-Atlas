@@ -7,7 +7,7 @@ import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { validatedPendingTrackJobId } from '@/lib/application-flow';
 import { createSessionFromUrl, getReadableAuthError, isSafeReturnPath, validatedPendingSaveJobId } from '@/lib/auth';
-import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
+import { addPendingFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
 
 export default function AuthCallbackScreen() {
@@ -18,18 +18,19 @@ export default function AuthCallbackScreen() {
   const started = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [completionUserId, setCompletionUserId] = useState<string | null>(null);
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/atlas';
   const pendingTrackJobId = validatedPendingTrackJobId(params);
   const pendingSaveJobId = validatedPendingSaveJobId(params);
 
-  const continueAfterSignIn = useCallback(async () => {
+  const continueAfterSignIn = useCallback(async (expectedUserId: string) => {
     setError(null);
     if (pendingTrackJobId) {
       router.replace({ pathname: '/application/[jobId]', params: { jobId: pendingTrackJobId } } as never);
       return;
     }
     if (pendingSaveJobId) {
-      const result = await addFavorite(pendingSaveJobId);
+      const result = await addPendingFavorite(pendingSaveJobId, expectedUserId);
       if (result.error) {
         setError(getReadableFavoritesError(result.error, locale));
         return;
@@ -54,8 +55,14 @@ export default function AuthCallbackScreen() {
         setError(getReadableAuthError(result.error, locale));
         return;
       }
+      const authenticatedUserId = result.data?.user.id;
+      if (!authenticatedUserId) {
+        setError(t(locale, 'auth.callbackMissing'));
+        return;
+      }
+      setCompletionUserId(authenticatedUserId);
       setSessionReady(true);
-      await continueAfterSignIn();
+      await continueAfterSignIn(authenticatedUserId);
     })();
     return () => { active = false; };
   }, [continueAfterSignIn, incomingUrl, locale]); // The callback must be consumed exactly once.
@@ -74,7 +81,7 @@ export default function AuthCallbackScreen() {
       <Text style={styles.copy}>{error ?? t(locale, 'auth.callbackDescription')}</Text>
       {!error && <ActivityIndicator color={Palette.blue} size="small" />}
       {error && sessionReady && (
-        <Pressable accessibilityRole="button" onPress={() => void continueAfterSignIn()} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" onPress={() => completionUserId && void continueAfterSignIn(completionUserId)} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
           <Text style={styles.buttonText}>{t(locale, 'auth.tryAgain')}</Text>
         </Pressable>
       )}

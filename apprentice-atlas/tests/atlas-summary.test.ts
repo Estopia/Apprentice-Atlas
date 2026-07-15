@@ -12,6 +12,7 @@ function application(id: string, status: ApplicationStatus, updatedAt: string): 
     jobId: `11111111-1111-4111-8111-${id.padStart(12, '0')}`,
     status,
     note: null,
+    interviewAt: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt,
   };

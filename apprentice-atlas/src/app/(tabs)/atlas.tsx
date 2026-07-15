@@ -27,7 +27,7 @@ export default function AtlasScreen() {
     if (auth.loading || !userId || !sessionKey) return undefined;
     let active = true;
     const requestedAttempt = loadAttempt;
-    void listApplications().then((result) => {
+    void listApplications({ expectedUserId: userId }).then((result) => {
       if (!active || requestedAttempt !== latestLoadAttempt.current) return;
       setApplications(result.data ?? []);
       setApplicationsError(result.error);
@@ -88,9 +88,11 @@ export default function AtlasScreen() {
           <NextActionPanel
             action={nextAction}
             locale={locale}
-            onPress={() => nextAction.application
-              ? router.push({ pathname: '/application/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
-              : router.push('/')}
+            onPress={() => nextAction.kind === 'prepare-interview' && nextAction.application
+              ? router.push({ pathname: '/prepare/[jobId]', params: { jobId: nextAction.application.jobId } })
+              : nextAction.application
+                ? router.push({ pathname: '/application/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
+                : router.push('/')}
           />
           <ApplicationSection applications={groups.active} locale={locale} title={t(locale, 'atlas.activeApplications')} />
           <ProgressOverview locale={locale} summary={summary} />
@@ -122,7 +124,7 @@ function NextActionPanel({ action, locale, onPress }: { action: AtlasNextAction;
       <Text style={styles.nextBody}>{t(locale, `atlas.next.${key}Body`)}</Text>
       {action.application && <Text numberOfLines={2} style={styles.nextTarget}>{job?.title ?? t(locale, 'atlas.unavailable')}{job ? ` · ${job.company}` : ''}</Text>}
       <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-        <Text style={styles.primaryButtonText}>{t(locale, action.application ? 'atlas.next.openApplication' : 'atlas.next.discoverAction')}</Text>
+        <Text style={styles.primaryButtonText}>{t(locale, action.kind === 'prepare-interview' ? 'atlas.next.prepareAction' : action.application ? 'atlas.next.openApplication' : 'atlas.next.discoverAction')}</Text>
         <AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={17} tintColor={Palette.white} />
       </Pressable>
     </View>
@@ -172,6 +174,7 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
     ? t(locale, 'atlas.updatedFallback')
     : `${t(locale, 'atlas.updated')} ${new Date(updatedTimestamp).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
   const title = job?.title ?? t(locale, 'atlas.unavailable');
+  const interviewTimestamp = application.interviewAt ? safeTimestamp(application.interviewAt) : null;
   return (
     <Pressable
       accessibilityLabel={`${title}, ${status}`}
@@ -183,6 +186,7 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
       <View style={styles.applicationCopy}>
         <Text selectable numberOfLines={2} style={styles.applicationTitle}>{title}</Text>
         {job && <Text selectable numberOfLines={1} style={styles.applicationCompany}>{job.company} · {job.city}</Text>}
+        {interviewTimestamp !== null && <Text style={styles.interviewDate}>{t(locale, 'application.interviewDate')}: {new Date(interviewTimestamp).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</Text>}
         <Text style={styles.updated}>{updated}</Text>
       </View>
       <Text style={[styles.statusText, application.status === 'offer' && styles.statusSuccessText, application.status === 'closed' && styles.statusMutedText]}>{status}</Text>
@@ -260,6 +264,7 @@ const styles = StyleSheet.create({
   applicationCopy: { flex: 1, minWidth: 0, gap: 2 },
   applicationTitle: { color: Palette.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
   applicationCompany: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
+  interviewDate: { color: Palette.blue, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   updated: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   statusText: { maxWidth: 96, color: Palette.blue, fontSize: 13, lineHeight: 17, fontWeight: '700', textAlign: 'right' },
   statusSuccessText: { color: Palette.success },

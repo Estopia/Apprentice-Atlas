@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const migration = readFileSync('supabase/migrations/20260714100000_atomic_job_source_sync.sql', 'utf8');
 const expirationMigration = readFileSync('supabase/migrations/20260714110000_atomic_stale_expiration.sql', 'utf8');
 const qaMigration = readFileSync('supabase/migrations/20260714130000_job_ai_qa_sessions.sql', 'utf8');
+const prepareQuotaMigration = readFileSync('supabase/migrations/20260715150000_ai_prepare_quota.sql', 'utf8');
 const favoritesMigration = readFileSync('supabase/migrations/20260714140000_add_favorite_rpc.sql', 'utf8');
 const sourceUrlMigration = readFileSync('supabase/migrations/20260714150000_enforce_source_listing_urls.sql', 'utf8');
 const applicationUrlMigration = readFileSync('supabase/migrations/20260714160000_enforce_application_urls.sql', 'utf8');
@@ -77,5 +78,22 @@ describe('atomic sync RPC permissions', () => {
     expect(qaMigration).toContain('public.release_job_ai_question(uuid, uuid)');
     expect(qaMigration).toContain('revoke execute on function public.release_job_ai_question(uuid, uuid) from public, anon, authenticated;');
     expect(qaMigration).toContain('grant execute on function public.release_job_ai_question(uuid, uuid) to service_role;');
+  });
+
+  it('keeps AI preparation quota state private and exposes only atomic service-role RPCs', () => {
+    expect(prepareQuotaMigration).toContain('create schema if not exists private;');
+    expect(prepareQuotaMigration).toMatch(/create table private\.ai_prepare_usage/i);
+    expect(prepareQuotaMigration).toContain('ai_prepare_hourly_quota constant integer := 5;');
+    expect(prepareQuotaMigration).toMatch(/insert into private\.ai_prepare_usage[\s\S]+on conflict \(user_id, window_started_at\) do update[\s\S]+usage_count < ai_prepare_hourly_quota/i);
+    expect(prepareQuotaMigration).toMatch(/create or replace function public\.reserve_ai_prepare_quota\(p_user_id uuid\)[\s\S]+security definer[\s\S]+set search_path = pg_catalog/i);
+    expect(prepareQuotaMigration).toMatch(/create or replace function public\.release_ai_prepare_quota\(p_user_id uuid, p_window_started_at timestamptz\)[\s\S]+security definer[\s\S]+set search_path = pg_catalog/i);
+    expect(prepareQuotaMigration).toContain('revoke all on private.ai_prepare_usage from public, anon, authenticated, service_role;');
+    expect(prepareQuotaMigration).toContain('revoke execute on function public.reserve_ai_prepare_quota(uuid) from public, anon, authenticated;');
+    expect(prepareQuotaMigration).toContain('grant execute on function public.reserve_ai_prepare_quota(uuid) to service_role;');
+    expect(prepareQuotaMigration).toContain('revoke execute on function public.release_ai_prepare_quota(uuid, timestamptz) from public, anon, authenticated;');
+    expect(prepareQuotaMigration).toContain('grant execute on function public.release_ai_prepare_quota(uuid, timestamptz) to service_role;');
+    expect(prepareQuotaMigration).toContain("has_function_privilege('anon', 'public.reserve_ai_prepare_quota(uuid)', 'EXECUTE')");
+    expect(prepareQuotaMigration).toContain("has_function_privilege('authenticated', 'public.release_ai_prepare_quota(uuid,timestamptz)', 'EXECUTE')");
+    expect(prepareQuotaMigration).toContain("has_function_privilege('service_role', 'public.reserve_ai_prepare_quota(uuid)', 'EXECUTE')");
   });
 });

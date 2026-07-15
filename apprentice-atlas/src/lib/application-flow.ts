@@ -1,4 +1,5 @@
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
+import type { DeadlineReminderGeneration } from './deadline-reminders';
 
 export const APPLICATION_STATUSES = [
   'interested',
@@ -63,6 +64,13 @@ export function isValidApplicationJobId(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value);
 }
 
+export function normalizeInterviewDateSelection(value: Date, now = new Date()): string | null {
+  const timestamp = value.getTime();
+  return Number.isFinite(timestamp) && timestamp > now.getTime()
+    ? new Date(timestamp).toISOString()
+    : null;
+}
+
 export type ApplicationSheetLoadResolution =
   | { kind: 'ready'; job: Job | null; application: TrackedApplication | null }
   | { kind: 'redirect' }
@@ -89,6 +97,58 @@ export function confirmApplicationRemovalOnWeb(
   if (!confirm?.(`${title}\n\n${body}`)) return false;
   onConfirm();
   return true;
+}
+
+type ApplicationRemovalFavoriteResult = {
+  data: unknown | null;
+  error: unknown | null;
+};
+
+type ApplicationRemovalReminderInput = {
+  userId: string;
+  jobId: string;
+  deadlineAt: string | null;
+  title: string;
+  body: string;
+  generation?: DeadlineReminderGeneration | null;
+  getFavorite: (jobId: string) => Promise<ApplicationRemovalFavoriteResult>;
+  reconcile: (input: {
+    userId: string;
+    jobId: string;
+    deadlineAt: string | null;
+    applicationStatus: null;
+    saved: boolean;
+    title: string;
+    body: string;
+    generation?: DeadlineReminderGeneration | null;
+  }) => Promise<unknown>;
+};
+
+export async function reconcileApplicationRemovalReminder(
+  input: ApplicationRemovalReminderInput,
+): Promise<void> {
+  let saved = false;
+  try {
+    const favorite = await input.getFavorite(input.jobId);
+    saved = favorite.error === null && favorite.data !== null;
+  } catch {
+    // Unknown favorite state falls back to cancellation to avoid an orphaned reminder.
+  }
+
+  try {
+    await input.reconcile({
+      userId: input.userId,
+      jobId: input.jobId,
+      deadlineAt: input.deadlineAt,
+      applicationStatus: null,
+      saved,
+      ...(input.generation ? { generation: input.generation } : {}),
+      title: input.title,
+      body: input.body,
+    });
+  } catch {
+    // Native reminder reconciliation is best effort and never changes persistence.
+  }
 }
 
 export function validatedPendingTrackJobId(params: {
