@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
@@ -12,7 +12,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useJobs } from '@/hooks/use-jobs';
 import { updateDiscoveryFilters, useDiscoveryState } from '@/lib/discovery-state';
 import { getDiscoveryLocationLabel, getMapCameraIntent } from '@/lib/discovery-presentation';
-import { addFavorite, getFavoriteForJob, removeFavorite } from '@/lib/favorites';
+import { addFavorite, advanceFavoriteOwnership, applyFavoriteOperationIfCurrent, createFavoriteOwnership, favoriteOwnershipKey, getFavoriteForJob, removeFavorite } from '@/lib/favorites';
 import { localizeCountry, localizeJobError, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getMapAreaSearchFilters, type JobMapRegion } from '@/lib/map-region';
 import type { FavoriteJob, Job } from '@/types/jobs';
@@ -30,8 +30,8 @@ export default function DiscoveryScreen() {
   const [mapViewport, setMapViewport] = useState<JobMapRegion | null>(null);
   const [showSearchArea, setShowSearchArea] = useState(false);
   const [favorite, setFavorite] = useState<FavoriteJob | null>(null);
-  const [favoriteForJobId, setFavoriteForJobId] = useState<string | null>(null);
-  const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [loadedFavoriteOwnershipKey, setLoadedFavoriteOwnershipKey] = useState<string | null>(null);
+  const [favoriteBusyOwnershipKey, setFavoriteBusyOwnershipKey] = useState<string | null>(null);
   const auth = useAuth();
   const { jobs, loading, error, reload } = useJobs(filters);
 
@@ -43,17 +43,37 @@ export default function DiscoveryScreen() {
   const sortedJobs = useMemo(() => sortJobs(jobs, sort, filters.latitude, filters.longitude), [filters.latitude, filters.longitude, jobs, sort]);
   const mapJobs = useMemo(() => sortedJobs.slice(0, 400), [sortedJobs]);
   const selectedJob = useMemo(() => sortedJobs.find((job) => job.id === selectedJobId), [selectedJobId, sortedJobs]);
+  const authUserId = auth.session?.user.id ?? null;
+  const [ownership, setOwnership] = useState(() => createFavoriteOwnership(authUserId));
+  let currentOwnership = ownership;
+  if (ownership.userId !== authUserId) {
+    currentOwnership = advanceFavoriteOwnership(ownership, authUserId);
+    setOwnership(currentOwnership);
+  }
+  const userOwnershipKey = favoriteOwnershipKey(currentOwnership);
+  const operationOwnershipKey = userOwnershipKey && selectedJob ? `${userOwnershipKey}\u0000${selectedJob.id}` : null;
+  const currentOwnershipKeyRef = useRef<string | null>(operationOwnershipKey);
+
+  useLayoutEffect(() => {
+    currentOwnershipKeyRef.current = operationOwnershipKey;
+  }, [operationOwnershipKey]);
 
   useEffect(() => {
-    if (!auth.session || !selectedJob) return;
+    if (!authUserId || !selectedJob || !operationOwnershipKey) return;
     let mounted = true;
-    const operationUserId = auth.session.user.id;
-    void getFavoriteForJob(selectedJob.id, { expectedUserId: operationUserId }).then((result) => { if (mounted) { setFavoriteForJobId(selectedJob.id); setFavorite(result.data); } });
+    const capturedOwnershipKey = operationOwnershipKey;
+    void getFavoriteForJob(selectedJob.id, { expectedUserId: authUserId }).then((result) => {
+      if (mounted && capturedOwnershipKey === currentOwnershipKeyRef.current) {
+        setLoadedFavoriteOwnershipKey(capturedOwnershipKey);
+        setFavorite(result.data);
+      }
+    });
     return () => { mounted = false; };
-  }, [auth.session, selectedJob]);
+  }, [authUserId, operationOwnershipKey, selectedJob]);
 
   const openJob = (job: Job) => router.push(`/job/${job.id}`);
-  const activeFavorite = favoriteForJobId === selectedJob?.id ? favorite : null;
+  const activeFavorite = operationOwnershipKey && loadedFavoriteOwnershipKey === operationOwnershipKey ? favorite : null;
+  const favoriteBusy = Boolean(operationOwnershipKey && favoriteBusyOwnershipKey === operationOwnershipKey);
   const activeFilterCount = [filters.country, filters.city, filters.category, filters.jobType, filters.level, filters.radiusKm].filter(Boolean).length;
   const locationLabel = getDiscoveryLocationLabel(locale, filters);
   const cameraIntent = getMapCameraIntent(filters);
@@ -71,22 +91,34 @@ export default function DiscoveryScreen() {
 
   const toggleFavorite = async () => {
     if (!selectedJob || favoriteBusy) return;
-    if (!auth.session) {
+    if (!authUserId || !operationOwnershipKey) {
       router.push({ pathname: '/auth', params: { returnTo: '/', pendingAction: 'save', jobId: selectedJob.id } });
       return;
     }
-    setFavoriteForJobId(selectedJob.id);
-    setFavoriteBusy(true);
+    const capturedOwnershipKey = operationOwnershipKey;
+    const operationUserId = authUserId;
+    setLoadedFavoriteOwnershipKey(capturedOwnershipKey);
+    setFavoriteBusyOwnershipKey(capturedOwnershipKey);
     if (activeFavorite) {
       const previous = activeFavorite;
       setFavorite(null);
-      const result = await removeFavorite(selectedJob.id, { expectedUserId: auth.session.user.id });
-      if (result.error) setFavorite(previous);
+      await applyFavoriteOperationIfCurrent(
+        capturedOwnershipKey,
+        () => currentOwnershipKeyRef.current,
+        () => removeFavorite(selectedJob.id, { expectedUserId: operationUserId }),
+        (result) => { if (result.error) setFavorite(previous); },
+      );
     } else {
-      const result = await addFavorite(selectedJob.id, { expectedUserId: auth.session.user.id });
-      if (!result.error) setFavorite(result.data);
+      await applyFavoriteOperationIfCurrent(
+        capturedOwnershipKey,
+        () => currentOwnershipKeyRef.current,
+        () => addFavorite(selectedJob.id, { expectedUserId: operationUserId }),
+        (result) => { if (!result.error) setFavorite(result.data); },
+      );
     }
-    setFavoriteBusy(false);
+    if (capturedOwnershipKey === currentOwnershipKeyRef.current) {
+      setFavoriteBusyOwnershipKey(null);
+    }
   };
 
   return (

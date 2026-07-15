@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { FavoriteJob, Job } from '@/types/jobs';
-import { resolveAuthBoundClient, type AuthBoundClientInput } from './auth-bound-client';
+import { resolveAuthBoundClient, type AuthBoundClientInput, type AuthBoundClientOptions } from './auth-bound-client';
 import { isApplicationStatus } from './application-flow';
 import {
   beginDeadlineReminderReconciliation,
@@ -12,6 +12,7 @@ import {
 import { getLocale, t, type Locale } from './i18n';
 
 export type FavoriteClient = SupabaseClient;
+export type FavoriteClientOptions = AuthBoundClientOptions<FavoriteClient>;
 export type FavoriteClientInput = AuthBoundClientInput<FavoriteClient>;
 export type FavoritesError = { code: 'configuration' | 'auth-required' | 'query' | 'mutation'; message: string };
 export type FavoritesResult<T> = {
@@ -157,6 +158,26 @@ export async function addFavorite(jobId: string, input?: FavoriteClientInput): P
     return { data: favorite, error: null, reminderGeneration };
   }
   catch (error) { return errorResult({ code: 'mutation', message: error instanceof Error ? error.message : 'Could not save favorite.' }); }
+}
+
+export function addPendingFavorite(
+  jobId: string,
+  expectedUserId: string,
+  options: Omit<FavoriteClientOptions, 'expectedUserId'> = {},
+): Promise<FavoritesResult<FavoriteJob>> {
+  return addFavorite(jobId, { ...options, expectedUserId });
+}
+
+export async function applyFavoriteOperationIfCurrent<T>(
+  operationKey: string,
+  getCurrentOperationKey: () => string | null,
+  operation: () => Promise<T>,
+  apply: (result: T) => void | Promise<void>,
+): Promise<boolean> {
+  const result = await operation();
+  if (!isCurrentFavoriteOperation(operationKey, getCurrentOperationKey())) return false;
+  await apply(result);
+  return true;
 }
 
 export async function removeFavorite(jobId: string, input?: FavoriteClientInput): Promise<FavoritesResult<null>> {

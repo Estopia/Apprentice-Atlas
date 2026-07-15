@@ -57,8 +57,8 @@ describe('native auth and onboarding configuration', () => {
   });
 
   it('awaits async Apple completion and passes the continuation directly', () => {
-    expect(authForm).toContain('onSuccess: () => void | Promise<void>');
-    expect(authForm).toContain('await onSuccess()');
+    expect(authForm).toContain('onSuccess: (userId: string) => void | Promise<void>');
+    expect(authForm).toContain('await onSuccess(result.data.user.id)');
     expect(authScreen).toContain('onSuccess={complete}');
     expect(authScreen).not.toContain('onSuccess={() => void complete()}');
   });

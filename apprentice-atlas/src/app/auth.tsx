@@ -8,7 +8,7 @@ import { Palette } from '@/constants/theme';
 import { validatedPendingTrackJobId } from '@/lib/application-flow';
 import { isSafeReturnPath, validatedPendingSaveJobId } from '@/lib/auth';
 import { getAuthNavigationPresentation } from '@/lib/auth-presentation';
-import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
+import { addPendingFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
 
 export default function AuthScreen() {
@@ -30,14 +30,14 @@ export default function AuthScreen() {
     },
   });
 
-  const complete = async () => {
+  const complete = async (completionUserId: string) => {
     setError(null);
     if (pendingTrackJobId) {
       router.replace({ pathname: '/application/[jobId]', params: { jobId: pendingTrackJobId } } as never);
       return;
     }
     if (pendingSaveJobId) {
-      const result = await addFavorite(pendingSaveJobId);
+      const result = await addPendingFavorite(pendingSaveJobId, completionUserId);
       if (result.error) { setError(getReadableFavoritesError(result.error, locale)); return; }
     }
     router.replace(returnTo);

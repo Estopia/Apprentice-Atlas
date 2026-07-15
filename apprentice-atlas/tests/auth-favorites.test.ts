@@ -13,7 +13,9 @@ import {
 } from '../src/lib/auth';
 import {
   addFavorite,
+  addPendingFavorite,
   advanceFavoriteOwnership,
+  applyFavoriteOperationIfCurrent,
   beginFavoriteRemoval,
   buildComparisonRows,
   createFavoriteOwnership,
@@ -217,6 +219,60 @@ describe('favorite state and comparison', () => {
 });
 
 describe('favorite operations', () => {
+  it('fails a pending-save completion for account A when auth switches to B before the deferred session resolves', async () => {
+    const accountA = '33333333-3333-4333-8333-333333333333';
+    const accountB = '44444444-4444-4444-8444-444444444444';
+    let activeUserId = accountA;
+    const sessionLookup = deferred<void>();
+    const rpc = vi.fn(async () => ({ data: null, error: null }));
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => {
+          await sessionLookup.promise;
+          return {
+            data: { session: { access_token: `token-${activeUserId}`, user: { id: activeUserId } } },
+            error: null,
+          };
+        }),
+      },
+      from: vi.fn(),
+      rpc,
+    } as unknown as FavoriteClient;
+
+    const completion = addPendingFavorite(job.id, accountA, {
+      client,
+      bindClient: () => client,
+    });
+    activeUserId = accountB;
+    sessionLookup.resolve();
+
+    await expect(completion).resolves.toMatchObject({
+      data: null,
+      error: { code: 'auth-required' },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('discards a deferred account A UI completion after the active ownership switches to account B', async () => {
+    const operation = deferred<{ data: FavoriteJob | null; error: null }>();
+    const accountAKey = `account-a:${job.id}`;
+    const accountBKey = `account-b:${job.id}`;
+    let currentOwnershipKey = accountAKey;
+    const apply = vi.fn();
+
+    const completion = applyFavoriteOperationIfCurrent(
+      accountAKey,
+      () => currentOwnershipKey,
+      () => operation.promise,
+      apply,
+    );
+    currentOwnershipKey = accountBKey;
+    operation.resolve({ data: favorite, error: null });
+
+    await expect(completion).resolves.toBe(false);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it('fails closed when account A switches to account B while session resolution is deferred', async () => {
     const accountA = '33333333-3333-4333-8333-333333333333';
     const accountB = '44444444-4444-4444-8444-444444444444';
