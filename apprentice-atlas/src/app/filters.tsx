@@ -27,7 +27,7 @@ export default function FiltersSheet() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         {activeEntries.length > 0 && (
           <View style={styles.summary}>
             <View style={styles.summaryHeader}>
@@ -147,6 +147,7 @@ function Choice({ active, disabled, label, onPress }: { active: boolean; disable
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
+  scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 680, alignSelf: 'center', padding: 16, paddingBottom: 118, gap: 22 },
   summary: { gap: 10, paddingBottom: 2 },
   summaryHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

@@ -81,6 +81,13 @@ describe('My Atlas quality contracts', () => {
     expect(screen).toMatch(/discovery\.showResults/);
   });
 
+  it('gives the native filter sheet scroll content explicit layout space', () => {
+    const screen = read('src/app/filters.tsx');
+
+    expect(screen).toContain('<ScrollView style={styles.scroll}');
+    expect(screen).toMatch(/scroll: \{ flex: 1 \}/);
+  });
+
   it('derives one deterministic, action-first recommendation from application progress', () => {
     expect(deriveAtlasNextAction([])).toEqual({ kind: 'discover', application: null });
 

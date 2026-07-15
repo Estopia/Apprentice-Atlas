@@ -1,5 +1,6 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -174,6 +175,13 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void | Pr
           )}
         </>
       )}
+
+      <View style={styles.legalNotice}>
+        <Text style={styles.legalCopy}>{t(locale, 'auth.legalPrefix')}</Text>
+        <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/legal/[document]', params: { document: 'terms' } } as never)}><Text style={styles.legalLink}>{t(locale, 'settings.terms')}</Text></Pressable>
+        <Text style={styles.legalCopy}>{t(locale, 'auth.legalAnd')}</Text>
+        <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/legal/[document]', params: { document: 'privacy' } } as never)}><Text style={styles.legalLink}>{t(locale, 'settings.privacy')}</Text></Pressable>
+      </View>
     </View>
   );
 }
@@ -196,6 +204,9 @@ const styles = StyleSheet.create({
   appleButton: { width: '100%', height: 52 },
   appleLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   appleLoadingText: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600' },
+  legalNotice: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 4, rowGap: 2, paddingHorizontal: 8 },
+  legalCopy: { color: Palette.textSecondary, fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  legalLink: { color: Palette.blue, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   pressed: { backgroundColor: Palette.bluePressed },
   disabled: { opacity: 0.55 },
 });

@@ -17,6 +17,7 @@ export type PostOnboardingDestination =
   | '/'
   | '/favorites'
   | '/atlas'
+  | '/settings'
   | `/job/${string}`
   | {
       pathname: '/auth';

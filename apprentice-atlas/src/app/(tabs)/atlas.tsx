@@ -2,29 +2,24 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
+import { AppIcon } from '@/components/ui/app-icon';
 import { Palette, Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
-import { usePreferences } from '@/hooks/use-preferences';
 import { groupApplications, safeTimestamp, summarizeApplications, type ApplicationSummary } from '@/lib/atlas';
 import { deriveAtlasNextAction, type AtlasNextAction } from '@/lib/atlas-next-action';
 import { listApplications, type ApplicationsError } from '@/lib/applications';
-import { getReadableAuthError, type AuthError } from '@/lib/auth';
-import { localizeApplicationStatus, localizeCategory, localizeCountry, t, useLocale, type Locale } from '@/lib/i18n';
+import { localizeApplicationStatus, t, useLocale, type Locale } from '@/lib/i18n';
 import type { TrackedApplication } from '@/types/jobs';
 
 export default function AtlasScreen() {
   const [locale] = useLocale();
   const router = useRouter();
   const auth = useAuth();
-  const { preferences, isHydrated } = usePreferences();
   const [applications, setApplications] = useState<TrackedApplication[]>([]);
   const [loadedForSessionKey, setLoadedForSessionKey] = useState<string | null>(null);
   const [applicationsError, setApplicationsError] = useState<ApplicationsError | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const latestLoadAttempt = useRef(0);
-  const [signOutBusy, setSignOutBusy] = useState(false);
-  const [signOutError, setSignOutError] = useState<AuthError | null>(null);
   const userId = auth.session?.user.id ?? null;
   const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
 
@@ -48,7 +43,7 @@ export default function AtlasScreen() {
     [applications, loadedForSessionKey, sessionKey],
   );
   const currentError = loadedForSessionKey === sessionKey ? applicationsError : null;
-  const loading = auth.loading || !isHydrated || Boolean(sessionKey && loadedForSessionKey !== sessionKey);
+  const loading = auth.loading || Boolean(sessionKey && loadedForSessionKey !== sessionKey);
   const summary = useMemo(() => summarizeApplications(currentApplications), [currentApplications]);
   const groups = useMemo(() => groupApplications(currentApplications), [currentApplications]);
   const nextAction = useMemo(() => deriveAtlasNextAction(currentApplications), [currentApplications]);
@@ -59,30 +54,21 @@ export default function AtlasScreen() {
     setLoadAttempt(latestLoadAttempt.current);
   };
 
-  const signOut = async () => {
-    setSignOutError(null);
-    setSignOutBusy(true);
-    const result = await auth.signOut();
-    setSignOutError(result.error);
-    setSignOutBusy(false);
-  };
-
-  const audience = preferences.audience === 'student'
-    ? t(locale, 'atlas.audienceStudent')
-    : preferences.audience === 'dropout'
-      ? t(locale, 'atlas.audienceDropout')
-      : t(locale, 'atlas.notSet');
-  const interests = preferences.interests.length
-    ? preferences.interests.map((interest) => localizeCategory(locale, interest)).join(', ')
-    : t(locale, 'atlas.notSet');
-  const country = preferences.country ? localizeCountry(locale, preferences.country) : t(locale, 'atlas.notSet');
-  const language = preferences.locale === 'de' ? 'Deutsch' : 'English';
-
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
-      <View style={styles.header}>
-        <Text selectable style={styles.title}>{t(locale, 'atlas.title')}</Text>
-        <Text style={styles.subtitle}>{t(locale, 'atlas.subtitle')}</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.header}>
+          <Text selectable style={styles.title}>{t(locale, 'atlas.title')}</Text>
+          <Text style={styles.subtitle}>{t(locale, 'atlas.subtitle')}</Text>
+        </View>
+        <Pressable
+          accessibilityLabel={t(locale, 'settings.title')}
+          accessibilityRole="button"
+          onPress={() => router.push('/settings')}
+          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+        >
+          <AppIcon name={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }} size={21} tintColor={Palette.text} />
+        </Pressable>
       </View>
 
       {loading ? (
@@ -112,38 +98,6 @@ export default function AtlasScreen() {
         </>
       )}
 
-      {!loading && (
-        <View style={styles.section}>
-          <SectionHeader action={t(locale, 'atlas.editPreferences')} onPress={() => router.push('/onboarding')} title={t(locale, 'atlas.preferences')} />
-          <View style={styles.groupedSurface}>
-            <PreferenceRow icon={{ ios: 'person.text.rectangle', android: 'badge', web: 'badge' }} label={t(locale, 'atlas.audience')} value={audience} />
-            <PreferenceRow icon={{ ios: 'sparkles', android: 'interests', web: 'interests' }} label={t(locale, 'atlas.interests')} value={interests} />
-            <PreferenceRow icon={{ ios: 'globe.europe.africa.fill', android: 'public', web: 'public' }} label={t(locale, 'atlas.country')} value={country} />
-            <PreferenceRow icon={{ ios: 'character.bubble.fill', android: 'language', web: 'language' }} label={t(locale, 'atlas.language')} last value={language} />
-          </View>
-        </View>
-      )}
-
-      {!loading && auth.session && (
-        <View style={styles.section}>
-          <SectionHeader title={t(locale, 'atlas.account')} />
-          <View style={styles.accountRow}>
-            <View style={styles.avatar}><Text selectable style={styles.avatarText}>{(auth.user?.email ?? 'A').slice(0, 1).toUpperCase()}</Text></View>
-            <Text selectable numberOfLines={2} style={styles.email}>{auth.user?.email ?? ''}</Text>
-            <Pressable
-              accessibilityLabel={t(locale, 'auth.signOut')}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: signOutBusy }}
-              disabled={signOutBusy}
-              onPress={() => void signOut()}
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.secondaryButtonText}>{signOutBusy ? t(locale, 'auth.signingOut') : t(locale, 'auth.signOut')}</Text>
-            </Pressable>
-          </View>
-          {(signOutError ?? auth.error) && <Text accessibilityRole="alert" selectable style={styles.inlineError}>{getReadableAuthError((signOutError ?? auth.error)!, locale)}</Text>}
-        </View>
-      )}
     </ScrollView>
   );
 }
@@ -237,16 +191,6 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
   );
 }
 
-function PreferenceRow({ icon, label, last, value }: { icon: AppIconName; label: string; last?: boolean; value: string }) {
-  return (
-    <View style={[styles.preferenceRow, !last && styles.rowDivider]}>
-      <View style={styles.preferenceIcon}><AppIcon name={icon} size={18} tintColor={Palette.blue} /></View>
-      <Text style={styles.preferenceLabel}>{label}</Text>
-      <Text selectable style={styles.preferenceValue}>{value}</Text>
-    </View>
-  );
-}
-
 function SectionHeader({ action, count, onPress, title }: { action?: string; count?: number; onPress?: () => void; title: string }) {
   return (
     <View style={styles.sectionHeader}>
@@ -288,9 +232,11 @@ function StatePanel({ action, body, error, loading, onPress, title }: { action?:
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 18, paddingBottom: 128, gap: 24 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   header: { gap: 3, paddingHorizontal: 2, paddingBottom: 2 },
   title: { color: Palette.text, fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -0.6 },
   subtitle: { color: Palette.textSecondary, fontSize: 14, lineHeight: 20 },
+  settingsButton: { width: 44, height: 44, marginLeft: 'auto', borderRadius: 22, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
   nextActionSection: { paddingVertical: 4, gap: 8 },
   eyebrow: { color: Palette.blue, fontSize: 13, lineHeight: 18, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   nextTitle: { color: Palette.text, fontSize: 24, lineHeight: 29, fontWeight: '800', letterSpacing: -0.4 },
@@ -318,17 +264,6 @@ const styles = StyleSheet.create({
   statusText: { maxWidth: 96, color: Palette.blue, fontSize: 13, lineHeight: 17, fontWeight: '700', textAlign: 'right' },
   statusSuccessText: { color: Palette.success },
   statusMutedText: { color: Palette.textSecondary },
-  preferenceRow: { minHeight: 62, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  preferenceIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  preferenceLabel: { width: 94, color: Palette.textSecondary, fontSize: 13, fontWeight: '600' },
-  preferenceValue: { flex: 1, color: Palette.text, fontSize: 14, lineHeight: 19, fontWeight: '600', textAlign: 'right' },
-  accountRow: { minHeight: 72, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: Palette.border, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: Palette.blue, fontSize: 17, fontWeight: '800' },
-  email: { flex: 1, color: Palette.text, fontSize: 14, lineHeight: 19, fontWeight: '600' },
-  secondaryButton: { minWidth: 88, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
-  secondaryButtonText: { color: Palette.blue, fontSize: 13, fontWeight: '700' },
-  inlineError: { color: Palette.danger, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
   signedOutPanel: { minHeight: 250, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
   signedOutIcon: { width: 52, height: 52, borderRadius: 18, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   statePanel: { minHeight: 210, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
