@@ -97,14 +97,14 @@ export default function JobDetailScreen() {
     if (!ownershipKey || !job) return;
     let mounted = true;
     const operationKey = ownershipKey;
-    void getFavoriteForJob(job.id).then((result) => {
+    void getFavoriteForJob(job.id, { expectedUserId: authUserId! }).then((result) => {
       if (!mounted || !isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
       setFavoriteOwnershipKey(operationKey);
       setFavorite(result.data);
       setFavoriteError(result.error);
     });
     return () => { mounted = false; };
-  }, [job, ownershipKey]);
+  }, [authUserId, job, ownershipKey]);
 
   const loadApplication = useCallback(() => {
     if (auth.loading || !ownershipKey || !job) {
@@ -122,7 +122,7 @@ export default function JobDetailScreen() {
     setApplicationLoading(true);
     setApplicationLoadingOwnershipKey(operationKey);
     setApplicationError(null);
-    void getApplicationForJob(requestedJobId).then((result) => {
+    void getApplicationForJob(requestedJobId, { expectedUserId: authUserId! }).then((result) => {
       if (!active || !isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
       setApplicationOwnershipKey(operationKey);
       setApplication(result.data);
@@ -131,7 +131,7 @@ export default function JobDetailScreen() {
       setApplicationLoadingOwnershipKey(null);
     });
     return () => { active = false; };
-  }, [auth.loading, job, ownershipKey]);
+  }, [auth.loading, authUserId, job, ownershipKey]);
 
   useFocusEffect(loadApplication);
 
@@ -168,7 +168,7 @@ export default function JobDetailScreen() {
     setFavoriteOwnershipKey(operationKey); setFavoriteBusyOwnershipKey(operationKey); setFavoriteError(null);
     if (activeFavorite) {
       setFavorite(null);
-      const result = await removeFavorite(operationJob.id);
+      const result = await removeFavorite(operationJob.id, { expectedUserId: operationUserId });
       if (!isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
       if (result.error) { setFavorite(rollbackFavoriteState(previous)); setFavoriteError(result.error); }
       else {
@@ -184,7 +184,7 @@ export default function JobDetailScreen() {
     } else {
       const optimistic = { id: `optimistic-${operationJob.id}`, userId: operationUserId, jobId: operationJob.id, createdAt: new Date().toISOString(), job: operationJob };
       setFavorite(optimistic);
-      const result = await addFavorite(operationJob.id);
+      const result = await addFavorite(operationJob.id, { expectedUserId: operationUserId });
       if (!isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
       if (result.error) { setFavorite(rollbackFavoriteState(previous)); setFavoriteError(result.error); }
       else {

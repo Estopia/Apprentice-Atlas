@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { FavoriteJob, Job } from '@/types/jobs';
+import { resolveAuthBoundClient, type AuthBoundClientInput } from './auth-bound-client';
 import { isApplicationStatus } from './application-flow';
 import {
   beginDeadlineReminderReconciliation,
@@ -11,6 +12,7 @@ import {
 import { getLocale, t, type Locale } from './i18n';
 
 export type FavoriteClient = SupabaseClient;
+export type FavoriteClientInput = AuthBoundClientInput<FavoriteClient>;
 export type FavoritesError = { code: 'configuration' | 'auth-required' | 'query' | 'mutation'; message: string };
 export type FavoritesResult<T> = {
   data: T | null;
@@ -82,13 +84,12 @@ export async function invokeSignOut(signOut: () => Promise<{ error: unknown }>):
 }
 
 function errorResult<T>(error: FavoritesError): FavoritesResult<T> { return { data: null, error }; }
-async function clientOrError(client?: FavoriteClient): Promise<FavoriteClient | FavoritesError> {
-  if (client) return client;
-  try { const module = await import('./supabase'); return module.getSupabaseClient(); } catch (error) { return { code: 'configuration', message: error instanceof Error ? error.message : 'Supabase is not configured.' }; }
-}
-async function currentUserId(client: FavoriteClient): Promise<FavoritesResult<string>> {
-  try { const result = await client.auth.getSession(); if (result.error) return errorResult({ code: 'query', message: result.error.message || 'Could not read the session.' }); const id = result.data.session?.user.id; return id ? { data: id, error: null } : errorResult({ code: 'auth-required', message: 'Sign in to manage favorites.' }); }
-  catch (error) { return errorResult({ code: 'query', message: error instanceof Error ? error.message : 'Could not read the session.' }); }
+async function authenticatedClient(input?: FavoriteClientInput): Promise<{ client: FavoriteClient; userId: string } | FavoritesError> {
+  const result = await resolveAuthBoundClient(input, async () => (await import('./supabase')).getSupabaseClient());
+  if (result.error || !result.client || !result.userId) {
+    return result.error ?? { code: 'auth-required', message: 'Sign in to manage favorites.' };
+  }
+  return { client: result.client, userId: result.userId };
 }
 
 function toJob(row: Record<string, unknown> | null): Job | undefined {
@@ -133,39 +134,39 @@ async function reconcileSavedFavoriteDeadline(
   }
 }
 
-export async function listFavorites(client?: FavoriteClient): Promise<FavoritesResult<FavoriteJob[]>> {
-  const supabase = await clientOrError(client); if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase); if (user.error || !user.data) return errorResult(user.error!);
-  try { const result = await supabase.from('favorites').select('id,user_id,job_id,created_at,jobs(*)').eq('user_id', user.data).order('created_at', { ascending: false }); if (result.error) return errorResult({ code: 'query', message: result.error.message || 'Could not load favorites.' }); return { data: (result.data ?? []).map((row) => toFavorite(row as Record<string, unknown>)), error: null }; }
+export async function listFavorites(input?: FavoriteClientInput): Promise<FavoritesResult<FavoriteJob[]>> {
+  const authenticated = await authenticatedClient(input); if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase, userId } = authenticated;
+  try { const result = await supabase.from('favorites').select('id,user_id,job_id,created_at,jobs(*)').eq('user_id', userId).order('created_at', { ascending: false }); if (result.error) return errorResult({ code: 'query', message: result.error.message || 'Could not load favorites.' }); return { data: (result.data ?? []).map((row) => toFavorite(row as Record<string, unknown>)), error: null }; }
   catch (error) { return errorResult({ code: 'query', message: error instanceof Error ? error.message : 'Could not load favorites.' }); }
 }
 
-export async function getFavoriteForJob(jobId: string, client?: FavoriteClient): Promise<FavoritesResult<FavoriteJob>> {
-  const result = await listFavorites(client); if (result.error) return errorResult(result.error); return { data: result.data?.find((favorite) => favorite.jobId === jobId) ?? null, error: null };
+export async function getFavoriteForJob(jobId: string, input?: FavoriteClientInput): Promise<FavoritesResult<FavoriteJob>> {
+  const result = await listFavorites(input); if (result.error) return errorResult(result.error); return { data: result.data?.find((favorite) => favorite.jobId === jobId) ?? null, error: null };
 }
 
-export async function addFavorite(jobId: string, client?: FavoriteClient): Promise<FavoritesResult<FavoriteJob>> {
-  const supabase = await clientOrError(client); if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase); if (user.error || !user.data) return errorResult(user.error!);
+export async function addFavorite(jobId: string, input?: FavoriteClientInput): Promise<FavoritesResult<FavoriteJob>> {
+  const authenticated = await authenticatedClient(input); if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase, userId } = authenticated;
   try {
     const result = await supabase.rpc('add_favorite', { p_job_id: jobId });
     if (result.error) return errorResult({ code: 'mutation', message: result.error.message || 'Could not save favorite.' });
     const favorite = toFavorite(result.data as Record<string, unknown>);
-    const reminderGeneration = beginDeadlineReminderReconciliation(user.data, jobId);
-    void reconcileSavedFavoriteDeadline(jobId, supabase, user.data, reminderGeneration);
+    const reminderGeneration = beginDeadlineReminderReconciliation(userId, jobId);
+    void reconcileSavedFavoriteDeadline(jobId, supabase, userId, reminderGeneration);
     return { data: favorite, error: null, reminderGeneration };
   }
   catch (error) { return errorResult({ code: 'mutation', message: error instanceof Error ? error.message : 'Could not save favorite.' }); }
 }
 
-export async function removeFavorite(jobId: string, client?: FavoriteClient): Promise<FavoritesResult<null>> {
-  const supabase = await clientOrError(client); if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase); if (user.error || !user.data) return errorResult(user.error!);
+export async function removeFavorite(jobId: string, input?: FavoriteClientInput): Promise<FavoritesResult<null>> {
+  const authenticated = await authenticatedClient(input); if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase, userId } = authenticated;
   try {
-    const result = await supabase.from('favorites').delete().eq('job_id', jobId).eq('user_id', user.data);
+    const result = await supabase.from('favorites').delete().eq('job_id', jobId).eq('user_id', userId);
     if (result.error) return errorResult({ code: 'mutation', message: result.error.message || 'Could not remove favorite.' });
-    const reminderGeneration = beginDeadlineReminderReconciliation(user.data, jobId);
-    void cancelDeadlineReminder(user.data, jobId, reminderGeneration);
+    const reminderGeneration = beginDeadlineReminderReconciliation(userId, jobId);
+    void cancelDeadlineReminder(userId, jobId, reminderGeneration);
     return { data: null, error: null, reminderGeneration };
   }
   catch (error) { return errorResult({ code: 'mutation', message: error instanceof Error ? error.message : 'Could not remove favorite.' }); }

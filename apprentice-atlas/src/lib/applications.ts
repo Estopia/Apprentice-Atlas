@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { resolveAuthBoundClient, type AuthBoundClientInput } from './auth-bound-client';
 import { applicationNoteLength, isApplicationStatus } from './application-flow';
 import { t, type Locale } from './i18n';
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
 
 export type ApplicationClient = SupabaseClient;
+export type ApplicationClientInput = AuthBoundClientInput<ApplicationClient>;
 export type ApplicationsError = {
   code: 'configuration' | 'auth-required' | 'query' | 'mutation' | 'validation';
   message: string;
@@ -19,35 +21,12 @@ function errorResult<T>(error: ApplicationsError): ApplicationsResult<T> {
   return { data: null, error };
 }
 
-async function clientOrError(client?: ApplicationClient): Promise<ApplicationClient | ApplicationsError> {
-  if (client) return client;
-  try {
-    const module = await import('./supabase');
-    return module.getSupabaseClient();
-  } catch (error) {
-    return {
-      code: 'configuration',
-      message: error instanceof Error ? error.message : 'Supabase is not configured.',
-    };
+async function authenticatedClient(input?: ApplicationClientInput): Promise<{ client: ApplicationClient; userId: string } | ApplicationsError> {
+  const result = await resolveAuthBoundClient(input, async () => (await import('./supabase')).getSupabaseClient());
+  if (result.error || !result.client || !result.userId) {
+    return result.error ?? { code: 'auth-required', message: 'Sign in to manage applications.' };
   }
-}
-
-async function currentUserId(client: ApplicationClient): Promise<ApplicationsResult<string>> {
-  try {
-    const result = await client.auth.getSession();
-    if (result.error) {
-      return errorResult({ code: 'query', message: result.error.message || 'Could not read the session.' });
-    }
-    const userId = result.data.session?.user.id;
-    return userId
-      ? { data: userId, error: null }
-      : errorResult({ code: 'auth-required', message: 'Sign in to manage applications.' });
-  } catch (error) {
-    return errorResult({
-      code: 'query',
-      message: error instanceof Error ? error.message : 'Could not read the session.',
-    });
-  }
+  return { client: result.client, userId: result.userId };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,17 +163,16 @@ function normalizeNote(note: string | null): { data: string | null; error: Appli
   return { data: normalized, error: null };
 }
 
-export async function listApplications(client?: ApplicationClient): Promise<ApplicationsResult<TrackedApplication[]>> {
-  const supabase = await clientOrError(client);
-  if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase);
-  if (user.error || !user.data) return errorResult(user.error!);
+export async function listApplications(input?: ApplicationClientInput): Promise<ApplicationsResult<TrackedApplication[]>> {
+  const authenticated = await authenticatedClient(input);
+  if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase, userId } = authenticated;
 
   try {
     const result = await supabase
       .from('applications')
       .select(APPLICATION_SELECT)
-      .eq('user_id', user.data)
+      .eq('user_id', userId)
       .order('updated_at', { ascending: false });
     if (result.error) {
       return errorResult({ code: 'query', message: result.error.message || 'Could not load applications.' });
@@ -215,12 +193,11 @@ export async function listApplications(client?: ApplicationClient): Promise<Appl
 
 export async function getApplicationForJob(
   jobId: string,
-  client?: ApplicationClient,
+  input?: ApplicationClientInput,
 ): Promise<ApplicationsResult<TrackedApplication>> {
-  const supabase = await clientOrError(client);
-  if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase);
-  if (user.error || !user.data) return errorResult(user.error!);
+  const authenticated = await authenticatedClient(input);
+  if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase, userId } = authenticated;
   const invalidJob = validateJobId(jobId);
   if (invalidJob) return errorResult(invalidJob);
 
@@ -228,7 +205,7 @@ export async function getApplicationForJob(
     const result = await supabase
       .from('applications')
       .select(APPLICATION_SELECT)
-      .eq('user_id', user.data)
+      .eq('user_id', userId)
       .eq('job_id', jobId)
       .maybeSingle();
     if (result.error) {
@@ -251,32 +228,31 @@ export function upsertApplication(
   jobId: string,
   status: ApplicationStatus,
   note: string | null,
-  client?: ApplicationClient,
+  client?: ApplicationClientInput,
 ): Promise<ApplicationsResult<TrackedApplication>>;
 export function upsertApplication(
   jobId: string,
   status: ApplicationStatus,
   note: string | null,
   interviewAt: string | null,
-  client?: ApplicationClient,
+  client?: ApplicationClientInput,
 ): Promise<ApplicationsResult<TrackedApplication>>;
 export async function upsertApplication(
   jobId: string,
   status: ApplicationStatus,
   note: string | null,
-  interviewAtOrClient?: string | null | ApplicationClient,
-  suppliedClient?: ApplicationClient,
+  interviewAtOrClient?: string | null | ApplicationClientInput,
+  suppliedClient?: ApplicationClientInput,
 ): Promise<ApplicationsResult<TrackedApplication>> {
   const interviewAt = typeof interviewAtOrClient === 'string' || interviewAtOrClient === null
     ? normalizeTimestamp(interviewAtOrClient)
     : null;
-  const client = typeof interviewAtOrClient === 'object' && interviewAtOrClient !== null
+  const input = typeof interviewAtOrClient === 'object' && interviewAtOrClient !== null
     ? interviewAtOrClient
     : suppliedClient;
-  const supabase = await clientOrError(client);
-  if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase);
-  if (user.error || !user.data) return errorResult(user.error!);
+  const authenticated = await authenticatedClient(input);
+  if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase } = authenticated;
   const invalidJob = validateJobId(jobId);
   if (invalidJob) return errorResult(invalidJob);
   if (!isApplicationStatus(status)) return errorResult(validationError('Invalid application status.'));
@@ -308,12 +284,11 @@ export async function upsertApplication(
 
 export async function removeApplication(
   jobId: string,
-  client?: ApplicationClient,
+  input?: ApplicationClientInput,
 ): Promise<ApplicationsResult<null>> {
-  const supabase = await clientOrError(client);
-  if ('code' in supabase) return errorResult(supabase);
-  const user = await currentUserId(supabase);
-  if (user.error || !user.data) return errorResult(user.error!);
+  const authenticated = await authenticatedClient(input);
+  if ('code' in authenticated) return errorResult(authenticated);
+  const { client: supabase, userId } = authenticated;
   const invalidJob = validateJobId(jobId);
   if (invalidJob) return errorResult(invalidJob);
 
@@ -321,7 +296,7 @@ export async function removeApplication(
     const result = await supabase
       .from('applications')
       .delete()
-      .eq('user_id', user.data)
+      .eq('user_id', userId)
       .eq('job_id', jobId);
     if (result.error) {
       return errorResult({ code: 'mutation', message: result.error.message || 'Could not remove the application.' });

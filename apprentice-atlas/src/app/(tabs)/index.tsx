@@ -47,7 +47,8 @@ export default function DiscoveryScreen() {
   useEffect(() => {
     if (!auth.session || !selectedJob) return;
     let mounted = true;
-    void getFavoriteForJob(selectedJob.id).then((result) => { if (mounted) { setFavoriteForJobId(selectedJob.id); setFavorite(result.data); } });
+    const operationUserId = auth.session.user.id;
+    void getFavoriteForJob(selectedJob.id, { expectedUserId: operationUserId }).then((result) => { if (mounted) { setFavoriteForJobId(selectedJob.id); setFavorite(result.data); } });
     return () => { mounted = false; };
   }, [auth.session, selectedJob]);
 
@@ -79,10 +80,10 @@ export default function DiscoveryScreen() {
     if (activeFavorite) {
       const previous = activeFavorite;
       setFavorite(null);
-      const result = await removeFavorite(selectedJob.id);
+      const result = await removeFavorite(selectedJob.id, { expectedUserId: auth.session.user.id });
       if (result.error) setFavorite(previous);
     } else {
-      const result = await addFavorite(selectedJob.id);
+      const result = await addFavorite(selectedJob.id, { expectedUserId: auth.session.user.id });
       if (!result.error) setFavorite(result.data);
     }
     setFavoriteBusy(false);

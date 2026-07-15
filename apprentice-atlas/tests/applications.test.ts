@@ -224,12 +224,13 @@ function createClient(options: { userId?: string | null; listData?: unknown[]; s
   return {
     auth: {
       getSession: vi.fn(async () => ({
-        data: { session: resolvedUserId ? { user: { id: resolvedUserId } } : null },
+          data: { session: resolvedUserId ? { access_token: `token-${resolvedUserId}`, user: { id: resolvedUserId } } : null },
         error: options.authError ?? null,
       })),
     },
     from: vi.fn(() => { operation = 'read'; equalityCount = 0; return query; }),
     rpc: vi.fn(async () => ({ data: options.singleData ?? null, error: options.error ?? null })),
     query,
+    createAuthBoundClient() { return this; },
   };
 }

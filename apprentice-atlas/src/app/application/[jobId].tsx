@@ -90,7 +90,7 @@ export default function ApplicationSheet() {
 
     let active = true;
     const operationKey = workflowKey;
-    void Promise.all([getJob(routeJobId, undefined, locale), getApplicationForJob(routeJobId)]).then(([jobResult, applicationResult]) => {
+    void Promise.all([getJob(routeJobId, undefined, locale), getApplicationForJob(routeJobId, { expectedUserId: authUserId! })]).then(([jobResult, applicationResult]) => {
       if (!active || !mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
       const resolution = resolveApplicationSheetLoad(jobResult, applicationResult);
       if (resolution.kind === 'redirect') {
@@ -121,7 +121,7 @@ export default function ApplicationSheet() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, [auth.loading, loadAttempt, locale, redirectToAuth, routeJobId, validJobId, workflowKey]);
+  }, [auth.loading, authUserId, loadAttempt, locale, redirectToAuth, routeJobId, validJobId, workflowKey]);
 
   const noteLength = applicationNoteLength(note);
   const noteTooLong = noteLength > 500;
@@ -150,7 +150,7 @@ export default function ApplicationSheet() {
     }
     setError(null);
     setBusyOperation('save');
-    const result = await upsertApplication(routeJobId, status, note, interviewAt);
+    const result = await upsertApplication(routeJobId, status, note, interviewAt, { expectedUserId: operationUserId! });
     const reminderGeneration = !result.error && operationUserId
       ? beginDeadlineReminderReconciliation(operationUserId, routeJobId)
       : null;
@@ -163,14 +163,13 @@ export default function ApplicationSheet() {
     if (operationUserId) {
       const copy = buildDeadlineReminderCopy(locale, job?.title ?? t(locale, 'application.listingUnavailableTitle'));
       if (status === 'interested' || status === 'preparing') {
-        void getFavoriteForJob(routeJobId).then((favoriteResult) => {
-          if (favoriteResult.error) return;
+        void getFavoriteForJob(routeJobId, { expectedUserId: operationUserId }).then((favoriteResult) => {
           return reconcileDeadlineReminder({
             userId: operationUserId,
             jobId: routeJobId,
             deadlineAt: job?.expiresAt ?? null,
             applicationStatus: status,
-            saved: Boolean(favoriteResult.data),
+            saved: !favoriteResult.error && Boolean(favoriteResult.data),
             generation: reminderGeneration,
             ...copy,
           });
@@ -201,7 +200,7 @@ export default function ApplicationSheet() {
     if (!validJobId || !workflowReady || !operationKey || busy) return;
     setError(null);
     setBusyOperation('remove');
-    const result = await removeApplication(routeJobId);
+    const result = await removeApplication(routeJobId, { expectedUserId: operationUserId! });
     const reminderGeneration = !result.error && operationUserId
       ? beginDeadlineReminderReconciliation(operationUserId, routeJobId)
       : null;
@@ -219,7 +218,7 @@ export default function ApplicationSheet() {
         deadlineAt: job?.expiresAt ?? null,
         ...copy,
         generation: reminderGeneration,
-        getFavorite: getFavoriteForJob,
+        getFavorite: (jobId) => getFavoriteForJob(jobId, { expectedUserId: operationUserId }),
         reconcile: reconcileDeadlineReminder,
       });
     }

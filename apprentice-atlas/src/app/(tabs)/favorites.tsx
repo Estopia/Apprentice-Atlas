@@ -57,7 +57,7 @@ export default function FavoritesScreen() {
         .filter((operationId) => operationId.startsWith(operationPrefix))
         .map((operationId) => operationId.slice(operationPrefix.length)),
     ));
-    void listFavorites().then((result) => {
+    void listFavorites({ expectedUserId: userId! }).then((result) => {
       if (!active || listRevision !== listRevisionRef.current || !isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
       const loadedFavorites = result.data ?? [];
       setFavorites(loadedFavorites);
@@ -91,7 +91,7 @@ export default function FavoritesScreen() {
     setPendingJobIds((current) => new Set(current).add(favorite.jobId));
     setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
     setError(null);
-    const result = await removeFavorite(favorite.jobId);
+    const result = await removeFavorite(favorite.jobId, { expectedUserId: userId! });
     listRevisionRef.current += 1;
     pendingOperationIdsRef.current.delete(operationId);
     if (!isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;

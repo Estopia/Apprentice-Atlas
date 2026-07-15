@@ -27,7 +27,7 @@ export default function AtlasScreen() {
     if (auth.loading || !userId || !sessionKey) return undefined;
     let active = true;
     const requestedAttempt = loadAttempt;
-    void listApplications().then((result) => {
+    void listApplications({ expectedUserId: userId }).then((result) => {
       if (!active || requestedAttempt !== latestLoadAttempt.current) return;
       setApplications(result.data ?? []);
       setApplicationsError(result.error);

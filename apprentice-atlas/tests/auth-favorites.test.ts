@@ -217,6 +217,84 @@ describe('favorite state and comparison', () => {
 });
 
 describe('favorite operations', () => {
+  it('fails closed when account A switches to account B while session resolution is deferred', async () => {
+    const accountA = '33333333-3333-4333-8333-333333333333';
+    const accountB = '44444444-4444-4444-8444-444444444444';
+    let activeUserId = accountA;
+    const sessionLookup = deferred<void>();
+    const rpc = vi.fn(async () => ({ data: null, error: null }));
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => {
+          await sessionLookup.promise;
+          return {
+            data: { session: { access_token: `token-${activeUserId}`, user: { id: activeUserId } } },
+            error: null,
+          };
+        }),
+      },
+      from: vi.fn(),
+      rpc,
+    } as unknown as FavoriteClient;
+
+    const mutation = addFavorite(job.id, {
+      client,
+      expectedUserId: accountA,
+      bindClient: () => client,
+    });
+    activeUserId = accountB;
+    sessionLookup.resolve();
+
+    await expect(mutation).resolves.toMatchObject({
+      data: null,
+      error: { code: 'auth-required' },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it('keeps an in-flight account A mutation bound to the captured account A token after switching to B', async () => {
+    const accountA = '33333333-3333-4333-8333-333333333333';
+    const accountB = '44444444-4444-4444-8444-444444444444';
+    let activeUserId = accountA;
+    const request = deferred<void>();
+    const sourceRpc = vi.fn();
+    const boundRpc = vi.fn(async () => {
+      await request.promise;
+      return {
+        data: { id: favorite.id, user_id: accountA, job_id: job.id, created_at: favorite.createdAt },
+        error: null,
+      };
+    });
+    const source = {
+      auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'token-a', user: { id: activeUserId } } }, error: null })) },
+      from: vi.fn(),
+      rpc: sourceRpc,
+    } as unknown as FavoriteClient;
+    const bound = createClient([]) as FavoriteClient & { rpc: typeof boundRpc };
+    bound.rpc = boundRpc as never;
+    const capturedTokens: string[] = [];
+
+    const mutation = addFavorite(job.id, {
+      client: source,
+      expectedUserId: accountA,
+      bindClient: (accessToken) => {
+        capturedTokens.push(accessToken);
+        return bound;
+      },
+    });
+    await vi.waitFor(() => expect(boundRpc).toHaveBeenCalledOnce());
+    activeUserId = accountB;
+    request.resolve();
+
+    await expect(mutation).resolves.toMatchObject({
+      data: { userId: accountA, jobId: job.id },
+      error: null,
+    });
+    expect(capturedTokens).toEqual(['token-a']);
+    expect(sourceRpc).not.toHaveBeenCalled();
+  });
+
   it('uses the authenticated session uid for insert and delete', async () => {
     const calls: Array<{ table: string; values?: unknown }> = [];
     const client = createClient(calls);
@@ -231,7 +309,8 @@ describe('favorite operations', () => {
   it('lists only records returned for the current authenticated session', async () => {
     const row = { ...favorite, user_id: 'user-1', job_id: job.id, jobs: { ...job, job_type: job.jobType, raw_description: job.rawDescription, last_seen_at: job.lastSeenAt, source_url: job.sourceUrl, source_name: job.sourceName, created_at: job.createdAt, updated_at: job.updatedAt } };
     const query: any = { select: () => query, eq: () => query, order: async () => ({ data: [row], error: null }) };
-    const client = { auth: { getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null })) }, from: vi.fn(() => query) } as unknown as FavoriteClient;
+    const client = { auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'token-user-1', user: { id: 'user-1' } } }, error: null })) }, from: vi.fn(() => query) } as unknown as FavoriteClient & { createAuthBoundClient: () => FavoriteClient };
+    client.createAuthBoundClient = () => client;
     const result = await listFavorites(client);
     expect(result.error).toBeNull();
     expect(result.data?.[0].job?.title).toBe(job.title);
@@ -244,6 +323,12 @@ describe('favorite operations', () => {
   });
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((fulfill) => { resolve = fulfill; });
+  return { promise, resolve };
+}
+
 function createClient(calls: Array<{ table: string; values?: unknown }>, failure?: Error): FavoriteClient {
   const result = { data: null, error: failure };
   const chain = {
@@ -255,9 +340,11 @@ function createClient(calls: Array<{ table: string; values?: unknown }>, failure
     single: vi.fn(async () => result),
     then: undefined,
   } as any;
-  return {
-    auth: { getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: failure })) },
+  const client = {
+    auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'token-user-1', user: { id: 'user-1' } } }, error: failure })) },
     from: vi.fn(() => chain),
     rpc: vi.fn((name: string, values: unknown) => { (calls as unknown as Array<{ rpc?: string; table?: string; values?: unknown }>).push({ rpc: name, values }); return Promise.resolve({ data: { id: 'favorite-1', user_id: 'user-1', job_id: job.id, created_at: '2026-07-14T00:00:00.000Z' }, error: failure }); }),
-  } as unknown as FavoriteClient;
+  } as unknown as FavoriteClient & { createAuthBoundClient: () => FavoriteClient };
+  client.createAuthBoundClient = () => client;
+  return client;
 }

@@ -33,7 +33,11 @@ export default function SettingsScreen() {
   const exportData = async () => {
     if (!auth.user || busy) return;
     setError(null); setBusy('export');
-    const [favorites, applications] = await Promise.all([listFavorites(), listApplications()]);
+    const userId = auth.session?.user.id;
+    const [favorites, applications] = await Promise.all([
+      listFavorites(userId ? { expectedUserId: userId } : undefined),
+      listApplications(userId ? { expectedUserId: userId } : undefined),
+    ]);
     if (favorites.error || applications.error || !favorites.data || !applications.data) {
       setError(t(locale, 'settings.exportError')); setBusy(null); return;
     }

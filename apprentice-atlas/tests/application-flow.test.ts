@@ -13,6 +13,7 @@ import {
   resolveApplicationSheetLoad,
   validatedPendingTrackJobId,
 } from '../src/lib/application-flow';
+import { getFavoriteForJob, type FavoriteClient } from '../src/lib/favorites';
 
 const jobId = '11111111-1111-4111-8111-111111111111';
 
@@ -157,6 +158,52 @@ describe('application form helpers', () => {
         saved: false,
       }));
     }
+  });
+
+  it('cancels account A reminder when a deferred favorite lookup resolves after switching to account B', async () => {
+    const accountA = '33333333-3333-4333-8333-333333333333';
+    const accountB = '44444444-4444-4444-8444-444444444444';
+    let activeUserId = accountA;
+    let releaseSession!: () => void;
+    const sessionLookup = new Promise<void>((resolve) => { releaseSession = resolve; });
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => {
+          await sessionLookup;
+          return {
+            data: { session: { access_token: `token-${activeUserId}`, user: { id: activeUserId } } },
+            error: null,
+          };
+        }),
+      },
+      from: vi.fn(),
+    } as unknown as FavoriteClient;
+    const reconcile = vi.fn(async () => ({ state: 'not-scheduled' }));
+
+    const reconciliation = reconcileApplicationRemovalReminder({
+      userId: accountA,
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      title: 'Application deadline',
+      body: 'Three days remain.',
+      getFavorite: (requestedJobId) => getFavoriteForJob(requestedJobId, {
+        client,
+        expectedUserId: accountA,
+        bindClient: () => client,
+      }),
+      reconcile,
+    });
+    activeUserId = accountB;
+    releaseSession();
+    await reconciliation;
+
+    expect(client.from).not.toHaveBeenCalled();
+    expect(client.auth.getSession).toHaveBeenCalledOnce();
+    expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({
+      userId: accountA,
+      jobId,
+      saved: false,
+    }));
   });
 
   it('keeps reminder restoration best-effort when native reconciliation fails', async () => {
