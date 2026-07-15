@@ -8,6 +8,8 @@ export type Locale = 'de' | 'en';
 
 const messages = {
   de: {
+    'launch.tagline': 'Dein nächster Schritt ist näher, als du denkst.',
+    'launch.preparing': 'Dein Atlas wird vorbereitet …',
     'onboarding.eyebrow': 'Dein persönlicher Atlas',
     'onboarding.step': 'Schritt',
     'onboarding.of': 'von',
@@ -405,6 +407,8 @@ const messages = {
     'ai.oneQuestionAvailable': '1 Frage übrig',
   },
   en: {
+    'launch.tagline': 'Your next step is closer than you think.',
+    'launch.preparing': 'Preparing your atlas …',
     'onboarding.eyebrow': 'Your personal atlas',
     'onboarding.step': 'Step',
     'onboarding.of': 'of',

@@ -11,8 +11,8 @@ import { clusterJobsForRegion, type JobCluster, type PositionedJob } from '@/lib
 import { getJobsMapRegion, getRenderableMapRegion, hasMeaningfulRegionChange, type JobMapRegion } from '@/lib/map-region';
 import type { Job } from '@/types/jobs';
 
-export type JobMapProps = { jobs: Job[]; cameraIntent: string; resultsLoading: boolean; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (region: JobMapRegion) => void };
-export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJobId, onSelect, onRegionChange }: JobMapProps) {
+export type JobMapProps = { jobs: Job[]; cameraIntent: string; resultsLoading: boolean; selectedJobId?: string; onReady?: () => void; onSelect: (job: Job) => void; onRegionChange?: (region: JobMapRegion) => void };
+export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJobId, onReady, onSelect, onRegionChange }: JobMapProps) {
   const [locale] = useLocale();
   const mapRef = useRef<MapView>(null);
   const ignoreNextRegionChange = useRef(true);
@@ -42,6 +42,10 @@ export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJob
       });
     });
   }, [clusters, visibleRegion]);
+
+  useEffect(() => {
+    if (!resultsLoading && !renderRegion) onReady?.();
+  }, [onReady, renderRegion, resultsLoading]);
 
   useEffect(() => {
     const decision = decideMapCameraSync(cameraSync.current, { intent: cameraIntent, resultIdentity, loading: resultsLoading });
@@ -87,6 +91,7 @@ export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJob
       accessibilityLabel={t(locale, 'map.markerList')}
       initialRegion={renderRegion}
       mapType="standard"
+      onMapReady={onReady}
       userInterfaceStyle="light"
       pitchEnabled={false}
       rotateEnabled={false}

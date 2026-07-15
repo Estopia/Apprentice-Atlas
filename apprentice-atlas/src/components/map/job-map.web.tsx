@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Palette, Shadows } from '@/constants/theme';
@@ -12,9 +13,12 @@ const markerPositions = [
   { left: '12%', top: '70%' }, { left: '48%', top: '76%' }, { left: '83%', top: '25%' },
 ] as const;
 
-export default function JobMap({ jobs, selectedJobId, onSelect }: JobMapProps) {
+export default function JobMap({ jobs, resultsLoading, selectedJobId, onReady, onSelect }: JobMapProps) {
   const [locale] = useLocale();
   const markers = jobs.filter(hasMapPosition);
+  useEffect(() => {
+    if (!resultsLoading) onReady?.();
+  }, [onReady, resultsLoading]);
   return (
     <View style={styles.surface} accessibilityLabel={t(locale, 'map.markerList')}>
       <View style={[styles.park, styles.parkOne]} /><View style={[styles.park, styles.parkTwo]} />

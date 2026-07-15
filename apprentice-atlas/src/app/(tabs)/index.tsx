@@ -5,6 +5,7 @@ import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { JobCard } from '@/components/jobs/job-card';
+import { useLaunchReadiness } from '@/components/launch/launch-gate';
 import JobMap from '@/components/map/job-map';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
@@ -34,6 +35,7 @@ export default function DiscoveryScreen() {
   const [favoriteBusyOwnershipKey, setFavoriteBusyOwnershipKey] = useState<string | null>(null);
   const auth = useAuth();
   const { jobs, loading, error, reload } = useJobs(filters);
+  const { markDiscoveryReady } = useLaunchReadiness();
 
   useEffect(() => {
     const timer = setTimeout(() => updateDiscoveryFilters({ search: search.trim() || undefined }), 300);
@@ -124,7 +126,7 @@ export default function DiscoveryScreen() {
   return (
     <View style={styles.screen}>
       {viewMode === 'map' ? (
-        <JobMap cameraIntent={cameraIntent} jobs={mapJobs} resultsLoading={loading} selectedJobId={selectedJob?.id} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
+        <JobMap cameraIntent={cameraIntent} jobs={mapJobs} resultsLoading={loading} selectedJobId={selectedJob?.id} onReady={markDiscoveryReady} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
       ) : (
         <FlatList
           data={sortedJobs}
