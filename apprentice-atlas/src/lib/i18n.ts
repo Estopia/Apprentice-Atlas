@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { normalizeJobLevel } from './job-presentation';
 import type { ApplicationStatus } from '@/types/jobs';
 
 export type Locale = 'de' | 'en';
@@ -45,6 +46,8 @@ const messages = {
     'discovery.entryLevel': 'Einstiegsjob',
     'discovery.level': 'Erfahrungslevel',
     'discovery.beginner': 'Für Einsteiger',
+    'discovery.intermediate': 'Mit erster Erfahrung',
+    'discovery.levelUnknown': 'Erfahrungslevel nicht verfügbar',
     'discovery.sort': 'Sortierung',
     'discovery.sortRecent': 'Neueste zuerst',
     'discovery.sortDistance': 'Nächste zuerst',
@@ -282,6 +285,8 @@ const messages = {
     'discovery.entryLevel': 'Entry-level job',
     'discovery.level': 'Experience level',
     'discovery.beginner': 'Beginner friendly',
+    'discovery.intermediate': 'Some experience',
+    'discovery.levelUnknown': 'Experience level unavailable',
     'discovery.sort': 'Sort order',
     'discovery.sortRecent': 'Newest first',
     'discovery.sortDistance': 'Nearest first',
@@ -531,9 +536,11 @@ export function localizeJobType(locale: Locale, jobType: string): string {
   return jobType;
 }
 
-export function localizeJobLevel(locale: Locale, level: string): string {
-  if (level === 'entry') return t(locale, 'discovery.beginner');
-  return level;
+export function localizeJobLevel(locale: Locale, level: unknown): string {
+  const normalized = normalizeJobLevel(level);
+  if (normalized === 'entry-level') return t(locale, 'discovery.beginner');
+  if (normalized === 'intermediate') return t(locale, 'discovery.intermediate');
+  return t(locale, 'discovery.levelUnknown');
 }
 
 export function localizeCountry(locale: Locale, country: string): string {

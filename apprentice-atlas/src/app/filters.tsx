@@ -40,7 +40,7 @@ export default function FiltersSheet() {
         </FilterSection>
         <FilterSection title={t(locale, 'discovery.level')}>
           <Choice active={!filters.level} label={t(locale, 'discovery.all')} onPress={() => update({ level: undefined })} />
-          <Choice active={filters.level === 'entry'} label={t(locale, 'discovery.beginner')} onPress={() => update({ level: 'entry' })} />
+          <Choice active={filters.level === 'entry-level'} label={t(locale, 'discovery.beginner')} onPress={() => update({ level: 'entry-level' })} />
         </FilterSection>
         <FilterSection title={t(locale, 'discovery.distance')}>
           <Choice active={!filters.radiusKm} label={t(locale, 'discovery.all')} onPress={() => update({ radiusKm: undefined })} />
