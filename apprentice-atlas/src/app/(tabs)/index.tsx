@@ -94,7 +94,7 @@ export default function DiscoveryScreen() {
   return (
     <View style={styles.screen}>
       {viewMode === 'map' ? (
-        <JobMap cameraIntent={cameraIntent} jobs={mapJobs} selectedJobId={selectedJob?.id} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
+        <JobMap cameraIntent={cameraIntent} jobs={mapJobs} resultsLoading={loading} selectedJobId={selectedJob?.id} onRegionChange={handleMapChange} onSelect={(job) => setSelectedJobId(job.id)} />
       ) : (
         <FlatList
           data={sortedJobs}
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   state: { minHeight: 200, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, backgroundColor: Palette.white },
   stateCompact: { width: '100%', minHeight: 104, borderRadius: 18, borderCurve: 'continuous', boxShadow: '0 5px 20px rgba(15, 23, 42, 0.14)' },
   stateText: { color: Palette.textSecondary, textAlign: 'center', lineHeight: 20 },
-  retry: { minHeight: 42, paddingHorizontal: 14, justifyContent: 'center' },
+  retry: { minHeight: 44, paddingHorizontal: 14, justifyContent: 'center' },
   retryText: { color: Palette.blue, fontWeight: '700' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.96 }] },
 });

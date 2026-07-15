@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
 import { getApplicationForJob, getReadableApplicationsError, type ApplicationsError } from '@/lib/applications';
 import { isValidApplicationJobId } from '@/lib/application-flow';
-import { prepareJobDescription } from '@/lib/discovery-presentation';
+import { getDescriptionLineLimit, prepareJobDescription } from '@/lib/discovery-presentation';
 import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
 import { localizeApplicationStatus, localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
@@ -128,6 +128,7 @@ export default function JobDetailScreen() {
   const primaryLabel = applicationUrl ? t(locale, 'actions.apply') : t(locale, 'job.openSourceShort');
   const compactActions = width < 360;
   const originalListing = prepareJobDescription(job.rawDescription || t(locale, 'ai.unknown'));
+  const descriptionLineLimit = getDescriptionLineLimit(originalListing.collapsible, descriptionExpanded);
   const shareJob = () => void Share.share({ title: job.title, message: `${job.title} — ${job.company}\n${applicationUrl ?? sourceUrl ?? ''}` });
 
   return (
@@ -181,7 +182,7 @@ export default function JobDetailScreen() {
         <JobQa jobId={job.id} />
         <View style={styles.originalSection}>
           <Text style={styles.heading}>{t(locale, 'job.originalListing')}</Text>
-          <Text selectable style={styles.body} numberOfLines={descriptionExpanded ? undefined : 8}>{originalListing.text}</Text>
+          <Text selectable style={styles.body} {...(descriptionLineLimit ? { numberOfLines: descriptionLineLimit } : {})}>{originalListing.text}</Text>
           {originalListing.collapsible && <Pressable accessibilityRole="button" accessibilityState={{ expanded: descriptionExpanded }} onPress={() => setDescriptionExpanded((value) => !value)} style={styles.showMore}><Text style={styles.showMoreText}>{t(locale, descriptionExpanded ? 'job.showLess' : 'job.showMore')}</Text><AppIcon name={{ ios: descriptionExpanded ? 'chevron.up' : 'chevron.down', android: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down', web: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }} size={18} tintColor={Palette.blue} /></Pressable>}
           {job.requirements.length > 0 && <View style={styles.requirements}><Text style={styles.requirementsHeading}>{t(locale, 'job.requirements')}</Text>{job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>)}</View>}
         </View>
