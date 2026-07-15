@@ -53,6 +53,37 @@ describe('client job filters', () => {
     expect(result.data[0]).toMatchObject({ title: 'Canonical title', rawDescription: 'Canonical description', city: 'Berlin' });
   });
 
+  it('returns both stored beginner aliases for the canonical entry-level filter', async () => {
+    const baseRow = { title: 'Beginner role', company: 'Atlas', country: 'Germany', city: 'Berlin', latitude: null, longitude: null, job_type: 'apprenticeship', category: 'general', tags: [], raw_description: '', requirements: [], source_url: null, application_url: null, source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now' };
+    const rows = [
+      { ...baseRow, id: '11111111-1111-4111-8111-111111111111', level: 'entry' },
+      { ...baseRow, id: '22222222-2222-4222-8222-222222222222', level: 'entry-level' },
+      { ...baseRow, id: '33333333-3333-4333-8333-333333333333', level: 'intermediate' },
+    ];
+    const client = { from: () => {
+      let filteredRows = rows;
+      const chain: any = {
+        select: () => chain,
+        order: () => chain,
+        eq: (field: keyof typeof baseRow | 'level', value: unknown) => {
+          filteredRows = filteredRows.filter((row) => row[field] === value);
+          return chain;
+        },
+        in: (field: keyof typeof baseRow | 'level', values: unknown[]) => {
+          filteredRows = filteredRows.filter((row) => values.includes(row[field]));
+          return chain;
+        },
+        then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: filteredRows, error: null }).then(resolve),
+      };
+      return chain;
+    } };
+
+    const result = await listJobs({ level: 'entry-level' }, client as any, undefined, 'en');
+
+    expect(result.error).toBeNull();
+    expect(result.data.map((job) => job.level)).toEqual(['entry', 'entry-level']);
+  });
+
   it('consumes the selected published translation and keeps canonical URL fields', async () => {
     const row = { id: '11111111-1111-4111-8111-111111111111', title: 'Canonical title', company: 'Canonical company', country: 'Germany', city: 'Berlin', latitude: 52, longitude: 13, job_type: 'apprenticeship', level: 'entry', category: 'general', tags: ['canonical'], raw_description: 'Canonical description', requirements: ['canonical'], source_url: 'https://official.example/listing/1', application_url: 'https://apply.example/1', source_name: 'official', status: 'active', last_seen_at: 'now', expires_at: null, created_at: 'now', updated_at: 'now', job_translations: [{ language_code: 'de', status: 'published', title: 'Übersetzter Titel', company: 'Übersetztes Unternehmen', description: 'Übersetzte Beschreibung', requirements: ['Übersetzt'], tags: ['Ausbildung'] }] };
     const chain: any = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: row, error: null }) };

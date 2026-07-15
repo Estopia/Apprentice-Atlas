@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -23,6 +22,13 @@ describe('normalizeJobLevel', () => {
     expect(normalizeJobLevel(null)).toBe('unknown');
     expect(normalizeJobLevel(undefined)).toBe('unknown');
   });
+
+  it('normalizes case and surrounding whitespace and rejects blank values', () => {
+    expect(normalizeJobLevel(' ENTRY ')).toBe('entry-level');
+    expect(normalizeJobLevel(' Entry-Level ')).toBe('entry-level');
+    expect(normalizeJobLevel(' INTERMEDIATE ')).toBe('intermediate');
+    expect(normalizeJobLevel('   ')).toBe('unknown');
+  });
 });
 
 describe('cleanJobDescription', () => {
@@ -39,6 +45,20 @@ describe('cleanJobDescription', () => {
       '<strong>Safety</strong>\n\n• No rendering',
     );
   });
+
+  it('preserves literal underscores, asterisks, URLs, and unmatched delimiters', () => {
+    const raw = 'Use snake_case_names at https://example.com/a_b_c and calculate 2*3*4.\nKeep *unmatched, __open, and `unfinished.';
+
+    expect(cleanJobDescription(raw)).toBe(raw);
+  });
+
+  it('converts common block and inline Markdown conservatively', () => {
+    const raw = '# Role overview\n> Build `snake_case_names` at [Atlas](https://example.com/a_b_c).\n\n- ***Learn quickly***\n- **Work with *supportive* mentors**';
+
+    expect(cleanJobDescription(raw)).toBe(
+      'Role overview\nBuild snake_case_names at Atlas (https://example.com/a_b_c).\n\n• Learn quickly\n• Work with supportive mentors',
+    );
+  });
 });
 
 describe('localizeJobLevel', () => {
@@ -53,13 +73,14 @@ describe('localizeJobLevel', () => {
     expect(localizeJobLevel('de', 'senior_level')).toBe('Erfahrungslevel nicht verfügbar');
     expect(localizeJobLevel('en', 'senior_level')).toBe('Experience level unavailable');
   });
-});
 
-describe('beginner filter', () => {
-  it('selects and emits the canonical entry-level value', () => {
-    const filters = readFileSync(new URL('../src/app/filters.tsx', import.meta.url), 'utf8');
-
-    expect(filters).toContain("filters.level === 'entry-level'");
-    expect(filters).toContain("update({ level: 'entry-level' })");
+  it.each([
+    ['de', 'Für Einsteiger', 'Mit erster Erfahrung', 'Erfahrungslevel nicht verfügbar'],
+    ['en', 'Beginner friendly', 'Some experience', 'Experience level unavailable'],
+  ] as const)('normalizes case, whitespace, intermediate, and blanks in %s', (locale, beginner, intermediate, fallback) => {
+    expect(localizeJobLevel(locale, ' ENTRY ')).toBe(beginner);
+    expect(localizeJobLevel(locale, ' Entry-Level ')).toBe(beginner);
+    expect(localizeJobLevel(locale, ' INTERMEDIATE ')).toBe(intermediate);
+    expect(localizeJobLevel(locale, '   ')).toBe(fallback);
   });
 });
