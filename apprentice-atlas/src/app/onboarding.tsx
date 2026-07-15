@@ -6,13 +6,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
-import { Palette, Radius, Shadows } from '@/constants/theme';
+import { Palette, Radius } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
 import { localizeCategory, t } from '@/lib/i18n';
 import { getPostOnboardingDestination } from '@/lib/onboarding-destination';
@@ -41,10 +40,11 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   initialPreferences: UserPreferences;
 }) {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
   const [draft, setDraft] = useState(initialPreferences);
   const [step, setStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [contentMeasurement, setContentMeasurement] = useState({ step: -1, height: 0 });
+  const [viewportHeight, setViewportHeight] = useState(0);
 
   const locale = draft.locale;
   const isValid = step === 0
@@ -53,6 +53,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
       ? draft.audience !== null
       : draft.interests.length > 0;
   const isEditing = initialPreferences.onboardingComplete;
+  const contentOverflows = contentMeasurement.step === step && contentMeasurement.height > viewportHeight + 1;
 
   const selectAudience = (audience: Audience) => setDraft((current) => ({ ...current, audience }));
   const selectCountry = (country: Country) => setDraft((current) => ({ ...current, country }));
@@ -75,20 +76,8 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.scrollContent,
-        {
-          minHeight: height,
-          paddingTop: Math.max(insets.top, 16),
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-      contentInsetAdjustmentBehavior="never"
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.page}>
+    <View style={styles.screen}>
+      <View style={[styles.page, { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.topBar}>
           <View style={styles.brandMark}>
             <AppIcon name={{ ios: 'map.fill', android: 'map', web: 'map' }} size={22} tintColor={Palette.white} />
@@ -103,7 +92,17 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
           ))}
         </View>
 
-        <View style={styles.content}>
+        <ScrollView
+          key={step}
+          style={styles.contentViewport}
+          contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="never"
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={(_, measuredContentHeight) => setContentMeasurement({ step, height: measuredContentHeight })}
+          onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+          scrollEnabled={contentOverflows}
+          showsVerticalScrollIndicator={contentOverflows}
+        >
           {step === 0 && (
             <StepHeading title={t(locale, 'onboarding.countryLanguageTitle')} description={t(locale, 'onboarding.countryLanguageDescription')}>
               <View style={styles.fieldGroup}>
@@ -160,7 +159,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
             </StepHeading>
           )}
 
-        </View>
+        </ScrollView>
 
         <View style={styles.footer}>
           <View style={styles.footerActions}>
@@ -192,7 +191,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
           <Text style={styles.privacy}>{step === TOTAL_STEPS - 1 ? t(locale, 'onboarding.editHint') : t(locale, 'onboarding.privacy')}</Text>
         </View>
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -252,8 +251,7 @@ function SelectionIndicator({ active }: { active: boolean }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 20 },
-  page: { width: '100%', maxWidth: 620, alignSelf: 'center', flex: 1 },
+  page: { width: '100%', maxWidth: 620, alignSelf: 'center', flex: 1, paddingHorizontal: 20 },
   topBar: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandMark: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blue },
   eyebrow: { flex: 1, color: Palette.blueDark, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
@@ -261,15 +259,16 @@ const styles = StyleSheet.create({
   progress: { flexDirection: 'row', gap: 7, paddingTop: 14 },
   progressTrack: { flex: 1, height: 5, borderRadius: Radius.pill, backgroundColor: Palette.surfaceStrong },
   progressTrackActive: { backgroundColor: Palette.blue },
-  content: { flex: 1, paddingTop: 28 },
-  stepContent: { gap: 24 },
-  headingBlock: { gap: 10 },
-  title: { color: Palette.blueDark, fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -0.7 },
-  description: { color: Palette.textSecondary, fontSize: 16, lineHeight: 24, maxWidth: 520 },
+  contentViewport: { flex: 1, minHeight: 0 },
+  content: { flexGrow: 1, paddingTop: 22, paddingBottom: 12 },
+  stepContent: { gap: 18 },
+  headingBlock: { gap: 8 },
+  title: { color: Palette.blueDark, fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -0.6 },
+  description: { color: Palette.textSecondary, fontSize: 15, lineHeight: 22, maxWidth: 520 },
   cardList: { gap: 10 },
-  choiceCard: { minHeight: 104, padding: 15, borderWidth: 1.5, borderColor: Palette.border, borderRadius: Radius.medium, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Palette.white, ...Shadows.subtle },
+  choiceCard: { minHeight: 84, padding: 13, borderWidth: 1.5, borderColor: Palette.border, borderRadius: Radius.medium, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Palette.white },
   choiceCardActive: { borderColor: Palette.blue, backgroundColor: Palette.blueSoft },
-  choiceIcon: { width: 48, height: 48, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
+  choiceIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
   choiceIconActive: { backgroundColor: Palette.blue },
   choiceCopy: { flex: 1, gap: 4 },
   choiceTitle: { color: Palette.blueDark, fontSize: 17, fontWeight: '700' },
@@ -277,33 +276,33 @@ const styles = StyleSheet.create({
   selectedText: { color: Palette.blueDark },
   selectionIndicator: { width: 23, height: 23, borderRadius: Radius.pill, borderWidth: 1.5, borderColor: Palette.border, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.white },
   selectionIndicatorActive: { borderColor: Palette.blue, backgroundColor: Palette.blue },
-  interestGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  interestCard: { width: '48%', minWidth: 145, flexGrow: 1, minHeight: 116, padding: 15, borderRadius: Radius.medium, borderWidth: 1.5, borderColor: Palette.border, backgroundColor: Palette.white, gap: 11, ...Shadows.subtle },
+  interestGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  interestCard: { width: '48%', minWidth: 132, flexGrow: 1, minHeight: 76, padding: 12, paddingRight: 38, borderRadius: Radius.medium, borderWidth: 1.5, borderColor: Palette.border, backgroundColor: Palette.white, flexDirection: 'row', alignItems: 'center', gap: 10 },
   interestCardActive: { borderColor: Palette.blue, backgroundColor: Palette.blueSoft },
-  interestIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
+  interestIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
   interestIconActive: { backgroundColor: Palette.blue },
-  interestLabel: { color: Palette.blueDark, fontSize: 16, fontWeight: '700', paddingRight: 28 },
-  interestSelection: { position: 'absolute', top: 16, right: 16 },
+  interestLabel: { flex: 1, color: Palette.blueDark, fontSize: 15, lineHeight: 19, fontWeight: '700' },
+  interestSelection: { position: 'absolute', top: 12, right: 12 },
   fieldGroup: { gap: 9 },
   fieldLabel: { color: Palette.textSecondary, fontSize: 13, fontWeight: '700', paddingHorizontal: 3 },
   countryList: { gap: 10 },
-  countryChoice: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 15, borderRadius: Radius.medium, borderWidth: 1.5, borderColor: Palette.border, backgroundColor: Palette.white },
+  countryChoice: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 15, borderRadius: Radius.medium, borderWidth: 1.5, borderColor: Palette.border, backgroundColor: Palette.white },
   countryChoiceActive: { borderColor: Palette.blue, backgroundColor: Palette.blueSoft },
   flag: { fontSize: 24 },
   countryLabel: { flex: 1, color: Palette.blueDark, fontSize: 16, fontWeight: '600' },
   languageControl: { padding: 4, flexDirection: 'row', borderRadius: 15, backgroundColor: Palette.surfaceStrong, gap: 4 },
   languageChoice: { flex: 1, minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  languageChoiceActive: { backgroundColor: Palette.white, ...Shadows.subtle },
+  languageChoiceActive: { backgroundColor: Palette.white, borderWidth: 1, borderColor: Palette.border },
   languageLabel: { color: Palette.textSecondary, fontSize: 15, fontWeight: '600' },
   languageLabelActive: { color: Palette.blueDark, fontWeight: '800' },
-  footer: { paddingTop: 20, gap: 12 },
+  footer: { paddingTop: 10, gap: 9, backgroundColor: Palette.white },
   footerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  backButton: { minHeight: 54, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  backButton: { minHeight: 52, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   backButtonPlaceholder: { width: 4 },
   backButtonText: { color: Palette.blueDark, fontSize: 16, fontWeight: '700' },
-  continueButton: { minHeight: 54, flex: 1, paddingHorizontal: 20, borderRadius: 15, backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, ...Shadows.floating },
+  continueButton: { minHeight: 52, flex: 1, paddingHorizontal: 20, borderRadius: 15, backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
   continueButtonText: { color: Palette.white, fontSize: 16, fontWeight: '800', textAlign: 'center' },
   buttonDisabled: { backgroundColor: '#9AB8F6', boxShadow: 'none' },
-  privacy: { color: Palette.textSecondary, fontSize: 12, lineHeight: 17, textAlign: 'center', paddingHorizontal: 20 },
+  privacy: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18, textAlign: 'center', paddingHorizontal: 12 },
   pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
 });

@@ -20,6 +20,9 @@ export const Palette = {
   white: '#FFFFFF',
 } as const;
 
+// Apprentice Atlas intentionally presents a single light appearance.
+export const AppAppearance = 'light' as const;
+
 export const Colors = {
   light: {
     text: Palette.text,

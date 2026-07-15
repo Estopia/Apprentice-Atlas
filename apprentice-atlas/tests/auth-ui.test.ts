@@ -13,10 +13,16 @@ describe('native auth and onboarding configuration', () => {
     expect(authForm).not.toContain('secureTextEntry');
   });
 
-  it('lets onboarding fill the viewport without an artificial oversized minimum', () => {
-    expect(onboarding).toContain('minHeight: height');
-    expect(onboarding).toContain('contentInsetAdjustmentBehavior="never"');
-    expect(onboarding).not.toContain('Math.max(680');
+  it('keeps onboarding chrome stable and scrolls only measured overflow', () => {
+    expect(onboarding).not.toContain('minHeight: height');
+    expect(onboarding).toContain('scrollEnabled={contentOverflows}');
+    expect(onboarding).toMatch(/onContentSizeChange=\{\(_, \w+\) => setContentMeasurement\(\{ step, height: \w+ \}\)\}/);
+    expect(onboarding).toContain('onLayout={(event) =>');
+
+    const scrollEnd = onboarding.indexOf('</ScrollView>');
+    const footer = onboarding.indexOf('<View style={styles.footer}>');
+    expect(scrollEnd).toBeGreaterThan(0);
+    expect(footer).toBeGreaterThan(scrollEnd);
   });
 
   it('asks for language and search country before audience and interests', () => {
@@ -33,5 +39,15 @@ describe('native auth and onboarding configuration', () => {
   it('enables the native Sign in with Apple entitlement and config plugin', () => {
     expect(appConfig.expo.ios.usesAppleSignIn).toBe(true);
     expect(appConfig.expo.plugins).toContain('expo-apple-authentication');
+  });
+
+  it('uses one native stack close affordance and a full-bleed white auth surface', () => {
+    const authScreen = readFileSync(new URL('../src/app/auth.tsx', import.meta.url), 'utf8');
+    expect(authScreen).not.toContain('<Stack.Toolbar');
+    expect(authScreen).not.toContain('styles.close');
+    expect(authScreen).not.toContain('router.back()');
+    expect(authScreen).toContain("headerBackButtonDisplayMode: 'minimal'");
+    expect(authScreen).toMatch(/screen: \{ flex: 1, backgroundColor: Palette\.white \}/);
+    expect(authScreen).not.toContain('formGroup: { backgroundColor: Palette.white');
   });
 });

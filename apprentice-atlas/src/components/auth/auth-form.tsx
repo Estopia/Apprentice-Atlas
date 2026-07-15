@@ -10,15 +10,20 @@ import {
   signInWithAppleIdToken,
   type AuthError,
 } from '@/lib/auth';
+import { getEmailSubmissionState, submitEmailWhenValid } from '@/lib/auth-presentation';
 import { t, useLocale } from '@/lib/i18n';
 
 export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; redirectTo: string }) {
   const [locale] = useLocale();
   const [email, setEmail] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
   const [error, setError] = useState<AuthError | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [loadingMethod, setLoadingMethod] = useState<'email' | 'apple' | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const emailSubmission = getEmailSubmissionState(email, Boolean(loadingMethod));
+  const submitDisabled = !emailSubmission.canSubmit;
+  const showInvalidEmail = emailTouched && email.trim().length > 0 && !emailSubmission.isValid;
 
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
@@ -30,13 +35,14 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
   }, []);
 
   const submitEmail = async () => {
-    if (loadingMethod) return;
+    setEmailTouched(true);
+    if (loadingMethod || !emailSubmission.isValid) return;
     setLoadingMethod('email');
     setError(null);
     setSentTo(null);
-    const result = await sendMagicLink(email, redirectTo);
-    if (result.error) setError(result.error);
-    else setSentTo(email.trim().toLowerCase());
+    const submission = await submitEmailWhenValid(email, (normalizedEmail) => sendMagicLink(normalizedEmail, redirectTo));
+    if (submission.result?.error) setError(submission.result.error);
+    else if (submission.attempted) setSentTo(submission.normalizedEmail);
     setLoadingMethod(null);
   };
 
@@ -80,16 +86,25 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
           accessibilityLabel={t(locale, 'auth.email')}
           autoCapitalize="none"
           autoComplete="email"
+          autoCorrect={false}
+          editable={!loadingMethod}
           keyboardType="email-address"
+          onBlur={() => setEmailTouched(true)}
           returnKeyType="send"
+          textContentType="emailAddress"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(value) => {
+            setEmail(value);
+            setSentTo(null);
+          }}
           onSubmitEditing={() => void submitEmail()}
           placeholder="you@example.com"
           placeholderTextColor={Palette.textSecondary}
           style={styles.input}
         />
-        <Text style={styles.hint}>{t(locale, 'auth.emailHint')}</Text>
+        <Text accessibilityLiveRegion="polite" style={[styles.hint, showInvalidEmail && styles.validationError]}>
+          {showInvalidEmail ? t(locale, 'auth.invalidEmail') : t(locale, 'auth.emailHint')}
+        </Text>
       </View>
 
       {error && <Text accessibilityRole="alert" style={styles.error}>{getReadableAuthError(error, locale)}</Text>}
@@ -102,10 +117,11 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t(locale, 'auth.sendMagicLink')}
-        disabled={Boolean(loadingMethod)}
+        accessibilityLabel={t(locale, loadingMethod === 'email' ? 'auth.working' : sentTo ? 'auth.sendAgain' : 'auth.sendMagicLink')}
+        accessibilityState={{ disabled: submitDisabled, busy: loadingMethod === 'email' }}
+        disabled={submitDisabled}
         onPress={() => void submitEmail()}
-        style={({ pressed }) => [styles.submit, pressed && styles.pressed, loadingMethod && styles.disabled]}
+        style={({ pressed }) => [styles.submit, pressed && !submitDisabled && styles.pressed, submitDisabled && styles.disabled]}
       >
         {loadingMethod === 'email'
           ? <ActivityIndicator color={Palette.white} />
@@ -139,7 +155,8 @@ const styles = StyleSheet.create({
   form: { width: '100%', gap: 15 },
   label: { color: Palette.text, fontSize: 14, fontWeight: '700', marginBottom: 8 },
   input: { minHeight: 52, backgroundColor: Palette.surface, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 15, color: Palette.text, fontSize: 16 },
-  hint: { color: Palette.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 7 },
+  hint: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 7 },
+  validationError: { color: Palette.danger },
   error: { color: Palette.danger, fontWeight: '600', lineHeight: 20 },
   notice: { padding: 13, borderRadius: 12, backgroundColor: Palette.blueSoft, gap: 3 },
   noticeTitle: { color: Palette.blueDark, fontSize: 15, fontWeight: '800' },

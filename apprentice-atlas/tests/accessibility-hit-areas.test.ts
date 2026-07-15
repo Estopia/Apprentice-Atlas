@@ -28,4 +28,17 @@ describe('interactive hit-area contracts', () => {
     expect(detail).toContain("label={t(locale, 'discovery.level')}");
     expect(detail).toMatch(/return <View accessible accessibilityLabel=\{`\$\{label\}: \$\{value\}`\}/);
   });
+
+  it('keeps auth and onboarding actions accessible at 44 points or larger', () => {
+    const authForm = read('src/components/auth/auth-form.tsx');
+    const onboarding = read('src/app/onboarding.tsx');
+
+    expect(authForm).toMatch(/accessibilityState=\{\{ disabled: submitDisabled, busy:/);
+    expect(authForm).toMatch(/submit: \{ minHeight: 52/);
+    expect(authForm).toMatch(/appleButton: \{ width: '100%', height: 52 \}/);
+    expect(onboarding).toMatch(/languageChoice: \{ flex: 1, minHeight: 46/);
+    expect(onboarding).toMatch(/countryChoice: \{ minHeight: 54/);
+    expect(onboarding).toMatch(/continueButton: \{ minHeight: 52/);
+    expect(onboarding).toMatch(/backButton: \{ minHeight: 52/);
+  });
 });
