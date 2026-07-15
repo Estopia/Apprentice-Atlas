@@ -33,7 +33,7 @@ describe('normalizeJobLevel', () => {
 
 describe('cleanJobDescription', () => {
   it('removes common emphasis markers and preserves paragraphs and list lines', () => {
-    const raw = '**Build your future**\n\n- Learn *modern* tools\n* Work with __supportive mentors__\n+ Grow _every_ day';
+    const raw = '**Build your future**\n\n- Learn *modern* tools\n* Work with __supportive__ mentors\n+ Grow _every_ day';
 
     expect(cleanJobDescription(raw)).toBe(
       'Build your future\n\n• Learn modern tools\n• Work with supportive mentors\n• Grow every day',
