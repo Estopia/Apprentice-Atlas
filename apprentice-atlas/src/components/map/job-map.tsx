@@ -8,10 +8,10 @@ import { decideMapCameraSync, getJobAccessibilityLabel, type MapCameraSyncState 
 import { t, useLocale } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
 import { clusterJobsForRegion, type JobCluster, type PositionedJob } from '@/lib/map-clusters';
-import { getJobsMapRegion, hasMeaningfulRegionChange, type JobMapRegion } from '@/lib/map-region';
+import { getJobsMapRegion, getRenderableMapRegion, hasMeaningfulRegionChange, type JobMapRegion } from '@/lib/map-region';
 import type { Job } from '@/types/jobs';
 
-export type JobMapProps = { jobs: Job[]; cameraIntent: string; resultsLoading: boolean; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (center: { latitude: number; longitude: number }) => void };
+export type JobMapProps = { jobs: Job[]; cameraIntent: string; resultsLoading: boolean; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (region: JobMapRegion) => void };
 export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJobId, onSelect, onRegionChange }: JobMapProps) {
   const [locale] = useLocale();
   const mapRef = useRef<MapView>(null);
@@ -20,6 +20,7 @@ export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJob
   const markers = useMemo(() => jobs.filter(hasMapPosition) as PositionedJob[], [jobs]);
   const region = useMemo(() => getJobsMapRegion(jobs), [jobs]);
   const [visibleRegion, setVisibleRegion] = useState<JobMapRegion | null>(region);
+  const renderRegion = getRenderableMapRegion(region, visibleRegion);
   const clusteredRegion = useRef<JobMapRegion | null>(region);
   const resultIdentity = useMemo(() => region ? [
     region.latitude.toFixed(5), region.longitude.toFixed(5), region.latitudeDelta.toFixed(5), region.longitudeDelta.toFixed(5),
@@ -78,13 +79,13 @@ export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJob
     }, 280);
   };
 
-  if (!region) return <View style={styles.empty} accessibilityLabel={t(locale, 'map.noPositions')}><Text style={styles.emptyText}>{t(locale, 'map.noPositions')}</Text></View>;
+  if (!renderRegion) return <View style={styles.empty} accessibilityLabel={t(locale, 'map.noPositions')}><Text style={styles.emptyText}>{t(locale, 'map.noPositions')}</Text></View>;
 
   return (
     <MapView
       ref={mapRef}
       accessibilityLabel={t(locale, 'map.markerList')}
-      initialRegion={region}
+      initialRegion={renderRegion}
       mapType="standard"
       userInterfaceStyle="light"
       pitchEnabled={false}
@@ -99,7 +100,7 @@ export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJob
           ignoreNextRegionChange.current = false;
           return;
         }
-        if (shouldRefresh) onRegionChange?.({ latitude: next.latitude, longitude: next.longitude });
+        if (shouldRefresh) onRegionChange?.(next);
       }}
       showsCompass={false}
       showsMyLocationButton={false}

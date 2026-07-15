@@ -10,15 +10,14 @@ import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useJobs } from '@/hooks/use-jobs';
-import { getDiscoveryState, updateDiscoveryFilters, useDiscoveryState } from '@/lib/discovery-state';
+import { updateDiscoveryFilters, useDiscoveryState } from '@/lib/discovery-state';
 import { getDiscoveryLocationLabel, getMapCameraIntent } from '@/lib/discovery-presentation';
 import { addFavorite, getFavoriteForJob, removeFavorite } from '@/lib/favorites';
 import { localizeCountry, localizeJobError, localizeJobType, t, useLocale } from '@/lib/i18n';
+import { getMapAreaSearchFilters, type JobMapRegion } from '@/lib/map-region';
 import type { FavoriteJob, Job } from '@/types/jobs';
 
 type ViewMode = 'map' | 'list';
-type MapCenter = { latitude: number; longitude: number };
-
 export default function DiscoveryScreen() {
   const insets = useSafeAreaInsets();
   const [locale] = useLocale();
@@ -28,7 +27,7 @@ export default function DiscoveryScreen() {
   const setSearch = (draft: string) => setSearchState({ draft, external: filters.search });
   const [selectedJobId, setSelectedJobId] = useState<string>();
   const [viewMode, setViewMode] = useState<ViewMode>('map');
-  const [mapCenter, setMapCenter] = useState<MapCenter | null>(null);
+  const [mapViewport, setMapViewport] = useState<JobMapRegion | null>(null);
   const [showSearchArea, setShowSearchArea] = useState(false);
   const [favorite, setFavorite] = useState<FavoriteJob | null>(null);
   const [favoriteForJobId, setFavoriteForJobId] = useState<string | null>(null);
@@ -58,16 +57,14 @@ export default function DiscoveryScreen() {
   const locationLabel = getDiscoveryLocationLabel(locale, filters);
   const cameraIntent = getMapCameraIntent(filters);
 
-  const handleMapChange = (center: MapCenter) => {
-    setMapCenter(center);
-    const previous = getDiscoveryState().filters;
-    const moved = previous.latitude === undefined || previous.longitude === undefined || Math.abs(previous.latitude - center.latitude) > 0.01 || Math.abs(previous.longitude - center.longitude) > 0.01;
-    setShowSearchArea(moved);
+  const handleMapChange = (region: JobMapRegion) => {
+    setMapViewport(region);
+    setShowSearchArea(true);
   };
 
   const searchMapArea = () => {
-    if (!mapCenter) return;
-    updateDiscoveryFilters({ latitude: mapCenter.latitude, longitude: mapCenter.longitude, radiusKm: filters.radiusKm ?? 50, city: undefined, country: undefined });
+    if (!mapViewport) return;
+    updateDiscoveryFilters(getMapAreaSearchFilters(filters, mapViewport));
     setShowSearchArea(false);
   };
 
