@@ -22,7 +22,7 @@ describe('interactive hit-area contracts', () => {
 
     expect(discovery).toMatch(/kind="flexible"[\s\S]+kind="compact"[\s\S]+kind="compact"/);
     expect(discovery).toMatch(/controlFlexible: \{ flex: 1, minWidth: 0 \}/);
-    expect(discovery).toMatch(/controlCompact: \{ flexShrink: 1, minWidth: 44, maxWidth: 96 \}/);
+    expect(discovery).toMatch(/controlCompact: \{ flexShrink: 0, minWidth: 44 \}/);
     expect(discovery).toMatch(/controlText: \{ flexShrink: 1, minWidth: 0,/);
     expect(detail).toContain("label={t(locale, 'discovery.category')}");
     expect(detail).toContain("label={t(locale, 'discovery.level')}");

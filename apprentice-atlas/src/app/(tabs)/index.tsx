@@ -115,7 +115,7 @@ export default function DiscoveryScreen() {
         />
       )}
 
-      <View pointerEvents="box-none" style={[styles.top, { top: insets.top + 8 }]}>
+      <View style={[styles.top, { top: insets.top + 8 }]}>
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
             <AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={19} tintColor={Palette.textSecondary} />
@@ -141,7 +141,7 @@ export default function DiscoveryScreen() {
       </View>
 
       {viewMode === 'map' && (
-        <View pointerEvents="box-none" style={[styles.bottom, { bottom: Math.max(insets.bottom, 10) + 66 }]}>
+        <View style={[styles.bottom, { bottom: Math.max(insets.bottom, 10) + 66 }]}>
           {!selectedJob && <View style={styles.resultLabel}><Text style={styles.resultLabelText}>{loading ? t(locale, 'loading.jobs') : `${new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB').format(sortedJobs.length)} ${t(locale, 'discovery.results').toLowerCase()}`}</Text></View>}
           {loading && !selectedJob ? <StatePanel compact loading text={t(locale, 'loading.jobs')} /> : error ? <StatePanel compact text={localizeJobError(locale, error.code)} action={t(locale, 'discovery.retry')} onPress={() => void reload()} /> : selectedJob ? <JobPreview favorite={Boolean(activeFavorite)} favoriteBusy={favoriteBusy} job={selectedJob} locale={locale} onDetails={() => openJob(selectedJob)} onFavorite={() => void toggleFavorite()} /> : sortedJobs.length === 0 ? <StatePanel compact text={t(locale, 'discovery.noResults')} /> : null}
         </View>
@@ -192,14 +192,14 @@ function distance(job: Job, latitude: number, longitude: number) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
-  top: { position: 'absolute', left: 14, right: 14, zIndex: 10, gap: 8 },
+  top: { position: 'absolute', left: 14, right: 14, zIndex: 10, gap: 8, pointerEvents: 'box-none' },
   searchRow: { flexDirection: 'row' },
   searchBar: { flex: 1, height: 50, borderRadius: 15, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, boxShadow: '0 2px 10px rgba(15, 23, 42, 0.14)' },
   searchInput: { flex: 1, height: '100%', color: Palette.text, fontSize: 16 },
   controls: { flexDirection: 'row', gap: 8 },
   control: { minHeight: 44, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
   controlFlexible: { flex: 1, minWidth: 0 },
-  controlCompact: { flexShrink: 1, minWidth: 44, maxWidth: 96 },
+  controlCompact: { flexShrink: 0, minWidth: 44 },
   controlText: { flexShrink: 1, minWidth: 0, color: Palette.text, fontSize: 13, fontWeight: '600' },
   badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: Palette.white, fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
   listHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   listCount: { color: Palette.text, fontSize: 17, fontWeight: '700', fontVariant: ['tabular-nums'] },
   sortLabel: { color: Palette.textSecondary, fontSize: 13 },
-  bottom: { position: 'absolute', left: 14, right: 14, zIndex: 9, gap: 8, alignItems: 'flex-start' },
+  bottom: { position: 'absolute', left: 14, right: 14, zIndex: 9, gap: 8, alignItems: 'flex-start', pointerEvents: 'box-none' },
   resultLabel: { minHeight: 36, borderRadius: 18, backgroundColor: Palette.white, paddingHorizontal: 13, justifyContent: 'center', boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
   resultLabelText: { color: Palette.text, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   sheet: { width: '100%', backgroundColor: Palette.white, borderRadius: 22, borderCurve: 'continuous', paddingHorizontal: 18, paddingTop: 8, paddingBottom: 16, boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)' },
