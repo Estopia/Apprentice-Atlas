@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createPrepareHandler, type PrepareAdminClient, type PrepareDeps } from '../supabase/functions/ai-prepare/handler';
 
@@ -98,6 +99,11 @@ function request(body: Record<string, unknown>, token = 'valid-token') {
 }
 
 describe('authenticated AI preparation Edge Function', () => {
+  it('keeps Supabase gateway JWT verification enabled as the first auth layer', () => {
+    const config = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
+    expect(config).toMatch(/\[functions\.ai-prepare\][\s\S]*verify_jwt\s*=\s*true/);
+  });
+
   it('validates a bearer JWT server-side and returns safe unauthorized errors', async () => {
     const handler = createPrepareHandler(deps());
     const missing = await handler(new Request('https://example.test/ai-prepare', { method: 'POST', body: '{}' }));

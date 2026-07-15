@@ -6,7 +6,13 @@ import { AppIcon } from '@/components/ui/app-icon';
 import { Palette, Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { prepareForJob } from '@/lib/ai';
-import { CAREER_PROFILE_MAX_LENGTH, loadCareerProfile, saveCareerProfile } from '@/lib/career-profile';
+import {
+  CAREER_PROFILE_MAX_LENGTH,
+  getIdentityScopedPreparationState,
+  loadCareerProfile,
+  saveCareerProfile,
+  type IdentityScopedPreparationState,
+} from '@/lib/career-profile';
 import { t, useLocale, type Locale } from '@/lib/i18n';
 import type { JobPreparation } from '@/types/jobs';
 
@@ -19,13 +25,10 @@ export default function PrepareScreen() {
   const router = useRouter();
   const [locale] = useLocale();
   const auth = useAuth();
-  const [background, setBackground] = useState('');
+  const [personalState, setPersonalState] = useState<IdentityScopedPreparationState<JobPreparation> | null>(null);
   const [loadedForUser, setLoadedForUser] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [result, setResult] = useState<JobPreparation | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const userId = auth.session?.user.id ?? null;
+  const { background, error, generating, result, saveError } = getIdentityScopedPreparationState(personalState, userId);
   const profileLoading = Boolean(userId && loadedForUser !== userId);
   const generateDisabled = profileLoading || generating || !validJobId || background.trim().length < 10;
 
@@ -34,7 +37,10 @@ export default function PrepareScreen() {
     let active = true;
     void loadCareerProfile(userId).then((profile) => {
       if (!active) return;
-      setBackground(profile);
+      setPersonalState((current) => ({
+        ...getIdentityScopedPreparationState(current, userId),
+        background: profile,
+      }));
       setLoadedForUser(userId);
     });
     return () => { active = false; };
@@ -44,23 +50,37 @@ export default function PrepareScreen() {
     if (!userId || loadedForUser !== userId) return;
     const timer = setTimeout(() => {
       void saveCareerProfile(userId, background)
-        .then(() => setSaveError(false))
-        .catch(() => setSaveError(true));
+        .then(() => setPersonalState((current) => current?.userId === userId ? { ...current, saveError: false } : current))
+        .catch(() => setPersonalState((current) => current?.userId === userId ? { ...current, saveError: true } : current));
     }, 250);
     return () => clearTimeout(timer);
   }, [background, loadedForUser, userId]);
 
   const generate = async () => {
-    if (generateDisabled) return;
-    setGenerating(true);
-    setError(null);
-    const response = await prepareForJob(routeJobId, locale, background.trim());
-    setGenerating(false);
-    if (response.error || !response.data) {
-      setError(t(locale, 'prepare.error'));
-      return;
-    }
-    setResult(response.data);
+    if (generateDisabled || !userId) return;
+    const requestUserId = userId;
+    const requestBackground = background.trim();
+    setPersonalState((current) => ({
+      ...getIdentityScopedPreparationState(current, requestUserId),
+      generating: true,
+      error: null,
+    }));
+    const response = await prepareForJob(routeJobId, locale, requestBackground);
+    setPersonalState((current) => {
+      if (!current || current.userId !== requestUserId) return current;
+      return response.error || !response.data
+        ? { ...current, generating: false, error: t(locale, 'prepare.error') }
+        : { ...current, generating: false, result: response.data, error: null };
+    });
+  };
+
+  const updateBackground = (value: string) => {
+    setPersonalState((current) => ({
+      ...getIdentityScopedPreparationState(current, userId),
+      background: value,
+      result: null,
+      error: null,
+    }));
   };
 
   const signIn = () => router.push({ pathname: '/auth', params: { returnTo: `/prepare/${routeJobId}` } });
@@ -103,7 +123,7 @@ export default function PrepareScreen() {
               accessibilityHint={t(locale, 'prepare.backgroundHint')}
               maxLength={CAREER_PROFILE_MAX_LENGTH}
               multiline
-              onChangeText={setBackground}
+              onChangeText={updateBackground}
               placeholder={t(locale, 'prepare.backgroundPlaceholder')}
               placeholderTextColor={Palette.textSecondary}
               style={styles.input}

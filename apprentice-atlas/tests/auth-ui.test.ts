@@ -10,7 +10,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { isSafeReturnPath } from '../src/lib/auth';
-import { loadCareerProfile, saveCareerProfile } from '../src/lib/career-profile';
+import { getIdentityScopedPreparationState, loadCareerProfile, saveCareerProfile } from '../src/lib/career-profile';
 import { t } from '../src/lib/i18n';
 
 const authForm = readFileSync(new URL('../src/components/auth/auth-form.tsx', import.meta.url), 'utf8');
@@ -76,6 +76,28 @@ describe('native auth and onboarding configuration', () => {
     expect(await loadCareerProfile('user-2')).toBe('');
   });
 
+  it('clears personalized preparation state when the authenticated identity changes', () => {
+    const userOneState = {
+      userId: 'user-1',
+      background: 'Private background for user one',
+      result: { interviewQuestions: ['private result'] },
+      error: 'Private error for user one',
+      saveError: true,
+      generating: true,
+    };
+
+    expect(getIdentityScopedPreparationState(userOneState, 'user-1')).toBe(userOneState);
+    expect(getIdentityScopedPreparationState(userOneState, 'user-2')).toEqual({
+      userId: 'user-2',
+      background: '',
+      result: null,
+      error: null,
+      saveError: false,
+      generating: false,
+    });
+    expect(prepareScreen).toContain('getIdentityScopedPreparationState(personalState, userId)');
+  });
+
   it('provides a dedicated authenticated preparation route with complete native states', () => {
     expect(rootLayout).toContain('<Stack.Screen name="prepare/[jobId]"');
     expect(prepareScreen).toContain('useAuth()');
@@ -108,5 +130,17 @@ describe('native auth and onboarding configuration', () => {
       expect(t('en', key)).toBeTruthy();
       expect(t('de', key)).not.toBe(t('en', key));
     }
+
+    const germanPrivacy = t('de', 'prepare.privateNote');
+    expect(germanPrivacy).toContain('Supabase-Funktion');
+    expect(germanPrivacy).toContain('OpenAI');
+    expect(germanPrivacy).toContain('Analyse');
+    expect(germanPrivacy).toContain('gemeinsamen Job-Cache');
+
+    const englishPrivacy = t('en', 'prepare.privateNote');
+    expect(englishPrivacy).toContain('Supabase function');
+    expect(englishPrivacy).toContain('OpenAI');
+    expect(englishPrivacy).toContain('analysis');
+    expect(englishPrivacy).toContain('shared job cache');
   });
 });
