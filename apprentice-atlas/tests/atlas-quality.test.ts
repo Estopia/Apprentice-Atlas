@@ -97,6 +97,31 @@ describe('My Atlas quality contracts', () => {
     });
   });
 
+  it('prioritizes the lifecycle in order from interested through offer', () => {
+    const timestamp = '2026-07-15T10:00:00.000Z';
+    const interested = application('interested', timestamp);
+    const preparing = application('preparing', timestamp);
+    const applied = application('applied', timestamp);
+    const interview = application('interview', timestamp);
+    const offer = application('offer', timestamp);
+
+    expect(deriveAtlasNextAction([interested, preparing]).application).toBe(preparing);
+    expect(deriveAtlasNextAction([preparing, applied]).application).toBe(applied);
+    expect(deriveAtlasNextAction([applied, interview]).application).toBe(interview);
+    expect(deriveAtlasNextAction([interview, offer]).application).toBe(offer);
+  });
+
+  it('uses accessible responsive two-column Atlas metrics', () => {
+    const screen = read('src/app/(tabs)/atlas.tsx');
+    const progress = screen.slice(screen.indexOf('function ProgressOverview'), screen.indexOf('function ApplicationSection'));
+    const styles = screen.slice(screen.indexOf('const styles = StyleSheet.create'));
+
+    expect(progress).toContain('accessibilityLabel={`${label}: ${value}`}');
+    expect(progress).not.toContain('numberOfLines={1}');
+    expect(styles).toContain("metricsRow: { flexDirection: 'row', flexWrap: 'wrap'");
+    expect(styles).toContain("metric: { width: '50%'");
+  });
+
   it('keeps Task 3 action and journey copy complete in German and English', () => {
     const messages = read('src/lib/i18n.ts');
     const keys = [

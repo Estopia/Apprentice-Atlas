@@ -9,7 +9,41 @@ export const APPLICATION_STATUSES = [
   'closed',
 ] as const satisfies readonly ApplicationStatus[];
 
+const PROGRESSION_STATUSES = [
+  'interested',
+  'preparing',
+  'applied',
+  'interview',
+  'offer',
+] as const satisfies readonly ApplicationStatus[];
+
+export type ApplicationJourneyStep = {
+  status: ApplicationStatus;
+  state: 'completed' | 'current' | 'upcoming' | 'terminal';
+  selected: boolean;
+};
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function applicationWorkflowKey(userId: string | null, jobId: string): string | null {
+  return userId && jobId ? `${userId}:${jobId}` : null;
+}
+
+export function isCurrentWorkflowOperation(capturedKey: string | null, currentKey: string | null): boolean {
+  return capturedKey !== null && capturedKey === currentKey;
+}
+
+export function deriveApplicationJourney(status: ApplicationStatus): ApplicationJourneyStep[] {
+  const selectedProgressIndex = status === 'closed' ? -1 : PROGRESSION_STATUSES.indexOf(status);
+  return [
+    ...PROGRESSION_STATUSES.map((candidate, index): ApplicationJourneyStep => ({
+      status: candidate,
+      state: selectedProgressIndex < 0 ? 'upcoming' : index < selectedProgressIndex ? 'completed' : index === selectedProgressIndex ? 'current' : 'upcoming',
+      selected: candidate === status,
+    })),
+    { status: 'closed', state: 'terminal', selected: status === 'closed' },
+  ];
+}
 
 export function applicationNoteLength(note: string): number {
   return Array.from(note).length;

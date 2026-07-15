@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { resetDiscoveryState, setDiscoveryFilters, setDiscoverySort, useDiscoveryState, type JobSort } from '@/lib/discovery-state';
-import { getActiveFilterEntries } from '@/lib/filter-presentation';
+import { getActiveFilterEntries, hasCoordinateLocation, transitionLocationFilter, type LocationFilterTransition } from '@/lib/filter-presentation';
 import { localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale, type Locale } from '@/lib/i18n';
 import type { JobFilter } from '@/types/jobs';
 
@@ -18,6 +18,12 @@ export default function FiltersSheet() {
   const { filters, sort } = useDiscoveryState();
   const activeEntries = getActiveFilterEntries(filters, sort);
   const update = (next: Partial<JobFilter>) => setDiscoveryFilters({ ...filters, ...next });
+  const updateLocation = (action: LocationFilterTransition) => {
+    const next = transitionLocationFilter({ filters, sort }, action);
+    setDiscoveryFilters(next.filters);
+    setDiscoverySort(next.sort);
+  };
+  const hasCoordinates = hasCoordinateLocation(filters);
 
   return (
     <View style={styles.screen}>
@@ -46,9 +52,9 @@ export default function FiltersSheet() {
         )}
 
         <FilterSection title={t(locale, 'discovery.country')}>
-          <Choice active={!filters.country} label={t(locale, 'discovery.all')} onPress={() => update({ country: undefined })} />
-          <Choice active={filters.country === 'Germany'} label={localizeCountry(locale, 'Germany')} onPress={() => update({ country: 'Germany' })} />
-          <Choice active={filters.country === 'United Kingdom'} label={localizeCountry(locale, 'United Kingdom')} onPress={() => update({ country: 'United Kingdom' })} />
+          <Choice active={!filters.country} label={t(locale, 'discovery.all')} onPress={() => updateLocation({ type: 'select-country', country: undefined })} />
+          <Choice active={filters.country === 'Germany'} label={localizeCountry(locale, 'Germany')} onPress={() => updateLocation({ type: 'select-country', country: 'Germany' })} />
+          <Choice active={filters.country === 'United Kingdom'} label={localizeCountry(locale, 'United Kingdom')} onPress={() => updateLocation({ type: 'select-country', country: 'United Kingdom' })} />
         </FilterSection>
 
         <FilterSection title={t(locale, 'discovery.category')}>
@@ -70,25 +76,25 @@ export default function FiltersSheet() {
         </FilterSection>
 
         <FilterSection title={t(locale, 'discovery.distance')}>
-          <Choice active={!filters.radiusKm} label={t(locale, 'discovery.all')} onPress={() => update({ radiusKm: undefined })} />
+          <Choice active={!filters.radiusKm} label={t(locale, 'discovery.all')} onPress={() => updateLocation({ type: 'clear-radius' })} />
           {distances.map((distance) => (
             <Choice
               key={distance}
               active={filters.radiusKm === distance}
-              disabled={filters.latitude === undefined || filters.longitude === undefined}
+              disabled={!hasCoordinates}
               label={`${distance} km`}
-              onPress={() => update({ radiusKm: distance })}
+              onPress={() => updateLocation({ type: 'set-radius', radiusKm: distance })}
             />
           ))}
-          {(filters.latitude === undefined || filters.longitude === undefined) && (
+          {!hasCoordinates && (
             <Text style={styles.hint}>{t(locale, 'discovery.distanceNeedsLocation')}</Text>
           )}
         </FilterSection>
 
         <FilterSection title={t(locale, 'discovery.sort')}>
-          <Choice active={sort === 'recent'} label={t(locale, 'discovery.sortRecent')} onPress={() => setDiscoverySort('recent')} />
-          <Choice active={sort === 'distance'} label={t(locale, 'discovery.sortDistance')} onPress={() => setDiscoverySort('distance')} />
-          <Choice active={sort === 'title'} label={t(locale, 'discovery.sortTitle')} onPress={() => setDiscoverySort('title')} />
+          <Choice active={sort === 'recent'} label={t(locale, 'discovery.sortRecent')} onPress={() => updateLocation({ type: 'select-sort', sort: 'recent' })} />
+          <Choice active={sort === 'distance'} disabled={!hasCoordinates} label={t(locale, 'discovery.sortDistance')} onPress={() => updateLocation({ type: 'select-sort', sort: 'distance' })} />
+          <Choice active={sort === 'title'} label={t(locale, 'discovery.sortTitle')} onPress={() => updateLocation({ type: 'select-sort', sort: 'title' })} />
         </FilterSection>
       </ScrollView>
 

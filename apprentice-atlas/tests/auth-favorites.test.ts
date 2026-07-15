@@ -13,13 +13,17 @@ import {
 } from '../src/lib/auth';
 import {
   addFavorite,
+  beginFavoriteRemoval,
   buildComparisonRows,
   dedupeFavorites,
   getReadableFavoritesError,
+  favoriteSessionKey,
   invokeSignOut,
   isFavoritesLoading,
   listFavorites,
   optimisticFavoriteState,
+  isCurrentFavoriteOperation,
+  rollbackFavoriteRemoval,
   rollbackFavoriteState,
   removeFavorite,
   type FavoriteClient,
@@ -139,6 +143,35 @@ describe('auth route and readable errors', () => {
 });
 
 describe('favorite state and comparison', () => {
+  it('binds favorite operations to the exact authenticated session', () => {
+    const first = favoriteSessionKey('user-1', 'token-1');
+    const refreshed = favoriteSessionKey('user-1', 'token-2');
+    const otherUser = favoriteSessionKey('user-2', 'token-1');
+
+    expect(first).not.toBeNull();
+    expect(favoriteSessionKey(null, null)).toBeNull();
+    expect(isCurrentFavoriteOperation(first, first)).toBe(true);
+    expect(isCurrentFavoriteOperation(first, refreshed)).toBe(false);
+    expect(isCurrentFavoriteOperation(first, otherUser)).toBe(false);
+  });
+
+  it('rolls back independent concurrent removals without restoring a full snapshot', () => {
+    const second: FavoriteJob = {
+      ...favorite,
+      id: '44444444-4444-4444-8444-444444444444',
+      jobId: '55555555-5555-4555-8555-555555555555',
+      createdAt: '2026-07-13T00:00:00.000Z',
+    };
+    const firstRemoval = beginFavoriteRemoval([favorite, second], favorite.jobId);
+    const secondRemoval = beginFavoriteRemoval(firstRemoval.favorites, second.jobId);
+
+    expect(firstRemoval.favorites).toEqual([second]);
+    expect(secondRemoval.favorites).toEqual([]);
+    expect(rollbackFavoriteRemoval(secondRemoval.favorites, firstRemoval.removed)).toEqual([favorite]);
+    expect(rollbackFavoriteRemoval([favorite], secondRemoval.removed)).toEqual([favorite, second]);
+    expect(rollbackFavoriteRemoval([favorite], firstRemoval.removed)).toEqual([favorite]);
+  });
+
   it('deduplicates optimistic additions and rolls back to the previous list', () => {
     const previous = [favorite];
     const next = optimisticFavoriteState(previous, favorite, 'add');

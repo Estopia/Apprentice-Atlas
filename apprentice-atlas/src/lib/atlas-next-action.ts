@@ -15,8 +15,8 @@ export type AtlasNextAction = {
 
 const actionByStatus = {
   interested: { kind: 'start-application', priority: 1 },
-  applied: { kind: 'follow-up', priority: 2 },
-  preparing: { kind: 'continue-application', priority: 3 },
+  preparing: { kind: 'continue-application', priority: 2 },
+  applied: { kind: 'follow-up', priority: 3 },
   interview: { kind: 'prepare-interview', priority: 4 },
   offer: { kind: 'review-offer', priority: 5 },
 } as const;

@@ -8,6 +8,33 @@ export type FavoritesError = { code: 'configuration' | 'auth-required' | 'query'
 export type FavoritesResult<T> = { data: T | null; error: FavoritesError | null };
 export type ComparisonRow = { label: string; values: string[] };
 
+export type FavoriteRemoval = {
+  favorites: FavoriteJob[];
+  removed: FavoriteJob | null;
+};
+
+export function favoriteSessionKey(userId: string | null, accessToken: string | null): string | null {
+  return userId && accessToken ? `${userId}:${accessToken}` : null;
+}
+
+export function isCurrentFavoriteOperation(capturedKey: string | null, currentKey: string | null): boolean {
+  return capturedKey !== null && capturedKey === currentKey;
+}
+
+export function beginFavoriteRemoval(favorites: readonly FavoriteJob[], jobId: string): FavoriteRemoval {
+  return {
+    favorites: favorites.filter((favorite) => favorite.jobId !== jobId),
+    removed: favorites.find((favorite) => favorite.jobId === jobId) ?? null,
+  };
+}
+
+export function rollbackFavoriteRemoval(favorites: readonly FavoriteJob[], removed: FavoriteJob | null): FavoriteJob[] {
+  if (!removed || favorites.some((favorite) => favorite.jobId === removed.jobId)) return [...favorites];
+  return [...favorites, removed].sort((left, right) => (
+    Date.parse(right.createdAt) - Date.parse(left.createdAt) || left.id.localeCompare(right.id)
+  ));
+}
+
 export function isFavoritesLoading(authLoading: boolean, sessionId: string | null, loadedForUserId: string | null): boolean {
   return authLoading || Boolean(sessionId && sessionId !== loadedForUserId);
 }

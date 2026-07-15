@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   APPLICATION_STATUSES,
+  applicationWorkflowKey,
   applicationNoteLength,
   confirmApplicationRemovalOnWeb,
+  deriveApplicationJourney,
+  isCurrentWorkflowOperation,
   isApplicationDraftValid,
   resolveApplicationSheetLoad,
   validatedPendingTrackJobId,
@@ -13,6 +16,38 @@ import {
 const jobId = '11111111-1111-4111-8111-111111111111';
 
 describe('application form helpers', () => {
+  it('keys workflow state by user and route and rejects stale completions', () => {
+    const first = applicationWorkflowKey('user-1', jobId);
+    const otherJob = applicationWorkflowKey('user-1', '22222222-2222-4222-8222-222222222222');
+    const otherUser = applicationWorkflowKey('user-2', jobId);
+
+    expect(first).toBe('user-1:11111111-1111-4111-8111-111111111111');
+    expect(applicationWorkflowKey(null, jobId)).toBeNull();
+    expect(isCurrentWorkflowOperation(first, first)).toBe(true);
+    expect(isCurrentWorkflowOperation(first, otherJob)).toBe(false);
+    expect(isCurrentWorkflowOperation(first, otherUser)).toBe(false);
+    expect(isCurrentWorkflowOperation(null, first)).toBe(false);
+  });
+
+  it('treats closed as a terminal branch without completing interview or offer', () => {
+    expect(deriveApplicationJourney('interview')).toEqual([
+      { status: 'interested', state: 'completed', selected: false },
+      { status: 'preparing', state: 'completed', selected: false },
+      { status: 'applied', state: 'completed', selected: false },
+      { status: 'interview', state: 'current', selected: true },
+      { status: 'offer', state: 'upcoming', selected: false },
+      { status: 'closed', state: 'terminal', selected: false },
+    ]);
+    expect(deriveApplicationJourney('closed')).toEqual([
+      { status: 'interested', state: 'upcoming', selected: false },
+      { status: 'preparing', state: 'upcoming', selected: false },
+      { status: 'applied', state: 'upcoming', selected: false },
+      { status: 'interview', state: 'upcoming', selected: false },
+      { status: 'offer', state: 'upcoming', selected: false },
+      { status: 'closed', state: 'terminal', selected: true },
+    ]);
+  });
+
   it('exposes all six supported journey statuses', () => {
     expect(APPLICATION_STATUSES).toEqual([
       'interested',
@@ -86,16 +121,13 @@ describe('pending application tracking', () => {
 });
 
 describe('application journey route integration', () => {
-  it('preserves the draft on token refresh and reloads it when the user changes', () => {
+  it('integrates the user-and-route workflow scope without keying drafts to token refreshes', () => {
     const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
-    const loadEffectStart = sheet.indexOf('useEffect(() => {', sheet.indexOf('const redirectToAuth'));
-    const loadEffectEnd = sheet.indexOf('\n\n  const noteLength', loadEffectStart);
-    const loadEffect = sheet.slice(loadEffectStart, loadEffectEnd);
 
-    expect(sheet).toMatch(/const authUserId = auth\.session\?\.user\.id \?\? null;/);
-    expect(loadEffect).toMatch(/if \(!validJobId \|\| auth\.loading\) return;\s+if \(!authUserId\)/);
-    expect(loadEffect).toMatch(/\[[^\]]*authUserId[^\]]*\]\);$/);
-    expect(loadEffect).not.toMatch(/auth\.session|access_token|sessionKey/);
+    expect(sheet).toContain('applicationWorkflowKey(authUserId, routeJobId)');
+    expect(sheet).toContain('loadedWorkflowKey === workflowKey');
+    expect(sheet).toContain('currentWorkflowKeyRef.current = workflowKey');
+    expect(sheet).not.toContain('applicationWorkflowKey(authUserId, auth.session?.access_token');
   });
 
   it('guards load, save, and remove completions after the sheet unmounts', () => {
@@ -103,10 +135,11 @@ describe('application journey route integration', () => {
     const saveBlock = sheet.slice(sheet.indexOf('const save = async'), sheet.indexOf('const remove = async'));
     const removeBlock = sheet.slice(sheet.indexOf('const remove = async'), sheet.indexOf('const confirmRemove'));
 
-    expect(sheet).toMatch(/const mountedRef = useRef\(false\)/);
-    expect(sheet).toMatch(/if \(!active \|\| !mountedRef\.current\) return;/);
-    expect(saveBlock).toMatch(/await upsertApplication[\s\S]+if \(!mountedRef\.current\) return;[\s\S]+router\.back\(\)/);
-    expect(removeBlock).toMatch(/await removeApplication[\s\S]+if \(!mountedRef\.current\) return;[\s\S]+router\.back\(\)/);
+    expect(sheet).toContain('!active || !mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)');
+    expect(saveBlock).toContain('!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)');
+    expect(removeBlock).toContain('!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)');
+    expect(saveBlock).toContain('router.back()');
+    expect(removeBlock).toContain('router.back()');
   });
 
   it('registers a native form sheet and implements the editable journey form', () => {
@@ -119,7 +152,7 @@ describe('application journey route integration', () => {
     expect(layout).toMatch(/sheetAllowedDetents:/);
     expect(sheet).toMatch(/return \(\s*<ScrollView/);
     expect(sheet).toMatch(/contentInsetAdjustmentBehavior="automatic"/);
-    expect(sheet).toMatch(/APPLICATION_STATUSES\.map/);
+    expect(sheet).toMatch(/deriveApplicationJourney\(status\)\.map/);
     expect(sheet).toMatch(/minHeight: 44/);
     expect(sheet).toMatch(/getApplicationForJob/);
     expect(sheet).toMatch(/upsertApplication/);

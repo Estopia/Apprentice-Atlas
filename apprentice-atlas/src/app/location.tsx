@@ -5,7 +5,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useLocation } from '@/hooks/use-location';
-import { getDiscoveryState, setDiscoveryFilters } from '@/lib/discovery-state';
+import { getDiscoveryState, setDiscoveryFilters, setDiscoverySort } from '@/lib/discovery-state';
+import { transitionLocationFilter } from '@/lib/filter-presentation';
 import { t, useLocale } from '@/lib/i18n';
 import { applyDeviceLocationFilters, applyManualLocationFilters } from '@/lib/location';
 
@@ -25,8 +26,14 @@ export default function LocationSheet() {
   };
 
   const useManual = () => {
-    const next = applyManualLocationFilters(getDiscoveryState().filters, city, country);
-    if (next) { setDiscoveryFilters(next); router.back(); }
+    const current = getDiscoveryState();
+    const filters = applyManualLocationFilters(current.filters, city, country);
+    if (filters) {
+      const next = transitionLocationFilter({ filters, sort: current.sort }, { type: 'select-sort', sort: current.sort });
+      setDiscoveryFilters(next.filters);
+      setDiscoverySort(next.sort);
+      router.back();
+    }
   };
 
   return (

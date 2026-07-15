@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
-import { buildComparisonRows, getReadableFavoritesError, isFavoritesLoading, listFavorites, optimisticFavoriteState, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
+import { beginFavoriteRemoval, buildComparisonRows, favoriteSessionKey, getReadableFavoritesError, isCurrentFavoriteOperation, isFavoritesLoading, listFavorites, removeFavorite, rollbackFavoriteRemoval, type FavoritesError } from '@/lib/favorites';
 import { localizeCountry, localizeJobType, t, useLocale, type Locale } from '@/lib/i18n';
 import type { FavoriteJob } from '@/types/jobs';
 
@@ -15,44 +15,79 @@ export default function FavoritesScreen() {
   const router = useRouter();
   const auth = useAuth();
   const [favorites, setFavorites] = useState<FavoriteJob[]>([]);
-  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
+  const [loadedForSessionKey, setLoadedForSessionKey] = useState<string | null>(null);
   const [error, setError] = useState<FavoritesError | null>(null);
   const [errorOperation, setErrorOperation] = useState<'save' | 'remove'>('save');
-  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
+  const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set());
+  const pendingOperationIdsRef = useRef(new Set<string>());
   const userId = auth.session?.user.id ?? null;
-  const loading = isFavoritesLoading(auth.loading, userId, loadedForUserId);
-  const currentFavorites = loadedForUserId === userId ? favorites : [];
-  const currentError = loadedForUserId === userId ? error : null;
+  const sessionKey = favoriteSessionKey(userId, auth.session?.access_token ?? null);
+  const currentSessionKeyRef = useRef<string | null>(sessionKey);
 
-  useEffect(() => {
-    if (auth.loading || !userId) return;
-    let mounted = true;
+  useLayoutEffect(() => {
+    currentSessionKeyRef.current = sessionKey;
+  }, [sessionKey]);
+  const loading = isFavoritesLoading(auth.loading, sessionKey, loadedForSessionKey);
+  const currentFavorites = loadedForSessionKey === sessionKey ? favorites : [];
+  const currentError = loadedForSessionKey === sessionKey ? error : null;
+
+  const loadFavorites = useCallback(() => {
+    if (auth.loading || !sessionKey) return undefined;
+    void refreshAttempt;
+    let active = true;
+    const operationKey = sessionKey;
+    setFavorites([]);
+    setError(null);
+    setLoadedForSessionKey(null);
+    const operationPrefix = `${operationKey}\u0000`;
+    setPendingJobIds(new Set(
+      [...pendingOperationIdsRef.current]
+        .filter((operationId) => operationId.startsWith(operationPrefix))
+        .map((operationId) => operationId.slice(operationPrefix.length)),
+    ));
     void listFavorites().then((result) => {
-      if (!mounted) return;
+      if (!active || !isCurrentFavoriteOperation(operationKey, currentSessionKeyRef.current)) return;
       setFavorites(result.data ?? []);
       setError(result.error);
       setErrorOperation('save');
-      setLoadedForUserId(userId);
+      setLoadedForSessionKey(operationKey);
     });
-    return () => { mounted = false; };
-  }, [auth.loading, loadAttempt, userId]);
+    return () => { active = false; };
+  }, [auth.loading, refreshAttempt, sessionKey]);
+
+  useFocusEffect(loadFavorites);
 
   const remove = async (favorite: FavoriteJob) => {
-    const previous = favorites;
-    setFavorites(optimisticFavoriteState(previous, favorite, 'remove'));
+    const operationKey = sessionKey;
+    if (!operationKey || loadedForSessionKey !== operationKey) return;
+    const operationId = `${operationKey}\u0000${favorite.jobId}`;
+    if (pendingOperationIdsRef.current.has(operationId)) return;
+    pendingOperationIdsRef.current.add(operationId);
+    setPendingJobIds((current) => new Set(current).add(favorite.jobId));
+    setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
     setError(null);
     const result = await removeFavorite(favorite.jobId);
+    pendingOperationIdsRef.current.delete(operationId);
+    if (!isCurrentFavoriteOperation(operationKey, currentSessionKeyRef.current)) return;
+    setPendingJobIds((current) => {
+      const next = new Set(current);
+      next.delete(favorite.jobId);
+      return next;
+    });
     if (result.error) {
-      setFavorites(rollbackFavoriteState(previous));
+      setFavorites((current) => rollbackFavoriteRemoval(current, favorite));
       setError(result.error);
       setErrorOperation('remove');
+    } else {
+      setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
     }
   };
 
   const retry = () => {
     setError(null);
-    setLoadedForUserId(null);
-    setLoadAttempt((attempt) => attempt + 1);
+    setLoadedForSessionKey(null);
+    setRefreshAttempt((attempt) => attempt + 1);
   };
 
   const mappedError = currentError ? getReadableFavoritesError(currentError, locale, errorOperation) : null;
@@ -96,6 +131,7 @@ export default function FavoritesScreen() {
                   locale={locale}
                   onOpen={() => favorite.job && router.push(`/job/${favorite.job.id}`)}
                   onRemove={() => void remove(favorite)}
+                  pending={pendingJobIds.has(favorite.jobId)}
                 />
               ))}
             </View>
@@ -107,7 +143,7 @@ export default function FavoritesScreen() {
   );
 }
 
-function FavoriteCard({ favorite, onRemove, onOpen, locale }: { favorite: FavoriteJob; onRemove: () => void; onOpen: () => void; locale: Locale }) {
+function FavoriteCard({ favorite, onRemove, onOpen, pending, locale }: { favorite: FavoriteJob; onRemove: () => void; onOpen: () => void; pending: boolean; locale: Locale }) {
   const job = favorite.job;
   const archived = t(locale, 'saved.archived');
   return (
@@ -134,10 +170,14 @@ function FavoriteCard({ favorite, onRemove, onOpen, locale }: { favorite: Favori
       <Pressable
         accessibilityLabel={`${t(locale, 'saved.remove')}: ${job?.title ?? t(locale, 'saved.unavailable')}`}
         accessibilityRole="button"
+        accessibilityState={{ disabled: pending }}
+        disabled={pending}
         onPress={onRemove}
         style={({ pressed }) => [styles.remove, pressed && styles.pressed]}
       >
-        <AppIcon name={{ ios: 'bookmark.slash', android: 'bookmark_remove', web: 'bookmark_remove' }} size={19} tintColor={Palette.blue} />
+        {pending
+          ? <ActivityIndicator color={Palette.blue} />
+          : <AppIcon name={{ ios: 'bookmark.slash', android: 'bookmark_remove', web: 'bookmark_remove' }} size={19} tintColor={Palette.blue} />}
       </Pressable>
     </View>
   );

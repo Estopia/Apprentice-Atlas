@@ -187,9 +187,9 @@ function ProgressOverview({ locale, summary }: { locale: Locale; summary: Applic
       <SectionHeader title={t(locale, 'atlas.progress')} />
       <View accessibilityLabel={`${t(locale, 'atlas.total')}: ${summary.total}`} style={styles.metricsRow}>
         {metrics.map(([label, value]) => (
-          <View key={label} style={styles.metric}>
+          <View accessible accessibilityLabel={`${label}: ${value}`} key={label} style={styles.metric}>
             <Text selectable style={styles.metricValue}>{value}</Text>
-            <Text numberOfLines={1} style={styles.metricLabel}>{label}</Text>
+            <Text style={styles.metricLabel}>{label}</Text>
           </View>
         ))}
       </View>
@@ -303,10 +303,10 @@ const styles = StyleSheet.create({
   headerAction: { minWidth: 44, minHeight: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   headerActionText: { color: Palette.blue, fontSize: 14, fontWeight: '700' },
   groupedSurface: { overflow: 'hidden', borderRadius: Radius.medium, borderCurve: 'continuous', borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.white },
-  metricsRow: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: Palette.border, paddingVertical: 13 },
-  metric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 2 },
+  metricsRow: { flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: Palette.border, paddingVertical: 8 },
+  metric: { width: '50%', minWidth: 0, alignItems: 'center', gap: 2, paddingVertical: 7, paddingHorizontal: 4 },
   metricValue: { color: Palette.text, fontSize: 21, lineHeight: 25, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  metricLabel: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600' },
+  metricLabel: { color: Palette.textSecondary, fontSize: 13, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
   applicationRow: { minHeight: 94, paddingHorizontal: 13, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.white },
   rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   applicationIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
