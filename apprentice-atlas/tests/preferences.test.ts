@@ -59,7 +59,7 @@ describe('anonymous preferences', () => {
     await expect(loadPreferences()).resolves.toEqual(personalizedPreferences);
   });
 
-  it('restores discovery personalization from completed preferences on cold start', async () => {
+  it('does not collapse multiple saved interests into the first category on cold start', async () => {
     const completed = { ...personalizedPreferences, onboardingComplete: true };
     storage.set(PREFERENCES_STORAGE_KEY, JSON.stringify(completed));
     setDiscoveryFilters({ search: 'apprentice' });
@@ -69,7 +69,7 @@ describe('anonymous preferences', () => {
     expect(getDiscoveryState().filters).toEqual({
       search: 'apprentice',
       country: 'Germany',
-      category: 'technology',
+      category: undefined,
     });
   });
 
@@ -82,7 +82,7 @@ describe('anonymous preferences', () => {
     expect(JSON.parse(storage.get(PREFERENCES_STORAGE_KEY) ?? '').locale).toBe('en');
   });
 
-  it('completes onboarding and applies country plus the first interest to discovery', async () => {
+  it('completes onboarding without narrowing multiple interests to technology', async () => {
     setDiscoveryFilters({ search: 'apprentice', radiusKm: 25 });
 
     const completed = await completeOnboarding(personalizedPreferences);
@@ -92,8 +92,17 @@ describe('anonymous preferences', () => {
       search: 'apprentice',
       radiusKm: 25,
       country: 'Germany',
-      category: 'technology',
+      category: undefined,
     });
     await expect(loadPreferences()).resolves.toEqual(completed);
+  });
+
+  it('applies a category only when exactly one interest was selected', async () => {
+    await completeOnboarding({ ...personalizedPreferences, interests: ['business'] });
+    expect(getDiscoveryState().filters).toMatchObject({ country: 'Germany', category: 'business' });
+
+    resetDiscoveryState();
+    await completeOnboarding({ ...personalizedPreferences, interests: ['technology', 'business', 'skilled-trades'] });
+    expect(getDiscoveryState().filters).toMatchObject({ country: 'Germany', category: undefined });
   });
 });

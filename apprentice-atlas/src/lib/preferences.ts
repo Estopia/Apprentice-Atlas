@@ -54,7 +54,7 @@ function applyDiscoveryPersonalization(preferences: UserPreferences) {
   if (!preferences.onboardingComplete) return;
   updateDiscoveryFilters({
     country: preferences.country ?? undefined,
-    category: preferences.interests[0],
+    category: preferences.interests.length === 1 ? preferences.interests[0] : undefined,
   });
 }
 
