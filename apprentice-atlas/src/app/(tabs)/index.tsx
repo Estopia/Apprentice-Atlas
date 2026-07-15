@@ -133,9 +133,9 @@ export default function DiscoveryScreen() {
           </View>
         </View>
         <View style={styles.controls}>
-          <ControlButton icon={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }} label={locationLabel} onPress={() => router.push('/location')} />
-          <ControlButton badge={activeFilterCount} icon={{ ios: 'line.3.horizontal.decrease', android: 'filter_list', web: 'filter_list' }} label={t(locale, 'discovery.filtersShort')} onPress={() => router.push('/filters')} />
-          <ControlButton icon={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map', android: 'map', web: 'map' }} label={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={() => setViewMode((current) => current === 'map' ? 'list' : 'map')} />
+          <ControlButton kind="flexible" icon={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }} label={locationLabel} onPress={() => router.push('/location')} />
+          <ControlButton kind="compact" badge={activeFilterCount} icon={{ ios: 'line.3.horizontal.decrease', android: 'filter_list', web: 'filter_list' }} label={t(locale, 'discovery.filtersShort')} onPress={() => router.push('/filters')} />
+          <ControlButton kind="compact" icon={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map', android: 'map', web: 'map' }} label={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={() => setViewMode((current) => current === 'map' ? 'list' : 'map')} />
         </View>
         {viewMode === 'map' && showSearchArea && <Pressable accessibilityRole="button" onPress={searchMapArea} style={({ pressed }) => [styles.searchArea, pressed && styles.pressed]}><AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={15} tintColor={Palette.white} /><Text style={styles.searchAreaText}>{t(locale, 'discovery.searchArea')}</Text></Pressable>}
       </View>
@@ -150,8 +150,8 @@ export default function DiscoveryScreen() {
   );
 }
 
-function ControlButton({ badge, icon, label, onPress }: { badge?: number; icon: { ios: string; android: string; web: string }; label: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.control, pressed && styles.pressed]}><AppIcon name={icon as never} size={16} tintColor={Palette.text} /><Text style={styles.controlText} numberOfLines={1}>{label}</Text>{Boolean(badge) && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}</Pressable>;
+function ControlButton({ badge, icon, kind, label, onPress }: { badge?: number; icon: { ios: string; android: string; web: string }; kind: 'flexible' | 'compact'; label: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.control, kind === 'flexible' ? styles.controlFlexible : styles.controlCompact, pressed && styles.pressed]}><AppIcon name={icon as never} size={16} tintColor={Palette.text} /><Text style={styles.controlText} numberOfLines={1}>{label}</Text>{Boolean(badge) && <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View>}</Pressable>;
 }
 
 function JobPreview({ favorite, favoriteBusy, job, locale, onDetails, onFavorite }: { favorite: boolean; favoriteBusy: boolean; job: Job; locale: 'de' | 'en'; onDetails: () => void; onFavorite: () => void }) {
@@ -197,8 +197,10 @@ const styles = StyleSheet.create({
   searchBar: { flex: 1, height: 50, borderRadius: 15, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, boxShadow: '0 2px 10px rgba(15, 23, 42, 0.14)' },
   searchInput: { flex: 1, height: '100%', color: Palette.text, fontSize: 16 },
   controls: { flexDirection: 'row', gap: 8 },
-  control: { minHeight: 44, maxWidth: 170, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 7, boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
-  controlText: { flexShrink: 1, color: Palette.text, fontSize: 13, fontWeight: '600' },
+  control: { minHeight: 44, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.white, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, boxShadow: '0 1px 6px rgba(15, 23, 42, 0.12)' },
+  controlFlexible: { flex: 1, minWidth: 0 },
+  controlCompact: { flexShrink: 1, minWidth: 44, maxWidth: 96 },
+  controlText: { flexShrink: 1, minWidth: 0, color: Palette.text, fontSize: 13, fontWeight: '600' },
   badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: Palette.white, fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] },
   searchArea: { alignSelf: 'center', minHeight: 44, borderRadius: 22, backgroundColor: Palette.blue, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, boxShadow: '0 2px 8px rgba(21, 94, 239, 0.24)' },

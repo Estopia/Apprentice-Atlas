@@ -1,5 +1,4 @@
 import type { JobFilter } from '../types/jobs';
-import { cleanJobDescription } from './job-presentation';
 import { localizeCountry, t, type Locale } from './i18n';
 
 type LocationContext = Pick<JobFilter, 'city' | 'country'>;
@@ -98,11 +97,7 @@ export function getJobAccessibilityLabel(locale: Locale, job: AccessibleJob): st
   return `${job.title}, ${job.company}, ${job.city}, ${localizeCountry(locale, job.country)}`;
 }
 
-export function prepareJobDescription(raw: string, collapseThreshold = 180): { text: string; collapsible: boolean } {
-  const text = cleanJobDescription(raw);
-  return { text, collapsible: text.length > collapseThreshold };
-}
-
-export function getDescriptionLineLimit(collapsible: boolean, expanded: boolean): 8 | undefined {
-  return collapsible && !expanded ? 8 : undefined;
+export function getDescriptionDisclosure(lineCount: number | null, expanded: boolean): { collapsible: boolean; lineLimit: 8 | undefined } {
+  const collapsible = lineCount !== null && lineCount > 8;
+  return { collapsible, lineLimit: collapsible && !expanded ? 8 : undefined };
 }

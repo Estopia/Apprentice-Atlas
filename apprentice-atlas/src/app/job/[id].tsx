@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AiExplanation } from '@/components/jobs/ai-explanation';
@@ -11,10 +11,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
 import { getApplicationForJob, getReadableApplicationsError, type ApplicationsError } from '@/lib/applications';
 import { isValidApplicationJobId } from '@/lib/application-flow';
-import { getDescriptionLineLimit, prepareJobDescription } from '@/lib/discovery-presentation';
+import { getDescriptionDisclosure } from '@/lib/discovery-presentation';
 import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
 import { localizeApplicationStatus, localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
+import { cleanJobDescription } from '@/lib/job-presentation';
 import { getJob } from '@/lib/jobs';
 import { getValidHttpUrl } from '@/lib/official-listing-url';
 import type { FavoriteJob, TrackedApplication } from '@/types/jobs';
@@ -36,7 +37,8 @@ export default function JobDetailScreen() {
   const [applicationJobId, setApplicationJobId] = useState<string | null>(null);
   const [applicationLoading, setApplicationLoading] = useState(false);
   const [applicationError, setApplicationError] = useState<ApplicationsError | null>(null);
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [descriptionMeasurement, setDescriptionMeasurement] = useState<{ key: string; lineCount: number } | null>(null);
+  const [descriptionExpansion, setDescriptionExpansion] = useState<{ key: string; expanded: boolean } | null>(null);
   const activeState = loadedId === routeId ? state : resetJobDetailState(state);
   const { job, explanation, loading, aiLoading, error, aiError } = activeState;
   const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
@@ -127,8 +129,15 @@ export default function JobDetailScreen() {
   const primaryUrl = applicationUrl ?? sourceUrl;
   const primaryLabel = applicationUrl ? t(locale, 'actions.apply') : t(locale, 'job.openSourceShort');
   const compactActions = width < 360;
-  const originalListing = prepareJobDescription(job.rawDescription || t(locale, 'ai.unknown'));
-  const descriptionLineLimit = getDescriptionLineLimit(originalListing.collapsible, descriptionExpanded);
+  const originalListing = cleanJobDescription(job.rawDescription || t(locale, 'ai.unknown'));
+  const descriptionKey = `${job.id}:${originalListing}`;
+  const descriptionExpanded = descriptionExpansion?.key === descriptionKey && descriptionExpansion.expanded;
+  const measuredLineCount = descriptionMeasurement?.key === descriptionKey ? descriptionMeasurement.lineCount : null;
+  const descriptionDisclosure = getDescriptionDisclosure(measuredLineCount, descriptionExpanded);
+  const measureDescription = (event: NativeSyntheticEvent<TextLayoutEventData>) => {
+    const lineCount = event.nativeEvent.lines.length;
+    setDescriptionMeasurement((current) => current?.key === descriptionKey && current.lineCount === lineCount ? current : { key: descriptionKey, lineCount });
+  };
   const shareJob = () => void Share.share({ title: job.title, message: `${job.title} — ${job.company}\n${applicationUrl ?? sourceUrl ?? ''}` });
 
   return (
@@ -143,8 +152,8 @@ export default function JobDetailScreen() {
 
         <Text style={styles.factsHeading}>{t(locale, 'job.atAGlance')}</Text>
         <View style={styles.facts}>
-          <JobFact icon={{ ios: 'square.grid.2x2.fill', android: 'category', web: 'category' }} value={localizeCategory(locale, job.category)} />
-          <JobFact icon={{ ios: 'figure.wave', android: 'school', web: 'school' }} value={localizeJobLevel(locale, job.level)} />
+          <JobFact icon={{ ios: 'square.grid.2x2.fill', android: 'category', web: 'category' }} label={t(locale, 'discovery.category')} value={localizeCategory(locale, job.category)} />
+          <JobFact icon={{ ios: 'figure.wave', android: 'school', web: 'school' }} label={t(locale, 'discovery.level')} value={localizeJobLevel(locale, job.level)} />
           {job.expiresAt && <JobFact icon={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }} label={t(locale, 'job.closingDate')} value={new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short' })} />}
         </View>
 
@@ -182,8 +191,11 @@ export default function JobDetailScreen() {
         <JobQa jobId={job.id} />
         <View style={styles.originalSection}>
           <Text style={styles.heading}>{t(locale, 'job.originalListing')}</Text>
-          <Text selectable style={styles.body} {...(descriptionLineLimit ? { numberOfLines: descriptionLineLimit } : {})}>{originalListing.text}</Text>
-          {originalListing.collapsible && <Pressable accessibilityRole="button" accessibilityState={{ expanded: descriptionExpanded }} onPress={() => setDescriptionExpanded((value) => !value)} style={styles.showMore}><Text style={styles.showMoreText}>{t(locale, descriptionExpanded ? 'job.showLess' : 'job.showMore')}</Text><AppIcon name={{ ios: descriptionExpanded ? 'chevron.up' : 'chevron.down', android: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down', web: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }} size={18} tintColor={Palette.blue} /></Pressable>}
+          <View style={styles.descriptionWrap}>
+            <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" onTextLayout={measureDescription} style={[styles.body, styles.descriptionMeasure]}>{originalListing}</Text>
+            <Text selectable style={styles.body} {...(descriptionDisclosure.lineLimit ? { numberOfLines: descriptionDisclosure.lineLimit } : {})}>{originalListing}</Text>
+          </View>
+          {descriptionDisclosure.collapsible && <Pressable accessibilityRole="button" accessibilityState={{ expanded: descriptionExpanded }} onPress={() => setDescriptionExpansion({ key: descriptionKey, expanded: !descriptionExpanded })} style={styles.showMore}><Text style={styles.showMoreText}>{t(locale, descriptionExpanded ? 'job.showLess' : 'job.showMore')}</Text><AppIcon name={{ ios: descriptionExpanded ? 'chevron.up' : 'chevron.down', android: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down', web: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }} size={18} tintColor={Palette.blue} /></Pressable>}
           {job.requirements.length > 0 && <View style={styles.requirements}><Text style={styles.requirementsHeading}>{t(locale, 'job.requirements')}</Text>{job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>)}</View>}
         </View>
       </ScrollView>
@@ -205,8 +217,8 @@ export default function JobDetailScreen() {
   );
 }
 
-function JobFact({ icon, label, value }: { icon: AppIconName; label?: string; value: string }) {
-  return <View style={styles.fact}><AppIcon name={icon} size={17} tintColor={Palette.blue} /><View style={styles.factCopy}>{label && <Text style={styles.factLabel}>{label}</Text>}<Text style={styles.factValue} numberOfLines={2}>{value}</Text></View></View>;
+function JobFact({ icon, label, value }: { icon: AppIconName; label: string; value: string }) {
+  return <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.fact}><AppIcon name={icon} size={17} tintColor={Palette.blue} /><View style={styles.factCopy}><Text style={styles.factLabel}>{label}</Text><Text style={styles.factValue} numberOfLines={2}>{value}</Text></View></View>;
 }
 
 function State({ text, back, locale }: { text: string; back?: () => void; locale: 'de' | 'en' }) {
@@ -249,6 +261,8 @@ const styles = StyleSheet.create({
   originalSection: { paddingTop: 30, marginTop: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
   heading: { color: Palette.text, fontWeight: '700', fontSize: 21 },
   body: { color: Palette.text, lineHeight: 23, marginTop: 10, fontSize: 15 },
+  descriptionWrap: { position: 'relative' },
+  descriptionMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0 },
   showMore: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
   showMoreText: { color: Palette.blue, fontSize: 14, fontWeight: '700' },
   requirements: { paddingTop: 22 },

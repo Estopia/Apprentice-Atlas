@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   decideMapCameraSync,
-  getDescriptionLineLimit,
+  getDescriptionDisclosure,
   getDiscoveryLocationLabel,
   getJobAccessibilityLabel,
   getMapCameraIntent,
-  prepareJobDescription,
   type MapCameraSyncInput,
   type MapCameraSyncState,
 } from '../src/lib/discovery-presentation';
@@ -64,20 +63,15 @@ describe('discovery presentation', () => {
 });
 
 describe('job detail presentation', () => {
-  it('cleans visible Markdown while preserving readable structure', () => {
-    expect(prepareJobDescription('**What you will do**\n\n- Learn *modern* tools').text).toBe(
-      'What you will do\n\n• Learn modern tools',
-    );
-  });
-
-  it('only collapses genuinely long original listings', () => {
-    expect(prepareJobDescription('A short and useful description.').collapsible).toBe(false);
-    expect(prepareJobDescription('A'.repeat(181)).collapsible).toBe(true);
-  });
-
-  it('only applies an eight-line limit while a collapsible listing is collapsed', () => {
-    expect(getDescriptionLineLimit(false, false)).toBeUndefined();
-    expect(getDescriptionLineLimit(true, false)).toBe(8);
-    expect(getDescriptionLineLimit(true, true)).toBeUndefined();
+  it('uses measured rendered lines rather than character count for disclosure', () => {
+    const shortNineLineText = 'A\nB\nC\nD\nE\nF\nG\nH\nI';
+    const wideTwoLineText = 'A'.repeat(181);
+    expect(shortNineLineText.length).toBeLessThan(181);
+    expect(wideTwoLineText).toHaveLength(181);
+    expect(getDescriptionDisclosure(shortNineLineText.split('\n').length, false)).toEqual({ collapsible: true, lineLimit: 8 });
+    expect(getDescriptionDisclosure(2, false)).toEqual({ collapsible: false, lineLimit: undefined });
+    expect(getDescriptionDisclosure(8, false)).toEqual({ collapsible: false, lineLimit: undefined });
+    expect(getDescriptionDisclosure(9, true)).toEqual({ collapsible: true, lineLimit: undefined });
+    expect(getDescriptionDisclosure(null, false)).toEqual({ collapsible: false, lineLimit: undefined });
   });
 });
