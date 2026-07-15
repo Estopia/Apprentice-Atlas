@@ -266,6 +266,39 @@ describe('authenticated AI preparation Edge Function', () => {
     }
   });
 
+  it('keeps the timeout active while consuming a stalled provider response body', async () => {
+    vi.useFakeTimers();
+    try {
+      const admin = adminClient();
+      let receivedSignal: AbortSignal | null | undefined;
+      let rejectBody: ((reason: unknown) => void) | undefined;
+      const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        receivedSignal = init?.signal;
+        return {
+          ok: true,
+          json: () => new Promise<unknown>((_resolve, reject) => {
+            rejectBody = reject;
+            receivedSignal?.addEventListener('abort', () => reject(new DOMException('stalled body', 'AbortError')), { once: true });
+          }),
+        } as Response;
+      }) as unknown as typeof fetch;
+      const pending = createPrepareHandler(deps({ admin, fetcher }))(request({ jobId, language: 'en', background }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(rejectBody).toBeTypeOf('function');
+
+      await vi.advanceTimersByTimeAsync(OPENAI_TIMEOUT_MS);
+      if (!receivedSignal?.aborted) rejectBody?.(new Error('body timeout was cleared after headers'));
+      const result = await pending;
+
+      expect(receivedSignal?.aborted).toBe(true);
+      expect(result.status).toBe(504);
+      expect(await result.json()).toEqual({ error: { code: 'AI_TIMEOUT', message: 'The preparation service timed out. Please try again.' } });
+      expect(admin.rpcCalls.map((call) => call.name)).toEqual(['reserve_ai_prepare_quota', 'release_ai_prepare_quota']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('releases quota on provider and network failures without leaking provider details', async () => {
     const providerAdmin = adminClient();
     const failed = createPrepareHandler(deps({ admin: providerAdmin, fetcher: async () => new Response('provider leaked openai-secret', { status: 500 }) }));

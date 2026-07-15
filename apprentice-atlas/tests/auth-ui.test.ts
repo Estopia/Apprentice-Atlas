@@ -95,6 +95,18 @@ describe('native auth and onboarding configuration', () => {
     expect(storedProfiles.has('apprentice-atlas:career-profile:user-1')).toBe(false);
   });
 
+  it('retries a transient local career-profile deletion failure', async () => {
+    const removeItem = vi.fn()
+      .mockRejectedValueOnce(new Error('temporary storage failure'))
+      .mockResolvedValueOnce(undefined);
+    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem };
+
+    await expect(deleteCareerProfile('user-1', storage)).resolves.toBeUndefined();
+    expect(removeItem).toHaveBeenCalledTimes(2);
+    expect(removeItem).toHaveBeenNthCalledWith(1, 'apprentice-atlas:career-profile:user-1');
+    expect(removeItem).toHaveBeenNthCalledWith(2, 'apprentice-atlas:career-profile:user-1');
+  });
+
   it('clears personalized preparation state when identity, job, or locale changes', () => {
     const userOneState = {
       userId: 'user-1',

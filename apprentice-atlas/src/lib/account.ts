@@ -5,7 +5,18 @@ import type { FavoriteJob, TrackedApplication } from '@/types/jobs';
 import { deleteCareerProfile } from './career-profile';
 
 export type AccountOperationError = { code: 'configuration' | 'auth-required' | 'export' | 'delete'; message: string };
-export type AccountResult<T> = { data: T | null; error: AccountOperationError | null };
+export type AccountCleanupWarning = {
+  code: 'local-cleanup-incomplete';
+  message: string;
+  profileRemovalPending: boolean;
+  signOutPending: boolean;
+  retry(): Promise<boolean>;
+};
+export type AccountResult<T> = {
+  data: T | null;
+  error: AccountOperationError | null;
+  cleanupWarning?: AccountCleanupWarning;
+};
 
 export type AccountExport = {
   format: 'apprentice-atlas-account-export';
@@ -52,9 +63,45 @@ export async function deleteAccount(
     if (!session.data.session) return failure('auth-required', 'Sign in before deleting an account.');
     const result = await supabase.functions.invoke('delete-account', { method: 'POST', body: {} });
     if (result.error || result.data?.deleted !== true) return failure('delete', 'The account could not be deleted.');
-    await removeCareerProfile(session.data.session.user.id);
-    await supabase.auth.signOut({ scope: 'local' });
-    return { data: { appleAccessNeedsRevocation: result.data.appleAccessNeedsRevocation === true }, error: null };
+    const deletedUserId = session.data.session.user.id;
+    const tryProfileRemoval = async () => {
+      try {
+        await removeCareerProfile(deletedUserId);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const tryLocalSignOut = async () => {
+      try {
+        const signOut = await supabase.auth.signOut({ scope: 'local' });
+        return !signOut.error;
+      } catch {
+        return false;
+      }
+    };
+
+    const profileRemoved = await tryProfileRemoval();
+    const signedOut = await tryLocalSignOut();
+    const data = { appleAccessNeedsRevocation: result.data.appleAccessNeedsRevocation === true };
+    if (profileRemoved && signedOut) return { data, error: null };
+
+    const cleanupWarning: AccountCleanupWarning = {
+      code: 'local-cleanup-incomplete',
+      message: 'The account was deleted, but cleanup on this device is incomplete.',
+      profileRemovalPending: !profileRemoved,
+      signOutPending: !signedOut,
+      retry: async () => {
+        if (cleanupWarning.profileRemovalPending) {
+          cleanupWarning.profileRemovalPending = !await tryProfileRemoval();
+        }
+        if (cleanupWarning.signOutPending) {
+          cleanupWarning.signOutPending = !await tryLocalSignOut();
+        }
+        return !cleanupWarning.profileRemovalPending && !cleanupWarning.signOutPending;
+      },
+    };
+    return { data, error: null, cleanupWarning };
   } catch {
     return failure('delete', 'The account could not be deleted.');
   }

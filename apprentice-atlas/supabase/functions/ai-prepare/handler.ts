@@ -136,9 +136,9 @@ export function createPrepareHandler(deps: PrepareDeps) {
       const quotaWindow = reservation.data;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-      let provider: Response;
+      let phase: 'fetch' | 'body' = 'fetch';
       try {
-        provider = await deps.fetcher('https://api.openai.com/v1/responses', {
+        const provider = await deps.fetcher('https://api.openai.com/v1/responses', {
           method: 'POST',
           headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -151,33 +151,31 @@ export function createPrepareHandler(deps: PrepareDeps) {
           }),
           signal: controller.signal,
         });
+        if (!provider.ok) {
+          await releaseQuota(db, userId, quotaWindow);
+          return errorResponse('AI_PROVIDER_ERROR', 'The preparation service is temporarily unavailable.', 502);
+        }
+        phase = 'body';
+        const payload = await provider.json();
+        const outputText = extractOutputText(payload);
+        let parsed: ReturnType<typeof parsePreparation> = null;
+        try { parsed = outputText ? parsePreparation(JSON.parse(outputText)) : null; } catch { parsed = null; }
+        if (!parsed) {
+          await releaseQuota(db, userId, quotaWindow);
+          return errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502);
+        }
+        return json({ jobId, language, ...parsed, generatedAt: new Date().toISOString(), model: model(deps) });
       } catch {
         await releaseQuota(db, userId, quotaWindow);
-        return controller.signal.aborted
-          ? errorResponse('AI_TIMEOUT', 'The preparation service timed out. Please try again.', 504)
+        if (controller.signal.aborted) {
+          return errorResponse('AI_TIMEOUT', 'The preparation service timed out. Please try again.', 504);
+        }
+        return phase === 'body'
+          ? errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502)
           : errorResponse('AI_PROVIDER_ERROR', 'The preparation service is temporarily unavailable.', 502);
       } finally {
         clearTimeout(timeout);
       }
-      if (!provider.ok) {
-        await releaseQuota(db, userId, quotaWindow);
-        return errorResponse('AI_PROVIDER_ERROR', 'The preparation service is temporarily unavailable.', 502);
-      }
-      let payload: unknown;
-      try {
-        payload = await provider.json();
-      } catch {
-        await releaseQuota(db, userId, quotaWindow);
-        return errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502);
-      }
-      const outputText = extractOutputText(payload);
-      let parsed: ReturnType<typeof parsePreparation> = null;
-      try { parsed = outputText ? parsePreparation(JSON.parse(outputText)) : null; } catch { parsed = null; }
-      if (!parsed) {
-        await releaseQuota(db, userId, quotaWindow);
-        return errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502);
-      }
-      return json({ jobId, language, ...parsed, generatedAt: new Date().toISOString(), model: model(deps) });
     } catch {
       return errorResponse('AI_ERROR', 'Unable to create preparation right now.', 500);
     }

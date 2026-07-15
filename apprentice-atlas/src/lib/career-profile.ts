@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const CAREER_PROFILE_MAX_LENGTH = 2000;
+export const CAREER_PROFILE_DELETE_ATTEMPTS = 2;
 
 type CareerProfileStorage = Pick<typeof AsyncStorage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -71,5 +72,14 @@ export async function saveCareerProfile(userId: string, background: string, stor
 
 export async function deleteCareerProfile(userId: string, storage: CareerProfileStorage = AsyncStorage): Promise<void> {
   if (!userId) return;
-  await storage.removeItem(profileKey(userId));
+  let lastError: unknown;
+  for (let attempt = 0; attempt < CAREER_PROFILE_DELETE_ATTEMPTS; attempt += 1) {
+    try {
+      await storage.removeItem(profileKey(userId));
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }

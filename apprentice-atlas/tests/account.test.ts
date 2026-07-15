@@ -42,6 +42,72 @@ describe('account privacy controls', () => {
     expect(events).toEqual([]);
   });
 
+  it('still signs out and reports server deletion success when profile cleanup fails', async () => {
+    const events: string[] = [];
+    let profileCleanupFails = true;
+    const removeCareerProfile = vi.fn(async () => {
+      events.push('profile');
+      if (profileCleanupFails) throw new Error('sensitive local storage detail');
+    });
+    const signOut = vi.fn(async () => { events.push('signout'); return { error: null }; });
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null })),
+        signOut,
+      },
+      functions: { invoke: vi.fn(async () => { events.push('server-delete'); return { data: { deleted: true }, error: null }; }) },
+    };
+
+    const result = await deleteAccount(client as never, removeCareerProfile);
+
+    expect(events).toEqual(['server-delete', 'profile', 'signout']);
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(result).toMatchObject({
+      data: { appleAccessNeedsRevocation: false },
+      error: null,
+      cleanupWarning: {
+        code: 'local-cleanup-incomplete',
+        profileRemovalPending: true,
+        signOutPending: false,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('sensitive local storage detail');
+
+    profileCleanupFails = false;
+    await expect(result.cleanupWarning?.retry()).resolves.toBe(true);
+    expect(removeCareerProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it('records a retryable local warning when sign-out itself fails after server deletion', async () => {
+    let signOutFails = true;
+    const signOut = vi.fn(async () => {
+      if (signOutFails) throw new Error('local sign-out failure');
+      return { error: null };
+    });
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null })),
+        signOut,
+      },
+      functions: { invoke: vi.fn(async () => ({ data: { deleted: true }, error: null })) },
+    };
+
+    const result = await deleteAccount(client as never, vi.fn(async () => undefined));
+
+    expect(result).toMatchObject({
+      data: { appleAccessNeedsRevocation: false },
+      error: null,
+      cleanupWarning: {
+        code: 'local-cleanup-incomplete',
+        profileRemovalPending: false,
+        signOutPending: true,
+      },
+    });
+    signOutFails = false;
+    await expect(result.cleanupWarning?.retry()).resolves.toBe(true);
+    expect(signOut).toHaveBeenCalledTimes(2);
+  });
+
   it('authenticates from the bearer token and deletes assets before the auth user', async () => {
     const events: string[] = [];
     const remove = vi.fn(async (paths: string[]) => { events.push(`assets:${paths.join(',')}`); return { error: null }; });
