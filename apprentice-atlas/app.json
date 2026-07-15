@@ -75,7 +75,8 @@
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Apprentice Atlas uses your location to find nearby apprenticeship opportunities.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent"
       }
     },
     "android": {
@@ -122,10 +123,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFF",
-          "image": "./assets/images/launch-logo.png",
-          "imageWidth": 116,
-          "resizeMode": "contain"
+          "backgroundColor": "#155EEF"
         }
       ]
     ],

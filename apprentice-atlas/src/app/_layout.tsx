@@ -1,6 +1,5 @@
 import { DefaultTheme, router, Stack, ThemeProvider, useGlobalSearchParams, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 
 import { LaunchGate } from '@/components/launch/launch-gate';
@@ -59,7 +58,6 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={{ ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: Palette.blue, background: Palette.background, card: Palette.background, text: Palette.text, border: Palette.border } }}>
-      <StatusBar style="dark" />
       <LaunchGate bootstrapReady={bootstrapReady} onboardingComplete={preferences.onboardingComplete} pathname={pathname}>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Palette.background } }}>
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
