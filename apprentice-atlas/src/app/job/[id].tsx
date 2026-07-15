@@ -11,12 +11,15 @@ import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
 import { getApplicationForJob, getReadableApplicationsError, type ApplicationsError } from '@/lib/applications';
 import { isValidApplicationJobId } from '@/lib/application-flow';
+import { buildCalendarEventPayload, openCalendarEventForm, type CalendarEventKind } from '@/lib/calendar-sync';
+import { getDeadlineReminderState, reconcileDeadlineReminder, type DeadlineReminderState } from '@/lib/deadline-reminders';
 import { getDescriptionDisclosure } from '@/lib/discovery-presentation';
-import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
+import { addFavorite, buildDeadlineReminderCopy, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
 import { localizeApplicationStatus, localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
 import { cleanJobDescription } from '@/lib/job-presentation';
 import { getJob } from '@/lib/jobs';
+import { errorFeedback, successFeedback } from '@/lib/native-feedback';
 import { getValidHttpUrl } from '@/lib/official-listing-url';
 import type { FavoriteJob, TrackedApplication } from '@/types/jobs';
 
@@ -37,6 +40,8 @@ export default function JobDetailScreen() {
   const [applicationJobId, setApplicationJobId] = useState<string | null>(null);
   const [applicationLoading, setApplicationLoading] = useState(false);
   const [applicationError, setApplicationError] = useState<ApplicationsError | null>(null);
+  const [reminderState, setReminderState] = useState<DeadlineReminderState>('not-scheduled');
+  const [deadlineToolMessage, setDeadlineToolMessage] = useState<string | null>(null);
   const [descriptionMeasurement, setDescriptionMeasurement] = useState<{ key: string; lineCount: number } | null>(null);
   const [descriptionExpansion, setDescriptionExpansion] = useState<{ key: string; expanded: boolean } | null>(null);
   const activeState = loadedId === routeId ? state : resetJobDetailState(state);
@@ -92,6 +97,16 @@ export default function JobDetailScreen() {
 
   useFocusEffect(loadApplication);
 
+  useFocusEffect(useCallback(() => {
+    if (!auth.session || !job) return undefined;
+    let active = true;
+    setReminderState('not-scheduled');
+    void getDeadlineReminderState(auth.session.user.id, job.id).then((nextState) => {
+      if (active) setReminderState(nextState);
+    });
+    return () => { active = false; };
+  }, [auth.session, job]));
+
   const activeFavorite = auth.session && favoriteJobId === job?.id ? favorite : null;
   const activeApplication = auth.session && applicationJobId === job?.id ? application : null;
   const toggleFavorite = async () => {
@@ -103,12 +118,22 @@ export default function JobDetailScreen() {
       setFavorite(null);
       const result = await removeFavorite(job.id);
       if (result.error) { setFavorite(rollbackFavoriteState(previous)); setFavoriteError(result.error); }
+      else {
+        const copy = buildDeadlineReminderCopy(locale, job.title);
+        void reconcileDeadlineReminder({ userId: auth.session.user.id, jobId: job.id, deadlineAt: job.expiresAt, applicationStatus: activeApplication?.status ?? null, saved: false, ...copy })
+          .then((reminder) => setReminderState(reminder.state));
+      }
     } else {
       const optimistic = { id: `optimistic-${job.id}`, userId: auth.session.user.id, jobId: job.id, createdAt: new Date().toISOString(), job };
       setFavorite(optimistic);
       const result = await addFavorite(job.id);
       if (result.error) { setFavorite(rollbackFavoriteState(previous)); setFavoriteError(result.error); }
-      else setFavorite(result.data ?? optimistic);
+      else {
+        setFavorite(result.data ?? optimistic);
+        const copy = buildDeadlineReminderCopy(locale, job.title);
+        void reconcileDeadlineReminder({ userId: auth.session.user.id, jobId: job.id, deadlineAt: job.expiresAt, applicationStatus: activeApplication?.status ?? null, saved: true, ...copy })
+          .then((reminder) => setReminderState(reminder.state));
+      }
     }
     setFavoriteBusy(false);
   };
@@ -129,6 +154,24 @@ export default function JobDetailScreen() {
       return;
     }
     router.push({ pathname: '/prepare/[jobId]', params: { jobId: job.id } });
+  };
+
+  const addTrackedDateToCalendar = async (kind: CalendarEventKind) => {
+    if (!job) return;
+    const dates = {
+      title: job.title,
+      company: job.company,
+      deadlineAt: job.expiresAt,
+      interviewAt: activeApplication?.interviewAt ?? null,
+    };
+    const payload = kind === 'deadline'
+      ? buildCalendarEventPayload('deadline', dates)
+      : buildCalendarEventPayload('interview', dates);
+    const opened = payload ? await openCalendarEventForm(payload) : false;
+    setDeadlineToolMessage(t(locale, kind === 'deadline'
+      ? opened ? 'deadline.calendarAdded' : 'deadline.calendarUnavailable'
+      : opened ? 'application.calendarAdded' : 'application.calendarUnavailable'));
+    void (opened ? successFeedback() : errorFeedback());
   };
 
   if (loading) return <State text={t(locale, 'loading.jobDetails')} locale={locale} />;
@@ -165,6 +208,32 @@ export default function JobDetailScreen() {
           <JobFact icon={{ ios: 'figure.wave', android: 'school', web: 'school' }} label={t(locale, 'discovery.level')} value={localizeJobLevel(locale, job.level)} />
           {job.expiresAt && <JobFact icon={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }} label={t(locale, 'job.closingDate')} value={new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short' })} />}
         </View>
+
+        {job.expiresAt && (
+          <View style={styles.deadlineTools}>
+            <View style={styles.deadlineToolCopy}>
+              <Text style={styles.deadlineToolLabel}>{t(locale, 'deadline.reminder.label')}</Text>
+              <Text style={styles.deadlineToolState}>{activeFavorite
+                ? t(locale, reminderState === 'scheduled'
+                  ? 'deadline.reminder.scheduled'
+                  : reminderState === 'permission-denied'
+                    ? 'deadline.reminder.permissionDenied'
+                    : reminderState === 'unavailable'
+                      ? 'deadline.reminder.unavailable'
+                      : 'deadline.reminder.notScheduled')
+                : t(locale, 'deadline.reminder.saveHint')}</Text>
+            </View>
+            <Pressable accessibilityRole="button" onPress={() => void addTrackedDateToCalendar('deadline')} style={({ pressed }) => [styles.deadlineToolButton, pressed && styles.pressed]}>
+              <Text style={styles.deadlineToolButtonText}>{t(locale, 'deadline.calendarAction')}</Text>
+            </Pressable>
+            {activeApplication?.interviewAt && (
+              <Pressable accessibilityRole="button" onPress={() => void addTrackedDateToCalendar('interview')} style={({ pressed }) => [styles.deadlineToolButton, pressed && styles.pressed]}>
+                <Text style={styles.deadlineToolButtonText}>{t(locale, 'application.addInterviewCalendar')}</Text>
+              </Pressable>
+            )}
+            {deadlineToolMessage && <Text accessibilityLiveRegion="polite" style={styles.deadlineToolMessage}>{deadlineToolMessage}</Text>}
+          </View>
+        )}
 
         {favoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(favoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
 
@@ -260,6 +329,13 @@ const styles = StyleSheet.create({
   heroLocationText: { color: Palette.textSecondary, fontSize: 14 },
   factsHeading: { color: Palette.text, fontSize: 15, fontWeight: '700', paddingTop: 18 },
   facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 8 },
+  deadlineTools: { gap: 8, marginTop: 14, padding: 13, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.surface },
+  deadlineToolCopy: { gap: 2 },
+  deadlineToolLabel: { color: Palette.text, fontSize: 14, fontWeight: '700' },
+  deadlineToolState: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
+  deadlineToolButton: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  deadlineToolButtonText: { color: Palette.blue, fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  deadlineToolMessage: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   fact: { flexGrow: 1, flexBasis: 104, minHeight: 56, minWidth: 104, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 9, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: Palette.border },
   factCopy: { flex: 1, minWidth: 0 },
   factLabel: { color: Palette.textSecondary, fontSize: 13, fontWeight: '500', marginBottom: 2 },

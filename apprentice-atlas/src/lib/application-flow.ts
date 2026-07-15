@@ -63,6 +63,13 @@ export function isValidApplicationJobId(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value);
 }
 
+export function normalizeInterviewDateSelection(value: Date, now = new Date()): string | null {
+  const timestamp = value.getTime();
+  return Number.isFinite(timestamp) && timestamp > now.getTime()
+    ? new Date(timestamp).toISOString()
+    : null;
+}
+
 export type ApplicationSheetLoadResolution =
   | { kind: 'ready'; job: Job | null; application: TrackedApplication | null }
   | { kind: 'redirect' }

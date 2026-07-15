@@ -82,6 +82,7 @@ describe('application form helpers', () => {
       jobId,
       status: 'interview' as const,
       note: 'Keep this private note',
+      interviewAt: null,
       createdAt: '2026-07-14T10:00:00.000Z',
       updatedAt: '2026-07-14T11:00:00.000Z',
     };

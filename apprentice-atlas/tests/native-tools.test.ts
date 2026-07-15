@@ -5,6 +5,8 @@ const nativeState = vi.hoisted(() => ({
   storage: new Map<string, string>(),
   cancelScheduledNotificationAsync: vi.fn(async () => undefined),
   scheduleNotificationAsync: vi.fn(async () => 'new-notification-id'),
+  getNotificationPermissionsAsync: vi.fn(async () => ({ granted: true, status: 'granted', canAskAgain: true })),
+  requestNotificationPermissionsAsync: vi.fn(async () => ({ granted: true, status: 'granted', canAskAgain: true })),
   requestCalendarPermissions: vi.fn(async () => ({ granted: true })),
   createEventInCalendarAsync: vi.fn(async () => ({ action: 'saved', id: 'event-id' })),
   platformVersion: 17 as string | number,
@@ -22,8 +24,8 @@ vi.mock('expo-notifications', () => ({
   AndroidImportance: { DEFAULT: 3 },
   SchedulableTriggerInputTypes: { DATE: 'date' },
   cancelScheduledNotificationAsync: nativeState.cancelScheduledNotificationAsync,
-  getPermissionsAsync: async () => ({ granted: true }),
-  requestPermissionsAsync: async () => ({ granted: true }),
+  getPermissionsAsync: nativeState.getNotificationPermissionsAsync,
+  requestPermissionsAsync: nativeState.requestNotificationPermissionsAsync,
   scheduleNotificationAsync: nativeState.scheduleNotificationAsync,
   setNotificationChannelAsync: async () => undefined,
 }));
@@ -50,6 +52,7 @@ import {
   parseNotificationJobRoute,
   scheduleDeadlineReminder,
 } from '../src/lib/deadline-reminders';
+import * as deadlineReminders from '../src/lib/deadline-reminders';
 import { shouldRequestAppReview } from '../src/lib/review-prompt';
 
 const jobId = '11111111-1111-4111-8111-111111111111';
@@ -98,6 +101,10 @@ describe('deadline reminders', () => {
     nativeState.cancelScheduledNotificationAsync.mockClear();
     nativeState.scheduleNotificationAsync.mockReset();
     nativeState.scheduleNotificationAsync.mockResolvedValue('new-notification-id');
+    nativeState.getNotificationPermissionsAsync.mockReset();
+    nativeState.getNotificationPermissionsAsync.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    nativeState.requestNotificationPermissionsAsync.mockReset();
+    nativeState.requestNotificationPermissionsAsync.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
     vi.stubEnv('EXPO_OS', 'ios');
   });
 
@@ -125,6 +132,23 @@ describe('deadline reminders', () => {
 
     expect(nativeState.cancelScheduledNotificationAsync).toHaveBeenCalledWith('old-notification-id');
     expect(nativeState.storage.has(reminderStorageKey)).toBe(false);
+  });
+
+  it('reports permission denial distinctly from unavailable native scheduling', async () => {
+    const scheduleWithState = (deadlineReminders as unknown as {
+      scheduleDeadlineReminderWithState?: (input: ReturnType<typeof reminderInput>) => Promise<{ state: string; notificationId: string | null }>;
+    }).scheduleDeadlineReminderWithState;
+    expect(scheduleWithState).toBeTypeOf('function');
+    if (!scheduleWithState) return;
+
+    nativeState.getNotificationPermissionsAsync.mockResolvedValueOnce({ granted: false, status: 'undetermined', canAskAgain: true });
+    nativeState.requestNotificationPermissionsAsync.mockResolvedValueOnce({ granted: false, status: 'denied', canAskAgain: false });
+
+    await expect(scheduleWithState(reminderInput('Deadline soon'))).resolves.toEqual({
+      state: 'permission-denied',
+      notificationId: null,
+    });
+    expect(nativeState.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
   it('serializes two schedules so the first notification cannot be orphaned', async () => {

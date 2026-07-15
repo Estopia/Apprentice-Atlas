@@ -26,6 +26,19 @@ export interface ScheduleDeadlineReminderInput {
   now?: Date;
 }
 
+export type DeadlineReminderState = 'scheduled' | 'permission-denied' | 'unavailable' | 'not-scheduled';
+
+export interface DeadlineReminderResult {
+  state: DeadlineReminderState;
+  notificationId: string | null;
+}
+
+export interface ReconcileDeadlineReminderInput extends ScheduleDeadlineReminderInput {
+  saved: boolean;
+  schedule?: (input: ScheduleDeadlineReminderInput) => Promise<DeadlineReminderResult>;
+  cancel?: (userId: string, jobId: string) => Promise<boolean>;
+}
+
 export function getDeadlineReminderDate(
   deadlineAt: string | null | undefined,
   applicationStatus: ApplicationStatus | null | undefined,
@@ -99,6 +112,13 @@ export async function cancelDeadlineReminder(userId: string, jobId: string): Pro
 export async function scheduleDeadlineReminder(
   input: ScheduleDeadlineReminderInput,
 ): Promise<string | null> {
+  const result = await scheduleDeadlineReminderWithState(input);
+  return result.notificationId;
+}
+
+export async function scheduleDeadlineReminderWithState(
+  input: ScheduleDeadlineReminderInput,
+): Promise<DeadlineReminderResult> {
   const storageKey = reminderStorageKey(input.userId, input.jobId);
   const reminderDate = getDeadlineReminderDate(
     input.deadlineAt,
@@ -106,11 +126,13 @@ export async function scheduleDeadlineReminder(
     input.now,
   );
   const route = parseNotificationJobRoute(`/job/${input.jobId}`);
-  if (!storageKey || !reminderDate || !route) return null;
+  if (!storageKey || !reminderDate || !route) {
+    return { state: 'unavailable', notificationId: null };
+  }
 
   return serializeReminderOperation(storageKey, async () => {
     const Notifications = await loadNotifications();
-    if (!Notifications) return null;
+    if (!Notifications) return { state: 'unavailable', notificationId: null };
 
     try {
       if (process.env.EXPO_OS === 'android') {
@@ -122,7 +144,7 @@ export async function scheduleDeadlineReminder(
 
       let permission = await Notifications.getPermissionsAsync();
       if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
-      if (!permission.granted) return null;
+      if (!permission.granted) return { state: 'permission-denied', notificationId: null };
 
       const previousId = await AsyncStorage.getItem(storageKey);
       if (previousId) {
@@ -150,11 +172,50 @@ export async function scheduleDeadlineReminder(
         throw error;
       }
 
-      return notificationId;
+      return { state: 'scheduled', notificationId };
     } catch {
-      return null;
+      return { state: 'unavailable', notificationId: null };
     }
   });
+}
+
+export async function getDeadlineReminderState(userId: string, jobId: string): Promise<DeadlineReminderState> {
+  const storageKey = reminderStorageKey(userId, jobId);
+  if (!storageKey) return 'unavailable';
+
+  const Notifications = await loadNotifications();
+  if (!Notifications) return 'unavailable';
+
+  try {
+    const permission = await Notifications.getPermissionsAsync();
+    if (!permission.granted && permission.status === 'denied') return 'permission-denied';
+    return await AsyncStorage.getItem(storageKey) ? 'scheduled' : 'not-scheduled';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export async function reconcileDeadlineReminder(
+  input: ReconcileDeadlineReminderInput,
+): Promise<DeadlineReminderResult> {
+  const schedule = input.schedule ?? scheduleDeadlineReminderWithState;
+  const cancel = input.cancel ?? cancelDeadlineReminder;
+  const shouldSchedule = input.saved && getDeadlineReminderDate(
+    input.deadlineAt,
+    input.applicationStatus,
+    input.now,
+  ) !== null;
+
+  if (!shouldSchedule) {
+    await cancel(input.userId, input.jobId).catch(() => false);
+    return { state: 'not-scheduled', notificationId: null };
+  }
+
+  try {
+    return await schedule(input);
+  } catch {
+    return { state: 'unavailable', notificationId: null };
+  }
 }
 
 type NotificationRouteHandler = (route: NotificationJobRoute) => void;

@@ -174,6 +174,7 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
     ? t(locale, 'atlas.updatedFallback')
     : `${t(locale, 'atlas.updated')} ${new Date(updatedTimestamp).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
   const title = job?.title ?? t(locale, 'atlas.unavailable');
+  const interviewTimestamp = application.interviewAt ? safeTimestamp(application.interviewAt) : null;
   return (
     <Pressable
       accessibilityLabel={`${title}, ${status}`}
@@ -185,6 +186,7 @@ function ApplicationRow({ application, last, locale }: { application: TrackedApp
       <View style={styles.applicationCopy}>
         <Text selectable numberOfLines={2} style={styles.applicationTitle}>{title}</Text>
         {job && <Text selectable numberOfLines={1} style={styles.applicationCompany}>{job.company} · {job.city}</Text>}
+        {interviewTimestamp !== null && <Text style={styles.interviewDate}>{t(locale, 'application.interviewDate')}: {new Date(interviewTimestamp).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</Text>}
         <Text style={styles.updated}>{updated}</Text>
       </View>
       <Text style={[styles.statusText, application.status === 'offer' && styles.statusSuccessText, application.status === 'closed' && styles.statusMutedText]}>{status}</Text>
@@ -262,6 +264,7 @@ const styles = StyleSheet.create({
   applicationCopy: { flex: 1, minWidth: 0, gap: 2 },
   applicationTitle: { color: Palette.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
   applicationCompany: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
+  interviewDate: { color: Palette.blue, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   updated: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   statusText: { maxWidth: 96, color: Palette.blue, fontSize: 13, lineHeight: 17, fontWeight: '700', textAlign: 'right' },
   statusSuccessText: { color: Palette.success },

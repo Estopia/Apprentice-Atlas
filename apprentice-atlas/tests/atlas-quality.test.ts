@@ -12,6 +12,7 @@ const application = (status: ApplicationStatus, updatedAt: string, id: string = 
   jobId: `job-${id}`,
   status,
   note: null,
+  interviewAt: null,
   createdAt: updatedAt,
   updatedAt,
 });

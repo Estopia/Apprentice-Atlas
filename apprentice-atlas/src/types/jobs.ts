@@ -98,6 +98,7 @@ export interface TrackedApplication {
   jobId: string;
   status: ApplicationStatus;
   note: string | null;
+  interviewAt: string | null;
   createdAt: string;
   updatedAt: string;
   job?: Job;

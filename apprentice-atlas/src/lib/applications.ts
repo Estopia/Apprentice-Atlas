@@ -12,7 +12,7 @@ export type ApplicationsError = {
 export type ApplicationsResult<T> = { data: T | null; error: ApplicationsError | null };
 export type ApplicationsOperation = 'load' | 'save' | 'remove';
 
-const APPLICATION_SELECT = 'id,user_id,job_id,status,note,created_at,updated_at,jobs(*)';
+const APPLICATION_SELECT = 'id,user_id,job_id,status,note,interview_at,created_at,updated_at,jobs(*)';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function errorResult<T>(error: ApplicationsError): ApplicationsResult<T> {
@@ -56,6 +56,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
+}
+
+function normalizeTimestamp(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -117,6 +124,7 @@ function toJob(value: unknown): Job | undefined {
 
 function toApplication(value: unknown): TrackedApplication | null {
   if (!isRecord(value)) return null;
+  const interviewAt = normalizeTimestamp(value.interview_at);
   if (
     typeof value.id !== 'string'
     || typeof value.user_id !== 'string'
@@ -124,6 +132,7 @@ function toApplication(value: unknown): TrackedApplication | null {
     || !isApplicationStatus(value.status)
     || !isNullableString(value.note)
     || (typeof value.note === 'string' && applicationNoteLength(value.note) > 500)
+    || interviewAt === undefined
     || typeof value.created_at !== 'string'
     || typeof value.updated_at !== 'string'
   ) return null;
@@ -134,6 +143,7 @@ function toApplication(value: unknown): TrackedApplication | null {
     jobId: value.job_id,
     status: value.status,
     note: value.note,
+    interviewAt,
     createdAt: value.created_at,
     updatedAt: value.updated_at,
     job: toJob(value.jobs),
@@ -237,12 +247,32 @@ export async function getApplicationForJob(
   }
 }
 
-export async function upsertApplication(
+export function upsertApplication(
   jobId: string,
   status: ApplicationStatus,
   note: string | null,
   client?: ApplicationClient,
+): Promise<ApplicationsResult<TrackedApplication>>;
+export function upsertApplication(
+  jobId: string,
+  status: ApplicationStatus,
+  note: string | null,
+  interviewAt: string | null,
+  client?: ApplicationClient,
+): Promise<ApplicationsResult<TrackedApplication>>;
+export async function upsertApplication(
+  jobId: string,
+  status: ApplicationStatus,
+  note: string | null,
+  interviewAtOrClient?: string | null | ApplicationClient,
+  suppliedClient?: ApplicationClient,
 ): Promise<ApplicationsResult<TrackedApplication>> {
+  const interviewAt = typeof interviewAtOrClient === 'string' || interviewAtOrClient === null
+    ? normalizeTimestamp(interviewAtOrClient)
+    : null;
+  const client = typeof interviewAtOrClient === 'object' && interviewAtOrClient !== null
+    ? interviewAtOrClient
+    : suppliedClient;
   const supabase = await clientOrError(client);
   if ('code' in supabase) return errorResult(supabase);
   const user = await currentUserId(supabase);
@@ -252,12 +282,14 @@ export async function upsertApplication(
   if (!isApplicationStatus(status)) return errorResult(validationError('Invalid application status.'));
   const normalizedNote = normalizeNote(note);
   if (normalizedNote.error) return errorResult(normalizedNote.error);
+  if (interviewAt === undefined) return errorResult(validationError('Invalid interview date.'));
 
   try {
     const result = await supabase.rpc('upsert_application', {
       p_job_id: jobId,
       p_status: status,
       p_note: normalizedNote.data,
+      p_interview_at: interviewAt,
     });
     if (result.error) {
       return errorResult({ code: 'mutation', message: result.error.message || 'Could not save the application.' });
