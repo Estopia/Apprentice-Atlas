@@ -7,6 +7,7 @@ import { AuthForm } from '@/components/auth/auth-form';
 import { Palette } from '@/constants/theme';
 import { validatedPendingTrackJobId } from '@/lib/application-flow';
 import { isSafeReturnPath, validatedPendingSaveJobId } from '@/lib/auth';
+import { getAuthNavigationPresentation } from '@/lib/auth-presentation';
 import { addFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
 
@@ -15,6 +16,7 @@ export default function AuthScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string; pendingAction?: string; jobId?: string }>();
   const [error, setError] = useState<string | null>(null);
+  const navigationPresentation = getAuthNavigationPresentation();
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/favorites';
   const pendingTrackJobId = validatedPendingTrackJobId(params);
   const pendingSaveJobId = validatedPendingSaveJobId(params);
@@ -62,9 +64,7 @@ export default function AuthScreen() {
       </KeyboardAvoidingView>
       <Stack.Screen options={{
         title: t(locale, 'auth.account'),
-        headerShown: true,
-        headerShadowVisible: false,
-        headerBackButtonDisplayMode: 'minimal',
+        ...navigationPresentation.headerOptions,
         headerStyle: { backgroundColor: Palette.white },
         headerTintColor: Palette.text,
       }} />

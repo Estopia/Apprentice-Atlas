@@ -15,6 +15,7 @@ import { Palette, Radius } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
 import { localizeCategory, t } from '@/lib/i18n';
 import { getPostOnboardingDestination } from '@/lib/onboarding-destination';
+import { shouldEnableOnboardingScroll } from '@/lib/onboarding-presentation';
 import type { UserPreferences } from '@/lib/preferences';
 
 const TOTAL_STEPS = 3;
@@ -44,7 +45,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   const [step, setStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [contentMeasurement, setContentMeasurement] = useState({ step: -1, height: 0 });
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [viewportMeasurement, setViewportMeasurement] = useState({ width: 0, height: 0 });
 
   const locale = draft.locale;
   const isValid = step === 0
@@ -53,7 +54,11 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
       ? draft.audience !== null
       : draft.interests.length > 0;
   const isEditing = initialPreferences.onboardingComplete;
-  const contentOverflows = contentMeasurement.step === step && contentMeasurement.height > viewportHeight + 1;
+  const contentOverflows = contentMeasurement.step === step && shouldEnableOnboardingScroll({
+    width: viewportMeasurement.width,
+    contentHeight: contentMeasurement.height,
+    viewportHeight: viewportMeasurement.height,
+  });
 
   const selectAudience = (audience: Audience) => setDraft((current) => ({ ...current, audience }));
   const selectCountry = (country: Country) => setDraft((current) => ({ ...current, country }));
@@ -99,7 +104,10 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
           contentInsetAdjustmentBehavior="never"
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={(_, measuredContentHeight) => setContentMeasurement({ step, height: measuredContentHeight })}
-          onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+          onLayout={(event) => setViewportMeasurement({
+            width: event.nativeEvent.layout.width,
+            height: event.nativeEvent.layout.height,
+          })}
           scrollEnabled={contentOverflows}
           showsVerticalScrollIndicator={contentOverflows}
         >

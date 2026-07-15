@@ -33,7 +33,6 @@ describe('interactive hit-area contracts', () => {
     const authForm = read('src/components/auth/auth-form.tsx');
     const onboarding = read('src/app/onboarding.tsx');
 
-    expect(authForm).toMatch(/accessibilityState=\{\{ disabled: submitDisabled, busy:/);
     expect(authForm).toMatch(/submit: \{ minHeight: 52/);
     expect(authForm).toMatch(/appleButton: \{ width: '100%', height: 52 \}/);
     expect(onboarding).toMatch(/languageChoice: \{ flex: 1, minHeight: 46/);

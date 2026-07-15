@@ -4,6 +4,29 @@ export type EmailSubmissionState = {
   canSubmit: boolean;
 };
 
+export type AuthLoadingMethod = 'email' | 'apple' | null;
+
+export function getAuthNavigationPresentation() {
+  return {
+    headerOptions: {
+      headerShown: true,
+      headerShadowVisible: false,
+      headerBackButtonDisplayMode: 'minimal' as const,
+    },
+    rendersCustomClose: false,
+  } as const;
+}
+
+export function getAppleControlPresentation(loadingMethod: AuthLoadingMethod) {
+  return {
+    accessibilityState: {
+      disabled: loadingMethod !== null,
+      busy: loadingMethod === 'apple',
+    },
+    announceLoading: loadingMethod === 'apple',
+  };
+}
+
 export function normalizeEmailAddress(value: string): string {
   return value.trim().toLowerCase();
 }

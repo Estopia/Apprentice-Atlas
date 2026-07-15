@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  getAppleControlPresentation,
+  getAuthNavigationPresentation,
   getEmailSubmissionState,
   submitEmailWhenValid,
 } from '../src/lib/auth-presentation';
@@ -60,5 +62,29 @@ describe('email magic-link presentation', () => {
     });
     expect(service).toHaveBeenCalledOnce();
     expect(service).toHaveBeenCalledWith('user@example.com');
+  });
+});
+
+describe('native auth presentation', () => {
+  it('uses one native header affordance without rendering a custom close control', () => {
+    expect(getAuthNavigationPresentation()).toEqual({
+      headerOptions: {
+        headerShown: true,
+        headerShadowVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+      },
+      rendersCustomClose: false,
+    });
+  });
+
+  it.each([
+    [null, false, false, false],
+    ['email', true, false, false],
+    ['apple', true, true, true],
+  ] as const)('derives Apple accessibility for loading method %s', (method, disabled, busy, announceLoading) => {
+    expect(getAppleControlPresentation(method)).toEqual({
+      accessibilityState: { disabled, busy },
+      announceLoading,
+    });
   });
 });

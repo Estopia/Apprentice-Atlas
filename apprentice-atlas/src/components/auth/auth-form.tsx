@@ -10,7 +10,11 @@ import {
   signInWithAppleIdToken,
   type AuthError,
 } from '@/lib/auth';
-import { getEmailSubmissionState, submitEmailWhenValid } from '@/lib/auth-presentation';
+import {
+  getAppleControlPresentation,
+  getEmailSubmissionState,
+  submitEmailWhenValid,
+} from '@/lib/auth-presentation';
 import { t, useLocale } from '@/lib/i18n';
 
 export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; redirectTo: string }) {
@@ -24,6 +28,7 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
   const emailSubmission = getEmailSubmissionState(email, Boolean(loadingMethod));
   const submitDisabled = !emailSubmission.canSubmit;
   const showInvalidEmail = emailTouched && email.trim().length > 0 && !emailSubmission.isValid;
+  const appleControl = getAppleControlPresentation(loadingMethod);
 
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
@@ -135,9 +140,10 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
             <Text style={styles.dividerText}>{t(locale, 'auth.or')}</Text>
             <View style={styles.dividerLine} />
           </View>
-          <View style={[{ pointerEvents: loadingMethod ? 'none' : 'auto' }, loadingMethod && styles.disabled]}>
+          <View pointerEvents={appleControl.accessibilityState.disabled ? 'none' : 'auto'} style={appleControl.accessibilityState.disabled && styles.disabled}>
             <AppleAuthentication.AppleAuthenticationButton
-              accessibilityLabel={t(locale, 'auth.apple')}
+              accessibilityLabel={t(locale, appleControl.announceLoading ? 'auth.working' : 'auth.apple')}
+              accessibilityState={appleControl.accessibilityState}
               buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
               cornerRadius={11}
@@ -145,6 +151,18 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
               style={styles.appleButton}
             />
           </View>
+          {appleControl.announceLoading && (
+            <View
+              accessible
+              accessibilityLabel={`${t(locale, 'auth.apple')}: ${t(locale, 'auth.working')}`}
+              accessibilityLiveRegion="assertive"
+              accessibilityRole="progressbar"
+              style={styles.appleLoading}
+            >
+              <ActivityIndicator color={Palette.blue} size="small" />
+              <Text style={styles.appleLoadingText}>{t(locale, 'auth.working')}</Text>
+            </View>
+          )}
         </>
       )}
     </View>
@@ -167,6 +185,8 @@ const styles = StyleSheet.create({
   dividerLine: { height: StyleSheet.hairlineWidth, flex: 1, backgroundColor: Palette.border },
   dividerText: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600' },
   appleButton: { width: '100%', height: 52 },
+  appleLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  appleLoadingText: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600' },
   pressed: { backgroundColor: Palette.bluePressed },
   disabled: { opacity: 0.55 },
 });
