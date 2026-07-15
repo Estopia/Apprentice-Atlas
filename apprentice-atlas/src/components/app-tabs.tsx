@@ -11,7 +11,7 @@ export default function AppTabs() {
       backgroundColor={Palette.white}
       iconColor={{ default: Palette.textSecondary, selected: Palette.blue }}
       indicatorColor={Palette.blueSoft}
-      minimizeBehavior="onScrollDown"
+      minimizeBehavior="never"
       labelStyle={{ default: { color: Palette.textSecondary }, selected: { color: Palette.blue, fontWeight: '700' } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>{t(locale, 'tabs.home')}</NativeTabs.Trigger.Label>

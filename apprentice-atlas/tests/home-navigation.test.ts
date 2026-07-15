@@ -14,6 +14,7 @@ describe('adaptive home navigation', () => {
       expect(source).toContain('name="favorites"');
       expect(source).toContain('name="atlas"');
     }
+    expect(nativeTabs).toContain('minimizeBehavior="never"');
   });
 
   it('keeps discovery in the map tab and accepts list handoff from search', () => {

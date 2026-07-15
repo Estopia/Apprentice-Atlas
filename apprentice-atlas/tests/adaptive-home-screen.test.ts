@@ -21,6 +21,13 @@ describe('adaptive home screen', () => {
     expect(home).toContain("pathname: '/application/[jobId]'");
   });
 
+  it('uses dense, useful home modules instead of isolated oversized cards', () => {
+    expect(home).toContain('SnapshotStrip');
+    expect(home).toContain('InterestRail');
+    expect(home).toContain('NearbyPreview');
+    expect(home).toContain('activeApplications.length');
+  });
+
   it('marks the initial content ready without waiting for the map tab', () => {
     expect(home).toContain('markDiscoveryReady');
     expect(home).toContain('if (!loading) markDiscoveryReady()');

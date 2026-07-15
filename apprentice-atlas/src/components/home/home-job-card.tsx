@@ -59,8 +59,8 @@ export function HomeJobCard({
 
 const styles = StyleSheet.create({
   card: {
-    minHeight: 238,
-    padding: 18,
+    minHeight: 214,
+    padding: 16,
     borderRadius: Radius.large,
     borderCurve: 'continuous',
     borderWidth: 1,
@@ -73,12 +73,12 @@ const styles = StyleSheet.create({
   iconTile: { width: 44, height: 44, borderRadius: 14, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   categoryPill: { maxWidth: '68%', minHeight: 30, justifyContent: 'center', borderRadius: 15, backgroundColor: Palette.surface, paddingHorizontal: 11 },
   categoryText: { color: Palette.textSecondary, fontSize: 12, fontWeight: '700' },
-  copy: { gap: 6, marginTop: 18 },
-  title: { minHeight: 50, color: Palette.text, fontSize: 20, lineHeight: 25, fontWeight: '800', letterSpacing: -0.3 },
+  copy: { gap: 5, marginTop: 14 },
+  title: { minHeight: 46, color: Palette.text, fontSize: 18, lineHeight: 23, fontWeight: '800', letterSpacing: -0.25 },
   company: { color: Palette.textSecondary, fontSize: 14, lineHeight: 19, fontWeight: '600' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 15 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 11 },
   meta: { flex: 1, color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
-  footer: { minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 14 },
+  footer: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 },
   jobType: { flex: 1, color: Palette.blueDark, fontSize: 13, fontWeight: '700' },
   openCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
