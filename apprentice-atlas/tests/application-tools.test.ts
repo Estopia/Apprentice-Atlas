@@ -127,6 +127,16 @@ describe('Task 3 native integration source contracts', () => {
     expect(saved).toMatch(/removeFavorite[\s\S]+result\.error[\s\S]+reconcileDeadlineReminder/);
   });
 
+  it('reconciles a removed application as untracked without blocking navigation', () => {
+    const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
+    const removeBlock = sheet.slice(sheet.indexOf('const remove = async'), sheet.indexOf('const openInterviewPicker'));
+
+    expect(removeBlock).toMatch(/result\.error[\s\S]+void reconcileApplicationRemovalReminder/);
+    expect(removeBlock).toMatch(/applicationStatus: null|reconcileApplicationRemovalReminder/);
+    expect(removeBlock).toMatch(/reconcileApplicationRemovalReminder[\s\S]+router\.back\(\)/);
+    expect(removeBlock).not.toMatch(/await reconcileApplicationRemovalReminder/);
+  });
+
   it('covers every favorite entry point through the shared favorite operations', () => {
     const favoritesSource = readFileSync('src/lib/favorites.ts', 'utf8');
     const addBlock = favoritesSource.slice(favoritesSource.indexOf('export async function addFavorite'), favoritesSource.indexOf('export async function removeFavorite'));

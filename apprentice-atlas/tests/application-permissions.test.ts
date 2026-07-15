@@ -28,6 +28,10 @@ describe('application tracker schema and permissions', () => {
     expect(sql).toMatch(/insert into public\.applications \(user_id, job_id, status, note, interview_at\)/i);
     expect(sql).toMatch(/jobs\.status = 'active'\s+and \(jobs\.expires_at is null or jobs\.expires_at > now\(\)\)/i);
     expect(sql).toMatch(/pg_advisory_xact_lock/i);
+    expect(sql).toMatch(/p_interview_at is distinct from tracked\.interview_at/i);
+    expect(sql.match(/p_interview_at <= now\(\)/gi)).toHaveLength(2);
+    expect(sql.match(/p_interview_at > now\(\) \+ interval '2 years'/gi)).toHaveLength(2);
+    expect(sql.match(/raise exception 'Interview date must be in the future and within two years' using errcode = '22023'/gi)).toHaveLength(2);
   });
 
   it('keeps application grants narrow and explicitly denies anonymous RPC execution', () => {
@@ -37,7 +41,8 @@ describe('application tracker schema and permissions', () => {
 
     expect(sql).toContain('revoke all on public.applications from authenticated;');
     expect(sql).toContain('grant select, delete on public.applications to authenticated;');
-    expect(sql).toContain('grant update (status, note, interview_at) on public.applications to authenticated;');
+    expect(sql).toContain('grant update (status, note) on public.applications to authenticated;');
+    expect(sql).not.toMatch(/grant update\s*\([^)]*interview_at[^)]*\)\s+on public\.applications to authenticated/i);
     expect(sql).not.toMatch(/grant update\s+on public\.applications to authenticated/i);
     expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text, timestamptz) from public;');
     expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text, timestamptz) from anon;');

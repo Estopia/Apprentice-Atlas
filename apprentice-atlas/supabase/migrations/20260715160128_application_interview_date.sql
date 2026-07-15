@@ -7,7 +7,7 @@ revoke all on public.applications from public;
 revoke all on public.applications from anon;
 revoke all on public.applications from authenticated;
 grant select, delete on public.applications to authenticated;
-grant update (status, note, interview_at) on public.applications to authenticated;
+grant update (status, note) on public.applications to authenticated;
 grant all on public.applications to service_role;
 revoke insert on public.applications from authenticated;
 
@@ -50,6 +50,12 @@ begin
     and job_id = p_job_id;
 
   if found then
+    if p_interview_at is not null
+      and p_interview_at is distinct from tracked.interview_at
+      and (p_interview_at <= now() or p_interview_at > now() + interval '2 years') then
+      raise exception 'Interview date must be in the future and within two years' using errcode = '22023';
+    end if;
+
     update public.applications
     set status = p_status,
         note = normalized_note,
@@ -58,6 +64,11 @@ begin
       and user_id = caller_id
     returning * into tracked;
     return tracked;
+  end if;
+
+  if p_interview_at is not null
+    and (p_interview_at <= now() or p_interview_at > now() + interval '2 years') then
+    raise exception 'Interview date must be in the future and within two years' using errcode = '22023';
   end if;
 
   select true into available

@@ -33,7 +33,37 @@ values
 
 set local role authenticated;
 do $$ begin perform set_config('request.jwt.claim.sub', '${userOne}', true); end $$;
-select status from public.upsert_application('${activeJob}', 'applied', 'First application');
+select status from public.upsert_application('${activeJob}', 'applied', 'First application', now() + interval '1 day');
+
+do $$
+begin
+  if has_column_privilege('authenticated', 'public.applications', 'interview_at', 'UPDATE') then
+    raise exception 'authenticated can directly update interview_at';
+  end if;
+  begin
+    update public.applications
+    set interview_at = now() + interval '2 days'
+    where user_id = '${userOne}' and job_id = '${activeJob}';
+    raise exception 'interview_at was directly mutable';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+do $$
+begin
+  begin
+    perform public.upsert_application('${activeJob}', 'interview', 'Past date', now() - interval '1 day');
+    raise exception 'changed past interview date was accepted';
+  exception when sqlstate '22023' then null;
+  end;
+  begin
+    perform public.upsert_application('${activeJob}', 'interview', 'Too distant', now() + interval '2 years 1 day');
+    raise exception 'overly distant interview date was accepted';
+  exception when sqlstate '22023' then null;
+  end;
+end;
+$$;
 
 do $$
 begin
@@ -69,10 +99,28 @@ $$;
 
 reset role;
 update public.jobs set status = 'expired' where id = '${activeJob}';
+update public.applications
+set interview_at = now() - interval '1 day'
+where user_id = '${userOne}' and job_id = '${activeJob}';
 
 set local role authenticated;
 do $$ begin perform set_config('request.jwt.claim.sub', '${userOne}', true); end $$;
-select status from public.upsert_application('${activeJob}', 'interview', 'Still editable');
+select status from public.upsert_application(
+  '${activeJob}',
+  'offer',
+  'Historical interview preserved',
+  (select interview_at from public.applications where user_id = '${userOne}' and job_id = '${activeJob}')
+);
+
+do $$
+begin
+  begin
+    perform public.upsert_application('${activeJob}', 'closed', 'Changed history', now() - interval '2 days');
+    raise exception 'arbitrary changed historical date was accepted';
+  exception when sqlstate '22023' then null;
+  end;
+end;
+$$;
 
 do $$ begin perform set_config('request.jwt.claim.sub', '${userTwo}', true); end $$;
 do $$
@@ -91,7 +139,8 @@ reset role;
 select json_build_object(
   'count', count(*),
   'status', max(status),
-  'note', max(note)
+  'note', max(note),
+  'historicalInterview', bool_and(interview_at < now())
 )::text
 from public.applications
 where user_id = '${userOne}' and job_id = '${activeJob}';
@@ -107,7 +156,12 @@ describe('upsert_application PostgreSQL integration', () => {
     }).trim().split('\n');
 
     expect(output.at(-3)).toBe('applied');
-    expect(output.at(-2)).toBe('interview');
-    expect(JSON.parse(output.at(-1)!)).toEqual({ count: 1, status: 'interview', note: 'Still editable' });
+    expect(output.at(-2)).toBe('offer');
+    expect(JSON.parse(output.at(-1)!)).toEqual({
+      count: 1,
+      status: 'offer',
+      note: 'Historical interview preserved',
+      historicalInterview: true,
+    });
   });
 });

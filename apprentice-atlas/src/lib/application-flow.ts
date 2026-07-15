@@ -98,6 +98,55 @@ export function confirmApplicationRemovalOnWeb(
   return true;
 }
 
+type ApplicationRemovalFavoriteResult = {
+  data: unknown | null;
+  error: unknown | null;
+};
+
+type ApplicationRemovalReminderInput = {
+  userId: string;
+  jobId: string;
+  deadlineAt: string | null;
+  title: string;
+  body: string;
+  getFavorite: (jobId: string) => Promise<ApplicationRemovalFavoriteResult>;
+  reconcile: (input: {
+    userId: string;
+    jobId: string;
+    deadlineAt: string | null;
+    applicationStatus: null;
+    saved: boolean;
+    title: string;
+    body: string;
+  }) => Promise<unknown>;
+};
+
+export async function reconcileApplicationRemovalReminder(
+  input: ApplicationRemovalReminderInput,
+): Promise<void> {
+  let saved = false;
+  try {
+    const favorite = await input.getFavorite(input.jobId);
+    saved = favorite.error === null && favorite.data !== null;
+  } catch {
+    // Unknown favorite state falls back to cancellation to avoid an orphaned reminder.
+  }
+
+  try {
+    await input.reconcile({
+      userId: input.userId,
+      jobId: input.jobId,
+      deadlineAt: input.deadlineAt,
+      applicationStatus: null,
+      saved,
+      title: input.title,
+      body: input.body,
+    });
+  } catch {
+    // Native reminder reconciliation is best effort and never changes persistence.
+  }
+}
+
 export function validatedPendingTrackJobId(params: {
   pendingAction?: unknown;
   jobId?: unknown;

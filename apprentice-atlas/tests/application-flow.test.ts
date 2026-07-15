@@ -9,6 +9,7 @@ import {
   deriveApplicationJourney,
   isCurrentWorkflowOperation,
   isApplicationDraftValid,
+  reconcileApplicationRemovalReminder,
   resolveApplicationSheetLoad,
   validatedPendingTrackJobId,
 } from '../src/lib/application-flow';
@@ -108,6 +109,66 @@ describe('application form helpers', () => {
     const accept = vi.fn(() => true);
     expect(confirmApplicationRemovalOnWeb(accept, 'Remove application?', 'This cannot be undone.', remove)).toBe(true);
     expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it('restores the official deadline reminder after removing an application that remains favorited', async () => {
+    const getFavorite = vi.fn(async () => ({ data: { jobId }, error: null }));
+    const reconcile = vi.fn(async () => ({ state: 'scheduled' }));
+
+    await expect(reconcileApplicationRemovalReminder({
+      userId: 'user-1',
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      title: 'Application deadline',
+      body: 'Three days remain.',
+      getFavorite,
+      reconcile,
+    })).resolves.toBeUndefined();
+
+    expect(getFavorite).toHaveBeenCalledWith(jobId);
+    expect(reconcile).toHaveBeenCalledWith({
+      userId: 'user-1',
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      applicationStatus: null,
+      saved: true,
+      title: 'Application deadline',
+      body: 'Three days remain.',
+    });
+  });
+
+  it('cancels the reminder after removal when the job is not favorited or favorite lookup fails', async () => {
+    for (const getFavorite of [
+      vi.fn(async () => ({ data: null, error: null })),
+      vi.fn(async () => { throw new Error('offline'); }),
+    ]) {
+      const reconcile = vi.fn(async () => ({ state: 'not-scheduled' }));
+      await reconcileApplicationRemovalReminder({
+        userId: 'user-1',
+        jobId,
+        deadlineAt: '2026-07-22T10:00:00.000Z',
+        title: 'Application deadline',
+        body: 'Three days remain.',
+        getFavorite,
+        reconcile,
+      });
+      expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({
+        applicationStatus: null,
+        saved: false,
+      }));
+    }
+  });
+
+  it('keeps reminder restoration best-effort when native reconciliation fails', async () => {
+    await expect(reconcileApplicationRemovalReminder({
+      userId: 'user-1',
+      jobId,
+      deadlineAt: '2026-07-22T10:00:00.000Z',
+      title: 'Application deadline',
+      body: 'Three days remain.',
+      getFavorite: vi.fn(async () => ({ data: { jobId }, error: null })),
+      reconcile: vi.fn(async () => { throw new Error('notifications unavailable'); }),
+    })).resolves.toBeUndefined();
   });
 });
 

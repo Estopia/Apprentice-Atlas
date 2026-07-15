@@ -24,6 +24,7 @@ import {
   isApplicationDraftValid,
   isValidApplicationJobId,
   normalizeInterviewDateSelection,
+  reconcileApplicationRemovalReminder,
   resolveApplicationSheetLoad,
 } from '@/lib/application-flow';
 import { buildCalendarEventPayload, openCalendarEventForm } from '@/lib/calendar-sync';
@@ -200,6 +201,17 @@ export default function ApplicationSheet() {
       return;
     }
     void successFeedback();
+    if (authUserId) {
+      const copy = buildDeadlineReminderCopy(locale, job?.title ?? t(locale, 'application.listingUnavailableTitle'));
+      void reconcileApplicationRemovalReminder({
+        userId: authUserId,
+        jobId: routeJobId,
+        deadlineAt: job?.expiresAt ?? null,
+        ...copy,
+        getFavorite: getFavoriteForJob,
+        reconcile: reconcileDeadlineReminder,
+      });
+    }
     router.back();
   };
 
