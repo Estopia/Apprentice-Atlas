@@ -122,5 +122,5 @@
 - [x] Run `npm test`, `npm run lint`, and `npx tsc --noEmit` from `apprentice-atlas`.
 - [x] Run `npx expo start --web --port 8092` and visually verify onboarding, map/list discovery, filters, detail, signed-out Saved, signed-out Atlas, and Auth at mobile viewports.
 - [x] Request final spec and code-quality review; resolve all critical and important findings.
-- [ ] Merge `codex/ui-ux-overhaul` into `main` locally.
-- [ ] Re-run the full verification suite on merged `main` and remove the owned worktree/branch.
+- [x] Merge `codex/ui-ux-overhaul` into `main` locally.
+- [x] Re-run the full verification suite on merged `main` and remove the owned worktree/branch.
