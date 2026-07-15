@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { CompanyBrandMark } from '@/components/company/company-brand-mark';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { hasMapPosition } from '@/lib/job-filters';
@@ -11,7 +12,7 @@ export function JobCard({ job, selected, onPress }: { job: Job; selected?: boole
   const location = `${job.city}, ${localizeCountry(locale, job.country)}`;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${job.title}, ${job.company}, ${location}`} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.row, selected && styles.selected, pressed && styles.pressed]}>
-      <View style={styles.logo}><Text style={styles.logoText}>{job.company.slice(0, 1).toUpperCase()}</Text></View>
+      <CompanyBrandMark company={job.company} size={52} />
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={2}>{job.title}</Text>
         <Text style={styles.company} numberOfLines={1}>{job.company}</Text>
@@ -30,8 +31,6 @@ const styles = StyleSheet.create({
   row: { minHeight: 108, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   selected: { backgroundColor: '#F8FAFF' },
   pressed: { opacity: 0.65 },
-  logo: { width: 46, height: 46, borderRadius: 11, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  logoText: { color: Palette.blue, fontSize: 18, fontWeight: '700' },
   copy: { flex: 1, minWidth: 0 },
   title: { color: Palette.text, fontSize: 16, lineHeight: 20, fontWeight: '700' },
   company: { color: Palette.text, fontSize: 14, marginTop: 3 },

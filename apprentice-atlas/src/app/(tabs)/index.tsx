@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { HomeJobCard } from '@/components/home/home-job-card';
+import { CompanyBrandMark } from '@/components/company/company-brand-mark';
 import { useLaunchReadiness } from '@/components/launch/launch-gate';
 import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { BottomTabInset, Palette, Radius } from '@/constants/theme';
@@ -215,7 +216,9 @@ function NextActionHero({ action, locale, onPress }: { action: AtlasNextAction; 
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.hero, pressed && styles.heroPressed]}>
       <View style={styles.heroTopRow}>
         <View style={styles.heroIcon}>
-          <AppIcon name={{ ios: 'arrow.triangle.branch', android: 'alt_route', web: 'alt_route' }} size={19} tintColor={Palette.white} />
+          {job
+            ? <CompanyBrandMark company={job.company} size={38} />
+            : <AppIcon name={{ ios: 'arrow.triangle.branch', android: 'alt_route', web: 'alt_route' }} size={19} tintColor={Palette.white} />}
         </View>
         <Text style={styles.heroEyebrow}>{t(locale, 'home.nextStep')}</Text>
       </View>
@@ -372,7 +375,7 @@ const styles = StyleSheet.create({
   hero: { minHeight: 188, borderRadius: 26, borderCurve: 'continuous', padding: 20, backgroundColor: Palette.blue, overflow: 'hidden' },
   heroPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  heroIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
+  heroIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)', overflow: 'hidden' },
   heroEyebrow: { color: 'rgba(255,255,255,0.78)', fontSize: 12, lineHeight: 17, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   heroTitle: { color: Palette.white, fontSize: 23, lineHeight: 28, fontWeight: '900', letterSpacing: -0.5 },
   heroTarget: { color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 20, marginTop: 7 },

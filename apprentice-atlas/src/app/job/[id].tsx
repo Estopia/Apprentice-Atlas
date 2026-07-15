@@ -3,6 +3,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CompanyBrandMark } from '@/components/company/company-brand-mark';
 import { AiExplanation } from '@/components/jobs/ai-explanation';
 import { JobQa } from '@/components/jobs/job-qa';
 import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
@@ -260,9 +261,14 @@ export default function JobDetailScreen() {
     <>
       <ScrollView style={styles.safe} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         <View style={styles.hero}>
-          <Text style={styles.jobType}>{localizeJobType(locale, job.jobType)} · {localizeJobLevel(locale, job.level)}</Text>
+          <View style={styles.heroBrandRow}>
+            <CompanyBrandMark company={job.company} size={54} />
+            <View style={styles.heroBrandCopy}>
+              <Text selectable style={styles.company}>{job.company}</Text>
+              <Text style={styles.jobType}>{localizeJobType(locale, job.jobType)} · {localizeJobLevel(locale, job.level)}</Text>
+            </View>
+          </View>
           <Text selectable style={styles.title}>{job.title}</Text>
-          <Text selectable style={styles.company}>{job.company}</Text>
           <View style={styles.heroLocation}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={16} tintColor={Palette.textSecondary} /><Text style={styles.heroLocationText}>{job.city}, {localizeCountry(locale, job.country)}</Text></View>
         </View>
 
@@ -386,9 +392,11 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Palette.white },
   content: { maxWidth: 720, width: '100%', alignSelf: 'center', paddingHorizontal: 18, paddingBottom: 120 },
   hero: { paddingTop: 8, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
-  jobType: { color: Palette.textSecondary, fontSize: 14, marginBottom: 7 },
+  heroBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 16 },
+  heroBrandCopy: { flex: 1, minWidth: 0, gap: 3 },
+  jobType: { color: Palette.textSecondary, fontSize: 13 },
   title: { color: Palette.text, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.5 },
-  company: { color: Palette.text, fontSize: 17, fontWeight: '600', marginTop: 9 },
+  company: { color: Palette.text, fontSize: 16, fontWeight: '700' },
   heroLocation: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 },
   heroLocationText: { color: Palette.textSecondary, fontSize: 14 },
   factsHeading: { color: Palette.text, fontSize: 15, fontWeight: '700', paddingTop: 18 },
