@@ -46,7 +46,7 @@ export function isSafeReturnPath(path: string | undefined): path is '/' | '/favo
     || path === '/favorites'
     || path === '/atlas'
     || path === '/settings'
-    || Boolean(path && new RegExp(`^/job/${uuidPattern}$`, 'i').test(path));
+    || Boolean(path && new RegExp(`^/(job|prepare)/${uuidPattern}$`, 'i').test(path));
 }
 
 export function validatedPendingSaveJobId(params: {

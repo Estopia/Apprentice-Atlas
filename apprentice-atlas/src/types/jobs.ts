@@ -63,6 +63,27 @@ export interface JobQuestionAnswer {
   generatedAt: string;
 }
 
+export interface InterviewPreparationQuestion {
+  question: string;
+  whyAsked: string;
+  answerTip: string;
+}
+
+export interface JobSkillGap {
+  matches: string[];
+  gaps: string[];
+  positioningTips: string[];
+}
+
+export interface JobPreparation {
+  jobId: string;
+  language: 'de' | 'en';
+  interviewQuestions: InterviewPreparationQuestion[];
+  skillGap: JobSkillGap;
+  generatedAt: string;
+  model?: string;
+}
+
 export interface FavoriteJob {
   id: string;
   userId: string;

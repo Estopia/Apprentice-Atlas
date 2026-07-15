@@ -122,6 +122,15 @@ export default function JobDetailScreen() {
     router.push({ pathname: '/application/[jobId]', params: { jobId: job.id } } as never);
   };
 
+  const openPreparation = () => {
+    if (!job || !isValidApplicationJobId(job.id)) return;
+    if (!auth.session) {
+      router.push({ pathname: '/auth', params: { returnTo: `/prepare/${job.id}` } });
+      return;
+    }
+    router.push({ pathname: '/prepare/[jobId]', params: { jobId: job.id } } as never);
+  };
+
   if (loading) return <State text={t(locale, 'loading.jobDetails')} locale={locale} />;
   if (error || !job) return <State text={error ?? t(locale, 'errors.jobNotFound')} locale={locale} back={() => router.back()} />;
   const sourceUrl = getOriginalListingUrl(job);
@@ -186,6 +195,21 @@ export default function JobDetailScreen() {
           <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={16} tintColor={Palette.textSecondary} />
         </Pressable>
         {applicationError && applicationJobId === job.id && <Text accessibilityRole="alert" style={styles.error}>{getReadableApplicationsError(applicationError, locale, 'load')}</Text>}
+
+        <Pressable
+          accessibilityLabel={t(locale, 'prepare.jobCtaTitle')}
+          accessibilityHint={t(locale, 'prepare.jobCtaBody')}
+          accessibilityRole="button"
+          onPress={openPreparation}
+          style={({ pressed }) => [styles.prepareCta, pressed && styles.pressed]}
+        >
+          <View style={styles.prepareCtaIcon}><AppIcon name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }} size={21} tintColor={Palette.white} /></View>
+          <View style={styles.prepareCtaCopy}>
+            <Text style={styles.prepareCtaTitle}>{t(locale, 'prepare.jobCtaTitle')}</Text>
+            <Text style={styles.prepareCtaBody}>{t(locale, 'prepare.jobCtaBody')}</Text>
+          </View>
+          <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={17} tintColor={Palette.white} />
+        </Pressable>
 
         <AiExplanation explanation={explanation} loading={aiLoading} error={aiError} />
         <JobQa jobId={job.id} />
@@ -258,6 +282,11 @@ const styles = StyleSheet.create({
   applicationJourneyCopy: { flex: 1, minWidth: 0, gap: 2 },
   applicationJourneyLabel: { color: Palette.text, fontSize: 14, fontWeight: '700' },
   applicationJourneyValue: { color: Palette.blue, fontSize: 13, fontWeight: '600' },
+  prepareCta: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.blue },
+  prepareCtaIcon: { width: 42, height: 42, borderRadius: 13, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
+  prepareCtaCopy: { flex: 1, minWidth: 0, gap: 3 },
+  prepareCtaTitle: { color: Palette.white, fontSize: 16, lineHeight: 21, fontWeight: '800' },
+  prepareCtaBody: { color: '#DCE8FF', fontSize: 13, lineHeight: 18 },
   originalSection: { paddingTop: 30, marginTop: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
   heading: { color: Palette.text, fontWeight: '700', fontSize: 21 },
   body: { color: Palette.text, lineHeight: 23, marginTop: 10, fontSize: 15 },

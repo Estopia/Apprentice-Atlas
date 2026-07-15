@@ -64,6 +64,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth" options={{ presentation: 'modal', headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="auth-callback" options={{ gestureEnabled: false }} />
         <Stack.Screen name="job/[id]" />
+        <Stack.Screen name="prepare/[jobId]" options={{ headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="settings" options={{ headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="legal/[document]" options={{ headerShown: true, headerShadowVisible: false }} />
         <Stack.Screen name="application/[jobId]" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.86, 1], sheetGrabberVisible: true, headerShown: true, headerShadowVisible: false, title: t(locale, 'application.sheetTitle'), contentStyle: { backgroundColor: Palette.surface } }} />

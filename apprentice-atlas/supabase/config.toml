@@ -1,0 +1,5 @@
+project_id = "apprentice-atlas"
+
+[functions.ai-prepare]
+# Authentication is performed inside the handler with auth.getUser(token).
+verify_jwt = false

@@ -88,9 +88,11 @@ export default function AtlasScreen() {
           <NextActionPanel
             action={nextAction}
             locale={locale}
-            onPress={() => nextAction.application
-              ? router.push({ pathname: '/application/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
-              : router.push('/')}
+            onPress={() => nextAction.kind === 'prepare-interview' && nextAction.application
+              ? router.push({ pathname: '/prepare/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
+              : nextAction.application
+                ? router.push({ pathname: '/application/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
+                : router.push('/')}
           />
           <ApplicationSection applications={groups.active} locale={locale} title={t(locale, 'atlas.activeApplications')} />
           <ProgressOverview locale={locale} summary={summary} />
@@ -122,7 +124,7 @@ function NextActionPanel({ action, locale, onPress }: { action: AtlasNextAction;
       <Text style={styles.nextBody}>{t(locale, `atlas.next.${key}Body`)}</Text>
       {action.application && <Text numberOfLines={2} style={styles.nextTarget}>{job?.title ?? t(locale, 'atlas.unavailable')}{job ? ` · ${job.company}` : ''}</Text>}
       <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-        <Text style={styles.primaryButtonText}>{t(locale, action.application ? 'atlas.next.openApplication' : 'atlas.next.discoverAction')}</Text>
+        <Text style={styles.primaryButtonText}>{t(locale, action.kind === 'prepare-interview' ? 'atlas.next.prepareAction' : action.application ? 'atlas.next.openApplication' : 'atlas.next.discoverAction')}</Text>
         <AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={17} tintColor={Palette.white} />
       </Pressable>
     </View>
