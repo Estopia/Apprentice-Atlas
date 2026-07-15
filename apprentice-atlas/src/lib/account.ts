@@ -18,6 +18,14 @@ export type AccountResult<T> = {
   cleanupWarning?: AccountCleanupWarning;
 };
 
+export async function retryAccountCleanup(warning: AccountCleanupWarning): Promise<'complete' | 'incomplete'> {
+  try {
+    return await warning.retry() ? 'complete' : 'incomplete';
+  } catch {
+    return 'incomplete';
+  }
+}
+
 export type AccountExport = {
   format: 'apprentice-atlas-account-export';
   version: 1;

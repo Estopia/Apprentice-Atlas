@@ -7,7 +7,7 @@ import { AppIcon, type AppIconName } from '@/components/ui/app-icon';
 import { Palette, Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { usePreferences } from '@/hooks/use-preferences';
-import { buildAccountExport, deleteAccount } from '@/lib/account';
+import { buildAccountExport, deleteAccount, retryAccountCleanup, type AccountCleanupWarning } from '@/lib/account';
 import { listApplications } from '@/lib/applications';
 import { listFavorites } from '@/lib/favorites';
 import { localizeCountry, t, useLocale } from '@/lib/i18n';
@@ -51,18 +51,50 @@ export default function SettingsScreen() {
     { text: t(locale, 'settings.cancel'), style: 'cancel' },
     { text: t(locale, 'settings.deleteConfirm'), style: 'destructive', onPress: () => void performDelete() },
   ]);
+  function continueAfterDelete(appleAccessNeedsRevocation: boolean) {
+    if (appleAccessNeedsRevocation) {
+      Alert.alert(t(locale, 'settings.appleRevokeTitle'), t(locale, 'settings.appleRevokeBody'), [
+        { text: t(locale, 'settings.done'), onPress: () => router.replace('/') },
+      ], { cancelable: false });
+      return;
+    }
+    router.replace('/');
+  }
+  function showCleanupWarning(cleanupWarning: AccountCleanupWarning, appleAccessNeedsRevocation: boolean, retryFailed = false) {
+    Alert.alert(
+      t(locale, 'settings.cleanupTitle'),
+      t(locale, retryFailed ? 'settings.cleanupRetryFailedBody' : 'settings.cleanupBody'),
+      [
+        { text: t(locale, 'settings.cleanupContinue'), style: 'cancel', onPress: () => continueAfterDelete(appleAccessNeedsRevocation) },
+        { text: t(locale, 'settings.cleanupRetry'), onPress: () => void retryCleanup(cleanupWarning, appleAccessNeedsRevocation) },
+      ],
+      { cancelable: false },
+    );
+  }
+  async function retryCleanup(cleanupWarning: AccountCleanupWarning, appleAccessNeedsRevocation: boolean) {
+    const outcome = await retryAccountCleanup(cleanupWarning);
+    if (outcome === 'incomplete') {
+      showCleanupWarning(cleanupWarning, appleAccessNeedsRevocation, true);
+      return;
+    }
+    Alert.alert(
+      t(locale, 'settings.cleanupSuccessTitle'),
+      t(locale, 'settings.cleanupSuccessBody'),
+      [{ text: t(locale, 'settings.cleanupContinue'), onPress: () => continueAfterDelete(appleAccessNeedsRevocation) }],
+      { cancelable: false },
+    );
+  }
   const performDelete = async () => {
     if (busy) return;
     setError(null); setBusy('delete');
     const result = await deleteAccount();
     if (result.error || !result.data) { setError(t(locale, 'settings.deleteError')); setBusy(null); return; }
-    if (result.data.appleAccessNeedsRevocation) {
-      Alert.alert(t(locale, 'settings.appleRevokeTitle'), t(locale, 'settings.appleRevokeBody'), [
-        { text: t(locale, 'settings.done'), onPress: () => router.replace('/') },
-      ]);
+    const appleAccessNeedsRevocation = result.data.appleAccessNeedsRevocation;
+    if (result.cleanupWarning) {
+      showCleanupWarning(result.cleanupWarning, appleAccessNeedsRevocation);
       return;
     }
-    router.replace('/');
+    continueAfterDelete(appleAccessNeedsRevocation);
   };
   const signOut = async () => {
     if (busy) return;
