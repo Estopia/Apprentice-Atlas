@@ -1,6 +1,5 @@
 import { router, Stack } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
@@ -14,7 +13,6 @@ const distances = [10, 25, 50, 100];
 
 export default function FiltersSheet() {
   const [locale] = useLocale();
-  const insets = useSafeAreaInsets();
   const { filters, sort } = useDiscoveryState();
   const activeEntries = getActiveFilterEntries(filters, sort);
   const update = (next: Partial<JobFilter>) => setDiscoveryFilters({ ...filters, ...next });
@@ -26,8 +24,8 @@ export default function FiltersSheet() {
   const hasCoordinates = hasCoordinateLocation(filters);
 
   return (
-    <View style={styles.screen}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         {activeEntries.length > 0 && (
           <View style={styles.summary}>
             <View style={styles.summaryHeader}>
@@ -97,19 +95,20 @@ export default function FiltersSheet() {
           <Choice active={sort === 'title'} label={t(locale, 'discovery.sortTitle')} onPress={() => updateLocation({ type: 'select-sort', sort: 'title' })} />
         </FilterSection>
       </ScrollView>
-
-      <Stack.Screen options={{ title: t(locale, 'discovery.filters') }} />
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <Pressable
-          accessibilityLabel={t(locale, 'discovery.showResults')}
-          accessibilityRole="button"
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.done, pressed && styles.pressed]}
-        >
-          <Text style={styles.doneText}>{t(locale, 'discovery.showResults')}</Text>
-        </Pressable>
-      </View>
-    </View>
+      <Stack.Screen options={{
+        title: t(locale, 'discovery.filters'),
+        headerRight: () => (
+          <Pressable
+            accessibilityLabel={t(locale, 'discovery.showResults')}
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.headerDone, pressed && styles.pressed]}
+          >
+            <Text style={styles.headerDoneText}>{t(locale, 'actions.done')}</Text>
+          </Pressable>
+        ),
+      }} />
+    </>
   );
 }
 
@@ -147,8 +146,7 @@ function Choice({ active, disabled, label, onPress }: { active: boolean; disable
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
-  scroll: { flex: 1 },
-  content: { width: '100%', maxWidth: 680, alignSelf: 'center', padding: 16, paddingBottom: 118, gap: 22 },
+  content: { flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center', padding: 16, paddingBottom: 36, gap: 22 },
   summary: { gap: 10, paddingBottom: 2 },
   summaryHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   summaryTitle: { color: Palette.text, fontSize: 16, fontWeight: '700' },
@@ -166,8 +164,7 @@ const styles = StyleSheet.create({
   choiceTextActive: { color: Palette.blue, fontWeight: '700' },
   choiceDisabled: { opacity: 0.38 },
   hint: { width: '100%', color: Palette.textSecondary, fontSize: 13, lineHeight: 18, paddingHorizontal: 2, paddingTop: 2 },
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: Palette.white, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
-  done: { minHeight: 52, width: '100%', maxWidth: 648, alignSelf: 'center', borderRadius: 14, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center' },
-  doneText: { color: Palette.white, fontSize: 17, fontWeight: '700' },
+  headerDone: { minWidth: 44, minHeight: 44, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  headerDoneText: { color: Palette.blue, fontSize: 16, fontWeight: '700' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
 });

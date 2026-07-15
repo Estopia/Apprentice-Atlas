@@ -81,11 +81,12 @@ describe('My Atlas quality contracts', () => {
     expect(screen).toMatch(/discovery\.showResults/);
   });
 
-  it('gives the native filter sheet scroll content explicit layout space', () => {
+  it('uses the ScrollView as the native form-sheet root instead of nesting it behind an absolute footer', () => {
     const screen = read('src/app/filters.tsx');
 
-    expect(screen).toContain('<ScrollView style={styles.scroll}');
-    expect(screen).toMatch(/scroll: \{ flex: 1 \}/);
+    expect(screen).toMatch(/return \(\s*<>\s*<ScrollView style=\{styles\.screen\}/);
+    expect(screen).toMatch(/content: \{ flexGrow: 1/);
+    expect(screen).not.toMatch(/footer: \{ position: 'absolute'/);
   });
 
   it('derives one deterministic, action-first recommendation from application progress', () => {
