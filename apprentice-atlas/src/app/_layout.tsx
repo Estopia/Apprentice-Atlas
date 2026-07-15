@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Palette } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
 import { hydrateLocale, t, useLocale } from '@/lib/i18n';
+import { registerLocalNotificationHandling } from '@/lib/deadline-reminders';
 import { getOnboardingGateParams } from '@/lib/onboarding-destination';
 import { loadPreferences } from '@/lib/preferences';
 
@@ -24,6 +25,23 @@ export default function RootLayout() {
 
   useEffect(() => {
     void Promise.all([loadPreferences(), hydrateLocale()]).then(() => setLocaleHydrated(true));
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let removeListener: (() => void) | undefined;
+
+    void registerLocalNotificationHandling((route) => router.push(route))
+      .then((remove) => {
+        if (disposed) remove();
+        else removeListener = remove;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      removeListener?.();
+    };
   }, []);
 
   useEffect(() => {
