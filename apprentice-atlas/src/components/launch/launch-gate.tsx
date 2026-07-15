@@ -140,6 +140,6 @@ function LaunchCover({ exiting, onAnimationComplete }: { exiting: boolean; onAni
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Palette.background },
   cover: { position: 'absolute', inset: 0, zIndex: 1000, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blue },
-  logoAnimation: { width: 154, aspectRatio: 463 / 621 },
-  logoAnimationWeb: { width: 154, height: 207 },
+  logoAnimation: { width: 77, aspectRatio: 463 / 621 },
+  logoAnimationWeb: { width: 77, height: 103.5 },
 });
