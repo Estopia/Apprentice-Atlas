@@ -14,7 +14,15 @@ export default function AppTabs() {
       minimizeBehavior="onScrollDown"
       labelStyle={{ default: { color: Palette.textSecondary }, selected: { color: Palette.blue, fontWeight: '700' } }}>
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>{t(locale, 'tabs.discover')}</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t(locale, 'tabs.home')}</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: 'house', selected: 'house.fill' }}
+          md={{ default: 'home', selected: 'home' }}
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="map">
+        <NativeTabs.Trigger.Label>{t(locale, 'tabs.map')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'map', selected: 'map.fill' }}
           md={{ default: 'map', selected: 'map' }}

@@ -12,7 +12,8 @@ export default function AppTabs() {
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
-          <TabTrigger name="index" href="/" asChild><TabButton icon="map">{t(locale, 'tabs.discover')}</TabButton></TabTrigger>
+          <TabTrigger name="index" href="/" asChild><TabButton icon="home">{t(locale, 'tabs.home')}</TabButton></TabTrigger>
+          <TabTrigger name="map" href="/map" asChild><TabButton icon="map">{t(locale, 'tabs.map')}</TabButton></TabTrigger>
           <TabTrigger name="favorites" href="/favorites" asChild><TabButton icon="bookmark">{t(locale, 'tabs.saved')}</TabButton></TabTrigger>
           <TabTrigger name="atlas" href="/atlas" asChild><TabButton icon="person">{t(locale, 'tabs.atlas')}</TabButton></TabTrigger>
         </CustomTabList>
@@ -21,8 +22,10 @@ export default function AppTabs() {
   );
 }
 
-function TabButton({ children, isFocused, icon, ...props }: TabTriggerSlotProps & { icon: 'map' | 'bookmark' | 'person' }) {
-  const iconName = icon === 'map'
+function TabButton({ children, isFocused, icon, ...props }: TabTriggerSlotProps & { icon: 'home' | 'map' | 'bookmark' | 'person' }) {
+  const iconName = icon === 'home'
+    ? { ios: 'house.fill', android: 'home', web: 'home' } as const
+    : icon === 'map'
     ? { ios: 'map.fill', android: 'map', web: 'map' } as const
     : icon === 'bookmark'
       ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' } as const

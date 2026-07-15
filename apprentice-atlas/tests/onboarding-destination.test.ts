@@ -11,6 +11,8 @@ const otherJobId = '22222222-2222-4222-8222-222222222222';
 describe('safe onboarding destinations', () => {
   it('preserves only exact Atlas and valid local job launch paths', () => {
     expect(getOnboardingGateParams('/atlas', {})).toEqual({ returnTo: '/atlas' });
+    expect(getOnboardingGateParams('/map', {})).toEqual({ returnTo: '/map' });
+    expect(getOnboardingGateParams('/search', {})).toEqual({ returnTo: '/search' });
     expect(getOnboardingGateParams(`/job/${jobId}`, {})).toEqual({ returnTo: `/job/${jobId}` });
     expect(getOnboardingGateParams('/job/not-a-uuid', {})).toEqual({});
     expect(getOnboardingGateParams('https://evil.test/steal', {})).toEqual({});

@@ -29,7 +29,7 @@ describe('map area search', () => {
 
   it('passes the complete native region through the map and wires it into area search', () => {
     const map = readFileSync('src/components/map/job-map.tsx', 'utf8');
-    const discovery = readFileSync('src/app/(tabs)/index.tsx', 'utf8');
+    const discovery = readFileSync('src/app/(tabs)/map.tsx', 'utf8');
     expect(map).toContain('onRegionChange?.(next)');
     expect(discovery).toContain('getMapAreaSearchFilters(filters, mapViewport)');
     expect(discovery).not.toMatch(/radiusKm: filters\.radiusKm \?\? 50/);

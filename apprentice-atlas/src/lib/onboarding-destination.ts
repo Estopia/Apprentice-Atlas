@@ -15,6 +15,8 @@ type RawOnboardingParams = {
 
 export type PostOnboardingDestination =
   | '/'
+  | '/map'
+  | '/search'
   | '/favorites'
   | '/atlas'
   | '/settings'

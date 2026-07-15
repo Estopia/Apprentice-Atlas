@@ -83,6 +83,7 @@ describe('auth route and readable errors', () => {
 
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${job.id}` })).toBe(job.id);
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/' })).toBe(job.id);
+    expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/map' })).toBe(job.id);
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: '/atlas' })).toBeNull();
     expect(validatedPendingSaveJobId({ pendingAction: 'save', jobId: job.id, returnTo: `/job/${otherJobId}` })).toBeNull();
     expect(validatedPendingSaveJobId({ pendingAction: 'track', jobId: job.id, returnTo: `/job/${job.id}` })).toBeNull();
