@@ -33,7 +33,7 @@ describe('normalizeJobLevel', () => {
 
 describe('cleanJobDescription', () => {
   it('removes common emphasis markers and preserves paragraphs and list lines', () => {
-    const raw = '**Build your future**\n\n- Learn *modern* tools\n* Work with __supportive__ mentors\n+ Grow _every_ day';
+    const raw = '**Build your future**\n\n- Learn *modern* tools\n* Work with __supportive mentors__\n+ Grow _every_ day';
 
     expect(cleanJobDescription(raw)).toBe(
       'Build your future\n\n• Learn modern tools\n• Work with supportive mentors\n• Grow every day',
@@ -50,6 +50,26 @@ describe('cleanJobDescription', () => {
     const raw = 'Use snake_case_names at https://example.com/a_b_c and calculate 2*3*4.\nKeep *unmatched, __open, and `unfinished.';
 
     expect(cleanJobDescription(raw)).toBe(raw);
+  });
+
+  it('preserves dunder identifiers and dunders inside raw URLs', () => {
+    const raw = 'Call __init__ before opening https://example.com/docs/__init__?next=__name__.';
+
+    expect(cleanJobDescription(raw)).toBe(raw);
+  });
+
+  it('renders escaped Markdown delimiters literally', () => {
+    const raw = 'Keep \\*literal\\*, \\_literal\\_, and \\~\\~literal\\~\\~ exactly.';
+
+    expect(cleanJobDescription(raw)).toBe('Keep *literal*, _literal_, and ~~literal~~ exactly.');
+  });
+
+  it('removes matched code fences and strikethrough markers while preserving content', () => {
+    const raw = 'Before\n\n```python\nclass Example:\n    def __init__(self):\n        return "2*3*4"\n```\n\nUse ~~legacy behavior~~ only when required.';
+
+    expect(cleanJobDescription(raw)).toBe(
+      'Before\n\nclass Example:\n    def __init__(self):\n        return "2*3*4"\n\nUse legacy behavior only when required.',
+    );
   });
 
   it('converts common block and inline Markdown conservatively', () => {
