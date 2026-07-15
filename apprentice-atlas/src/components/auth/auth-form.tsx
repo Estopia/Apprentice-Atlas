@@ -13,9 +13,11 @@ import {
 import {
   getAppleControlPresentation,
   getEmailSubmissionState,
+  resolveAppleAvailability,
   submitEmailWhenValid,
 } from '@/lib/auth-presentation';
 import { t, useLocale } from '@/lib/i18n';
+import { createSingleFlightGate } from '@/lib/single-flight-gate';
 
 export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; redirectTo: string }) {
   const [locale] = useLocale();
@@ -25,6 +27,7 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [loadingMethod, setLoadingMethod] = useState<'email' | 'apple' | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [actionGate] = useState(createSingleFlightGate);
   const emailSubmission = getEmailSubmissionState(email, Boolean(loadingMethod));
   const submitDisabled = !emailSubmission.canSubmit;
   const showInvalidEmail = emailTouched && email.trim().length > 0 && !emailSubmission.isValid;
@@ -33,29 +36,34 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     let active = true;
-    void AppleAuthentication.isAvailableAsync().then((available) => {
+    void resolveAppleAvailability(() => AppleAuthentication.isAvailableAsync()).then((available) => {
       if (active) setAppleAvailable(available);
     });
     return () => { active = false; };
   }, []);
 
   const submitEmail = async () => {
-    setEmailTouched(true);
-    if (loadingMethod || !emailSubmission.isValid) return;
-    setLoadingMethod('email');
-    setError(null);
-    setSentTo(null);
-    const submission = await submitEmailWhenValid(email, (normalizedEmail) => sendMagicLink(normalizedEmail, redirectTo));
-    if (submission.result?.error) setError(submission.result.error);
-    else if (submission.attempted) setSentTo(submission.normalizedEmail);
-    setLoadingMethod(null);
+    if (!emailSubmission.isValid) { setEmailTouched(true); return; }
+    if (!actionGate.tryAcquire()) return;
+    try {
+      setEmailTouched(true);
+      setLoadingMethod('email');
+      setError(null);
+      setSentTo(null);
+      const submission = await submitEmailWhenValid(email, (normalizedEmail) => sendMagicLink(normalizedEmail, redirectTo));
+      if (submission.result?.error) setError(submission.result.error);
+      else if (submission.attempted) setSentTo(submission.normalizedEmail);
+    } finally {
+      setLoadingMethod(null);
+      actionGate.release();
+    }
   };
 
   const submitApple = async () => {
-    if (loadingMethod) return;
-    setLoadingMethod('apple');
-    setError(null);
+    if (!actionGate.tryAcquire()) return;
     try {
+      setLoadingMethod('apple');
+      setError(null);
       const rawNonce = Crypto.randomUUID();
       const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
       const credential = await AppleAuthentication.signInAsync({
@@ -80,6 +88,7 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
       }
     } finally {
       setLoadingMethod(null);
+      actionGate.release();
     }
   };
 

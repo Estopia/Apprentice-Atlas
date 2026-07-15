@@ -27,6 +27,14 @@ export function getAppleControlPresentation(loadingMethod: AuthLoadingMethod) {
   };
 }
 
+export async function resolveAppleAvailability(check: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await check();
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeEmailAddress(value: string): string {
   return value.trim().toLowerCase();
 }

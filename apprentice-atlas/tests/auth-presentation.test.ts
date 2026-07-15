@@ -4,6 +4,7 @@ import {
   getAppleControlPresentation,
   getAuthNavigationPresentation,
   getEmailSubmissionState,
+  resolveAppleAvailability,
   submitEmailWhenValid,
 } from '../src/lib/auth-presentation';
 
@@ -62,6 +63,11 @@ describe('email magic-link presentation', () => {
     });
     expect(service).toHaveBeenCalledOnce();
     expect(service).toHaveBeenCalledWith('user@example.com');
+  });
+
+  it('treats a rejected Apple availability check as unavailable', async () => {
+    await expect(resolveAppleAvailability(async () => true)).resolves.toBe(true);
+    await expect(resolveAppleAvailability(async () => { throw new Error('native check failed'); })).resolves.toBe(false);
   });
 });
 

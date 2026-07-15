@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,8 +16,13 @@ import { Palette, Radius } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
 import { localizeCategory, t } from '@/lib/i18n';
 import { getPostOnboardingDestination } from '@/lib/onboarding-destination';
-import { shouldEnableOnboardingScroll } from '@/lib/onboarding-presentation';
+import {
+  beginOnboardingTransition,
+  getOnboardingLayoutMode,
+  shouldEnableOnboardingScroll,
+} from '@/lib/onboarding-presentation';
 import type { UserPreferences } from '@/lib/preferences';
+import { createSingleFlightGate } from '@/lib/single-flight-gate';
 
 const TOTAL_STEPS = 3;
 const INTERESTS = ['technology', 'business', 'skilled-trades', 'general'];
@@ -41,11 +47,13 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   initialPreferences: UserPreferences;
 }) {
   const insets = useSafeAreaInsets();
+  const { height, fontScale } = useWindowDimensions();
   const [draft, setDraft] = useState(initialPreferences);
   const [step, setStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [contentMeasurement, setContentMeasurement] = useState({ step: -1, height: 0 });
   const [viewportMeasurement, setViewportMeasurement] = useState({ width: 0, height: 0 });
+  const [transitionGate] = useState(createSingleFlightGate);
 
   const locale = draft.locale;
   const isValid = step === 0
@@ -54,11 +62,16 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
       ? draft.audience !== null
       : draft.interests.length > 0;
   const isEditing = initialPreferences.onboardingComplete;
+  const layoutMode = getOnboardingLayoutMode({ height, fontScale });
   const contentOverflows = contentMeasurement.step === step && shouldEnableOnboardingScroll({
     width: viewportMeasurement.width,
     contentHeight: contentMeasurement.height,
     viewportHeight: viewportMeasurement.height,
   });
+
+  useEffect(() => {
+    transitionGate.release();
+  }, [step, transitionGate]);
 
   const selectAudience = (audience: Audience) => setDraft((current) => ({ ...current, audience }));
   const selectCountry = (country: Country) => setDraft((current) => ({ ...current, country }));
@@ -70,33 +83,109 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   }));
 
   const continueFlow = async () => {
-    if (!isValid || isSaving) return;
-    if (step < TOTAL_STEPS - 1) {
-      setStep((current) => current + 1);
+    const transition = beginOnboardingTransition(transitionGate, {
+      step,
+      totalSteps: TOTAL_STEPS,
+      isValid,
+      isSaving,
+    });
+    if (transition.kind === 'blocked') return;
+    if (transition.kind === 'advance') {
+      setStep(transition.nextStep);
       return;
     }
     setIsSaving(true);
-    await complete(draft);
-    router.replace(getPostOnboardingDestination(continuationParams, isEditing) as never);
+    try {
+      await complete(draft);
+      router.replace(getPostOnboardingDestination(continuationParams, isEditing) as never);
+    } finally {
+      setIsSaving(false);
+      transitionGate.release();
+    }
   };
+
+  const stepContent = (
+    <OnboardingStepContent
+      draft={draft}
+      onAudience={selectAudience}
+      onCountry={selectCountry}
+      onInterest={toggleInterest}
+      onLocale={(nextLocale) => setDraft((current) => ({ ...current, locale: nextLocale }))}
+      step={step}
+    />
+  );
+  const header = (
+    <>
+      <View style={styles.topBar}>
+        <View style={styles.brandMark}>
+          <AppIcon name={{ ios: 'map.fill', android: 'map', web: 'map' }} size={22} tintColor={Palette.white} />
+        </View>
+        <Text style={styles.eyebrow}>{t(locale, 'onboarding.eyebrow')}</Text>
+        <Text style={styles.stepLabel}>{t(locale, 'onboarding.step')} {step + 1} {t(locale, 'onboarding.of')} {TOTAL_STEPS}</Text>
+      </View>
+      <View accessibilityLabel={`${t(locale, 'onboarding.step')} ${step + 1} ${t(locale, 'onboarding.of')} ${TOTAL_STEPS}`} style={styles.progress}>
+        {Array.from({ length: TOTAL_STEPS }, (_, index) => (
+          <View key={index} style={[styles.progressTrack, index <= step && styles.progressTrackActive]} />
+        ))}
+      </View>
+    </>
+  );
+  const footer = (
+    <View style={styles.footer}>
+      <View style={styles.footerActions}>
+        {step > 0 ? (
+          <Pressable accessibilityRole="button" onPress={() => setStep(Math.max(0, step - 1))} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+            <AppIcon name={{ ios: 'arrow.left', android: 'arrow_back', web: 'arrow_back' }} size={18} tintColor={Palette.blueDark} />
+            <Text style={styles.backButtonText}>{t(locale, 'onboarding.back')}</Text>
+          </Pressable>
+        ) : <View style={styles.backButtonPlaceholder} />}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !isValid || isSaving }}
+          disabled={!isValid || isSaving}
+          onPress={() => void continueFlow()}
+          style={({ pressed }) => [styles.continueButton, (!isValid || isSaving) && styles.buttonDisabled, pressed && styles.pressed]}
+        >
+          {isSaving ? <ActivityIndicator color={Palette.white} /> : (
+            <>
+              <Text style={styles.continueButtonText}>
+                {step === TOTAL_STEPS - 1
+                  ? t(locale, isEditing ? 'onboarding.save' : 'onboarding.finish')
+                  : t(locale, 'onboarding.continue')}
+              </Text>
+              <AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={18} tintColor={Palette.white} />
+            </>
+          )}
+        </Pressable>
+      </View>
+      <Text style={styles.privacy}>{step === TOTAL_STEPS - 1 ? t(locale, 'onboarding.editHint') : t(locale, 'onboarding.privacy')}</Text>
+    </View>
+  );
+
+  if (layoutMode === 'whole-page-scroll') {
+    return (
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.wholePageScrollContent,
+          { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) },
+        ]}
+        contentInsetAdjustmentBehavior="never"
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.page}>
+          {header}
+          <View style={styles.content}>{stepContent}</View>
+          {footer}
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.page, { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <View style={styles.topBar}>
-          <View style={styles.brandMark}>
-            <AppIcon name={{ ios: 'map.fill', android: 'map', web: 'map' }} size={22} tintColor={Palette.white} />
-          </View>
-          <Text style={styles.eyebrow}>{t(locale, 'onboarding.eyebrow')}</Text>
-          <Text style={styles.stepLabel}>{t(locale, 'onboarding.step')} {step + 1} {t(locale, 'onboarding.of')} {TOTAL_STEPS}</Text>
-        </View>
-
-        <View accessibilityLabel={`${t(locale, 'onboarding.step')} ${step + 1} ${t(locale, 'onboarding.of')} ${TOTAL_STEPS}`} style={styles.progress}>
-          {Array.from({ length: TOTAL_STEPS }, (_, index) => (
-            <View key={index} style={[styles.progressTrack, index <= step && styles.progressTrackActive]} />
-          ))}
-        </View>
-
+      <View style={[styles.page, styles.containedPage, { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {header}
         <ScrollView
           key={step}
           style={styles.contentViewport}
@@ -111,95 +200,61 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
           scrollEnabled={contentOverflows}
           showsVerticalScrollIndicator={contentOverflows}
         >
-          {step === 0 && (
-            <StepHeading title={t(locale, 'onboarding.countryLanguageTitle')} description={t(locale, 'onboarding.countryLanguageDescription')}>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t(locale, 'onboarding.language')}</Text>
-                <View style={styles.languageControl}>
-                  <LanguageChoice active={draft.locale === 'de'} label="Deutsch" onPress={() => setDraft((current) => ({ ...current, locale: 'de' }))} />
-                  <LanguageChoice active={draft.locale === 'en'} label="English" onPress={() => setDraft((current) => ({ ...current, locale: 'en' }))} />
-                </View>
-              </View>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t(locale, 'onboarding.country')}</Text>
-                <View style={styles.countryList}>
-                  <CountryChoice active={draft.country === 'Germany'} flag="🇩🇪" label={t(locale, 'onboarding.germany')} onPress={() => selectCountry('Germany')} />
-                  <CountryChoice active={draft.country === 'United Kingdom'} flag="🇬🇧" label={t(locale, 'onboarding.unitedKingdom')} onPress={() => selectCountry('United Kingdom')} />
-                </View>
-              </View>
-            </StepHeading>
-          )}
-
-          {step === 1 && (
-            <StepHeading title={t(locale, 'onboarding.audienceTitle')} description={t(locale, 'onboarding.audienceDescription')}>
-              <View style={styles.cardList}>
-                <ChoiceCard
-                  active={draft.audience === 'student'}
-                  description={t(locale, 'onboarding.studentDescription')}
-                  icon={{ ios: 'graduationcap.fill', android: 'school', web: 'school' }}
-                  label={t(locale, 'onboarding.student')}
-                  onPress={() => selectAudience('student')}
-                />
-                <ChoiceCard
-                  active={draft.audience === 'dropout'}
-                  description={t(locale, 'onboarding.dropoutDescription')}
-                  icon={{ ios: 'arrow.triangle.branch', android: 'route', web: 'route' }}
-                  label={t(locale, 'onboarding.dropout')}
-                  onPress={() => selectAudience('dropout')}
-                />
-              </View>
-            </StepHeading>
-          )}
-
-          {step === 2 && (
-            <StepHeading title={t(locale, 'onboarding.interestsTitle')} description={t(locale, 'onboarding.interestsDescription')}>
-              <View style={styles.interestGrid}>
-                {INTERESTS.map((interest) => (
-                  <InterestCard
-                    key={interest}
-                    active={draft.interests.includes(interest)}
-                    interest={interest}
-                    label={localizeCategory(locale, interest)}
-                    onPress={() => toggleInterest(interest)}
-                  />
-                ))}
-              </View>
-            </StepHeading>
-          )}
-
+          {stepContent}
         </ScrollView>
-
-        <View style={styles.footer}>
-          <View style={styles.footerActions}>
-            {step > 0 ? (
-              <Pressable accessibilityRole="button" onPress={() => setStep((current) => current - 1)} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-                <AppIcon name={{ ios: 'arrow.left', android: 'arrow_back', web: 'arrow_back' }} size={18} tintColor={Palette.blueDark} />
-                <Text style={styles.backButtonText}>{t(locale, 'onboarding.back')}</Text>
-              </Pressable>
-            ) : <View style={styles.backButtonPlaceholder} />}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !isValid || isSaving }}
-              disabled={!isValid || isSaving}
-              onPress={() => void continueFlow()}
-              style={({ pressed }) => [styles.continueButton, (!isValid || isSaving) && styles.buttonDisabled, pressed && styles.pressed]}
-            >
-              {isSaving ? <ActivityIndicator color={Palette.white} /> : (
-                <>
-                  <Text style={styles.continueButtonText}>
-                    {step === TOTAL_STEPS - 1
-                      ? t(locale, isEditing ? 'onboarding.save' : 'onboarding.finish')
-                      : t(locale, 'onboarding.continue')}
-                  </Text>
-                  <AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={18} tintColor={Palette.white} />
-                </>
-              )}
-            </Pressable>
-          </View>
-          <Text style={styles.privacy}>{step === TOTAL_STEPS - 1 ? t(locale, 'onboarding.editHint') : t(locale, 'onboarding.privacy')}</Text>
-        </View>
+        {footer}
       </View>
     </View>
+  );
+}
+
+function OnboardingStepContent({ draft, onAudience, onCountry, onInterest, onLocale, step }: {
+  draft: UserPreferences;
+  onAudience: (audience: Audience) => void;
+  onCountry: (country: Country) => void;
+  onInterest: (interest: string) => void;
+  onLocale: (locale: UserPreferences['locale']) => void;
+  step: number;
+}) {
+  const locale = draft.locale;
+  return (
+    <>
+      {step === 0 && (
+        <StepHeading title={t(locale, 'onboarding.countryLanguageTitle')} description={t(locale, 'onboarding.countryLanguageDescription')}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>{t(locale, 'onboarding.language')}</Text>
+            <View style={styles.languageControl}>
+              <LanguageChoice active={draft.locale === 'de'} label="Deutsch" onPress={() => onLocale('de')} />
+              <LanguageChoice active={draft.locale === 'en'} label="English" onPress={() => onLocale('en')} />
+            </View>
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>{t(locale, 'onboarding.country')}</Text>
+            <View style={styles.countryList}>
+              <CountryChoice active={draft.country === 'Germany'} flag="🇩🇪" label={t(locale, 'onboarding.germany')} onPress={() => onCountry('Germany')} />
+              <CountryChoice active={draft.country === 'United Kingdom'} flag="🇬🇧" label={t(locale, 'onboarding.unitedKingdom')} onPress={() => onCountry('United Kingdom')} />
+            </View>
+          </View>
+        </StepHeading>
+      )}
+      {step === 1 && (
+        <StepHeading title={t(locale, 'onboarding.audienceTitle')} description={t(locale, 'onboarding.audienceDescription')}>
+          <View style={styles.cardList}>
+            <ChoiceCard active={draft.audience === 'student'} description={t(locale, 'onboarding.studentDescription')} icon={{ ios: 'graduationcap.fill', android: 'school', web: 'school' }} label={t(locale, 'onboarding.student')} onPress={() => onAudience('student')} />
+            <ChoiceCard active={draft.audience === 'dropout'} description={t(locale, 'onboarding.dropoutDescription')} icon={{ ios: 'arrow.triangle.branch', android: 'route', web: 'route' }} label={t(locale, 'onboarding.dropout')} onPress={() => onAudience('dropout')} />
+          </View>
+        </StepHeading>
+      )}
+      {step === 2 && (
+        <StepHeading title={t(locale, 'onboarding.interestsTitle')} description={t(locale, 'onboarding.interestsDescription')}>
+          <View style={styles.interestGrid}>
+            {INTERESTS.map((interest) => (
+              <InterestCard key={interest} active={draft.interests.includes(interest)} interest={interest} label={localizeCategory(locale, interest)} onPress={() => onInterest(interest)} />
+            ))}
+          </View>
+        </StepHeading>
+      )}
+    </>
   );
 }
 
@@ -259,7 +314,9 @@ function SelectionIndicator({ active }: { active: boolean }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Palette.white },
-  page: { width: '100%', maxWidth: 620, alignSelf: 'center', flex: 1, paddingHorizontal: 20 },
+  wholePageScrollContent: { flexGrow: 1 },
+  page: { width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: 20 },
+  containedPage: { flex: 1 },
   topBar: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandMark: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blue },
   eyebrow: { flex: 1, color: Palette.blueDark, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
