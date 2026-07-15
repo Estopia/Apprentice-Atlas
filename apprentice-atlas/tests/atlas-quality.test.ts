@@ -64,6 +64,15 @@ describe('My Atlas quality contracts', () => {
     expect(screen).not.toMatch(/invokeSignOut|getReadableAuthError|saved\.account|auth\.signOut/);
   });
 
+  it('prevents an older focus refresh from restoring an optimistically removed favorite', () => {
+    const screen = read('src/app/(tabs)/favorites.tsx');
+
+    expect(screen).toMatch(/const listRevisionRef = useRef\(0\)/);
+    expect(screen).toMatch(/const listRevision = \+\+listRevisionRef\.current/);
+    expect(screen).toMatch(/listRevision !== listRevisionRef\.current/);
+    expect(screen).toMatch(/const remove = async[\s\S]+listRevisionRef\.current \+= 1/);
+  });
+
   it('keeps language out of discovery filters and uses an honest results action', () => {
     const screen = read('src/app/filters.tsx');
 

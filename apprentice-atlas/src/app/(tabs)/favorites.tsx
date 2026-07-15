@@ -21,6 +21,7 @@ export default function FavoritesScreen() {
   const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set());
   const pendingOperationIdsRef = useRef(new Set<string>());
+  const listRevisionRef = useRef(0);
   const userId = auth.session?.user.id ?? null;
   const [ownership, setOwnership] = useState(() => createFavoriteOwnership(userId));
   let currentOwnership = ownership;
@@ -43,6 +44,7 @@ export default function FavoritesScreen() {
     void refreshAttempt;
     let active = true;
     const operationKey = ownershipKey;
+    const listRevision = ++listRevisionRef.current;
     setFavorites([]);
     setError(null);
     setLoadedForOwnershipKey(null);
@@ -53,7 +55,7 @@ export default function FavoritesScreen() {
         .map((operationId) => operationId.slice(operationPrefix.length)),
     ));
     void listFavorites().then((result) => {
-      if (!active || !isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
+      if (!active || listRevision !== listRevisionRef.current || !isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
       setFavorites(result.data ?? []);
       setError(result.error);
       setErrorOperation('save');
@@ -69,11 +71,14 @@ export default function FavoritesScreen() {
     if (!operationKey || loadedForOwnershipKey !== operationKey) return;
     const operationId = `${operationKey}\u0000${favorite.jobId}`;
     if (pendingOperationIdsRef.current.has(operationId)) return;
+    listRevisionRef.current += 1;
+    setLoadedForOwnershipKey(operationKey);
     pendingOperationIdsRef.current.add(operationId);
     setPendingJobIds((current) => new Set(current).add(favorite.jobId));
     setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
     setError(null);
     const result = await removeFavorite(favorite.jobId);
+    listRevisionRef.current += 1;
     pendingOperationIdsRef.current.delete(operationId);
     if (!isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
     setPendingJobIds((current) => {
