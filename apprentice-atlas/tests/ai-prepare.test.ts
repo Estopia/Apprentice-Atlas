@@ -171,7 +171,12 @@ describe('authenticated AI preparation Edge Function', () => {
     expect(result.status).toBe(200);
     expect(await result.json()).toMatchObject({ jobId, language: 'en', ...output, model: 'gpt-5.6' });
     const providerRequest = providerBody as unknown as Record<string, any>;
-    expect(providerRequest).toMatchObject({ model: 'gpt-5.6', store: false, max_output_tokens: expect.any(Number) });
+    expect(providerRequest).toMatchObject({
+      model: 'gpt-5.6',
+      store: false,
+      max_output_tokens: 1800,
+      reasoning: { effort: 'none' },
+    });
     expect(providerRequest.text.format).toMatchObject({ type: 'json_schema', strict: true, schema: { additionalProperties: false } });
     expect(providerRequest.input).toContain('Web apprentice');
     expect(providerRequest.input).not.toContain('Forged title');
@@ -264,6 +269,11 @@ describe('authenticated AI preparation Edge Function', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('allows enough time for a structured GPT-5.6 response while staying below the Edge Function limit', () => {
+    expect(OPENAI_TIMEOUT_MS).toBeGreaterThanOrEqual(60_000);
+    expect(OPENAI_TIMEOUT_MS).toBeLessThan(120_000);
   });
 
   it('keeps the timeout active while consuming a stalled provider response body', async () => {

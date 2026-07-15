@@ -28,8 +28,8 @@ export type PrepareDeps = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const JOB_COLUMNS = 'id,title,company,country,city,job_type,level,category,tags,raw_description,requirements,status,expires_at';
-const MAX_OUTPUT_TOKENS = 2200;
-export const OPENAI_TIMEOUT_MS = 20_000;
+const MAX_OUTPUT_TOKENS = 1800;
+export const OPENAI_TIMEOUT_MS = 60_000;
 const model = (deps: PrepareDeps) => deps.env('OPENAI_MODEL') || 'gpt-5.6';
 
 const toPromptJob = (job: Record<string, unknown>): PromptJob => ({
@@ -145,6 +145,7 @@ export function createPrepareHandler(deps: PrepareDeps) {
             model: model(deps),
             store: false,
             max_output_tokens: MAX_OUTPUT_TOKENS,
+            reasoning: { effort: 'none' },
             instructions: prompt.instructions,
             input: prompt.input,
             text: { format: { type: 'json_schema', name: 'job_preparation', strict: true, schema: preparationJsonSchema } },

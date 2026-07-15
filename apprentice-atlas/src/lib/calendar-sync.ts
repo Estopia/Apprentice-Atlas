@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export type CalendarEventKind = 'deadline' | 'interview';
 
 export interface CalendarJobDates {
@@ -41,10 +43,7 @@ export async function openCalendarEventForm(payload: CalendarEventPayload): Prom
   if (process.env.EXPO_OS === 'web') return false;
 
   try {
-    const [{ Platform }, Calendar] = await Promise.all([
-      import('react-native'),
-      import('expo-calendar'),
-    ]);
+    const Calendar = await import('expo-calendar');
     if (Platform.OS === 'ios') {
       const permission = await Calendar.requestCalendarPermissions(
         supportsWriteOnlyCalendarAccess(Platform.Version),

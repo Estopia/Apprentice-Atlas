@@ -329,6 +329,13 @@ describe('calendar event payloads', () => {
     expect(nativeState.requestCalendarPermissions).toHaveBeenCalledWith(true);
     expect(nativeState.createEventInCalendarAsync).toHaveBeenCalledWith(payload);
   });
+
+  it('does not dynamically enumerate every React Native export on iOS', () => {
+    const source = readFileSync('src/lib/calendar-sync.ts', 'utf8');
+
+    expect(source).toContain("import { Platform } from 'react-native';");
+    expect(source).not.toContain("import('react-native')");
+  });
 });
 
 describe('calendar native configuration', () => {
