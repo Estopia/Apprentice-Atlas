@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
-import { getReadableAuthError, type AuthError } from '@/lib/auth';
-import { buildComparisonRows, getReadableFavoritesError, invokeSignOut, isFavoritesLoading, listFavorites, optimisticFavoriteState, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
-import { localizeCountry, localizeJobType, t, useLocale } from '@/lib/i18n';
+import { buildComparisonRows, getReadableFavoritesError, isFavoritesLoading, listFavorites, optimisticFavoriteState, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
+import { localizeCountry, localizeJobType, t, useLocale, type Locale } from '@/lib/i18n';
 import type { FavoriteJob } from '@/types/jobs';
 
 export default function FavoritesScreen() {
@@ -18,8 +17,8 @@ export default function FavoritesScreen() {
   const [favorites, setFavorites] = useState<FavoriteJob[]>([]);
   const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
   const [error, setError] = useState<FavoritesError | null>(null);
-  const [signOutError, setSignOutError] = useState<AuthError | null>(null);
-  const [signOutBusy, setSignOutBusy] = useState(false);
+  const [errorOperation, setErrorOperation] = useState<'save' | 'remove'>('save');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const userId = auth.session?.user.id ?? null;
   const loading = isFavoritesLoading(auth.loading, userId, loadedForUserId);
   const currentFavorites = loadedForUserId === userId ? favorites : [];
@@ -28,125 +27,201 @@ export default function FavoritesScreen() {
   useEffect(() => {
     if (auth.loading || !userId) return;
     let mounted = true;
-    void listFavorites().then((result) => { if (!mounted) return; setFavorites(result.data ?? []); setError(result.error); setLoadedForUserId(userId); });
+    void listFavorites().then((result) => {
+      if (!mounted) return;
+      setFavorites(result.data ?? []);
+      setError(result.error);
+      setErrorOperation('save');
+      setLoadedForUserId(userId);
+    });
     return () => { mounted = false; };
-  }, [auth.loading, userId]);
+  }, [auth.loading, loadAttempt, userId]);
 
   const remove = async (favorite: FavoriteJob) => {
     const previous = favorites;
-    setFavorites(optimisticFavoriteState(previous, favorite, 'remove')); setError(null);
+    setFavorites(optimisticFavoriteState(previous, favorite, 'remove'));
+    setError(null);
     const result = await removeFavorite(favorite.jobId);
-    if (result.error) { setFavorites(rollbackFavoriteState(previous)); setError(result.error); }
+    if (result.error) {
+      setFavorites(rollbackFavoriteState(previous));
+      setError(result.error);
+      setErrorOperation('remove');
+    }
   };
 
-  const handleSignOut = async () => {
-    setSignOutError(null); setSignOutBusy(true);
-    const result = await invokeSignOut(auth.signOut);
-    if (result.error) setSignOutError(result.error as AuthError);
-    setSignOutBusy(false);
+  const retry = () => {
+    setError(null);
+    setLoadedForUserId(null);
+    setLoadAttempt((attempt) => attempt + 1);
   };
 
-  if (loading) return <State text={t(locale, 'saved.loading')} />;
-  if (!auth.session) return <State text={t(locale, 'saved.description')} action={t(locale, 'saved.signIn')} onPress={() => router.push('/auth')} />;
-  const mappedError = currentError ? getReadableFavoritesError(currentError, locale, 'save') : null;
+  const mappedError = currentError ? getReadableFavoritesError(currentError, locale, errorOperation) : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
         <View style={styles.header}>
           <Text style={styles.title}>{t(locale, 'saved.title')}</Text>
-          {currentFavorites.length > 0 && <Text style={styles.savedCountText}>{currentFavorites.length}</Text>}
+          <Text accessibilityLabel={`${t(locale, 'saved.title')}: ${currentFavorites.length}`} style={styles.savedCountText}>{currentFavorites.length}</Text>
         </View>
-        <View style={styles.account}>
-          <View style={styles.avatar}><Text style={styles.avatarText}>{(auth.user?.email ?? 'A').slice(0, 1).toUpperCase()}</Text></View>
-          <View style={styles.accountCopy}><Text style={styles.accountEmail} numberOfLines={1}>{auth.user?.email ?? ''}</Text><Text style={styles.accountLabel}>{t(locale, 'saved.account')}</Text></View>
-          <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'auth.signOut')} accessibilityState={{ disabled: signOutBusy }} disabled={signOutBusy} onPress={() => void handleSignOut()} style={styles.signOut}><Text style={styles.signOutText}>{signOutBusy ? t(locale, 'auth.signingOut') : t(locale, 'auth.signOut')}</Text></Pressable>
-        </View>
-        {signOutError && <Text accessibilityRole="alert" style={styles.error}>{getReadableAuthError(signOutError, locale)}</Text>}
-        {mappedError && <Text accessibilityRole="alert" style={styles.error}>{mappedError}</Text>}
-        {!currentFavorites.length && currentError ? <State text={mappedError ?? t(locale, 'saved.errorLoad')} action={t(locale, 'discovery.retry')} onPress={() => router.replace('/favorites')} /> : !currentFavorites.length ? <EmptySaved locale={locale} onPress={() => router.push('/')} /> : <View style={styles.cards}>{currentFavorites.map((favorite) => <FavoriteCard key={favorite.id} favorite={favorite} onRemove={() => void remove(favorite)} onOpen={() => favorite.job && router.push(`/job/${favorite.job.id}`)} locale={locale} />)}</View>}
-        {currentFavorites.length > 1 && <Comparison favorites={currentFavorites} locale={locale} />}
+
+        {loading ? (
+          <SavedState loading text={t(locale, 'saved.loading')} />
+        ) : !auth.session ? (
+          <SavedState
+            action={t(locale, 'saved.signIn')}
+            icon={{ ios: 'person.crop.circle.badge.plus', android: 'person_add', web: 'person_add' }}
+            onPress={() => router.push('/auth')}
+            text={t(locale, 'saved.description')}
+            title={t(locale, 'saved.signedOutTitle')}
+          />
+        ) : currentError && currentFavorites.length === 0 ? (
+          <SavedState
+            action={t(locale, 'discovery.retry')}
+            error
+            icon={{ ios: 'arrow.clockwise.circle', android: 'refresh', web: 'refresh' }}
+            onPress={retry}
+            text={mappedError ?? t(locale, 'saved.errorLoad')}
+          />
+        ) : currentFavorites.length === 0 ? (
+          <EmptySaved locale={locale} onPress={() => router.push('/')} />
+        ) : (
+          <>
+            {mappedError && <Text accessibilityRole="alert" style={styles.error}>{mappedError}</Text>}
+            <View style={styles.cards}>
+              {currentFavorites.map((favorite) => (
+                <FavoriteCard
+                  key={favorite.id}
+                  favorite={favorite}
+                  locale={locale}
+                  onOpen={() => favorite.job && router.push(`/job/${favorite.job.id}`)}
+                  onRemove={() => void remove(favorite)}
+                />
+              ))}
+            </View>
+            {currentFavorites.length > 1 && <Comparison favorites={currentFavorites} locale={locale} />}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function FavoriteCard({ favorite, onRemove, onOpen, locale }: { favorite: FavoriteJob; onRemove: () => void; onOpen: () => void; locale: 'de' | 'en' }) {
+function FavoriteCard({ favorite, onRemove, onOpen, locale }: { favorite: FavoriteJob; onRemove: () => void; onOpen: () => void; locale: Locale }) {
   const job = favorite.job;
   const archived = t(locale, 'saved.archived');
   return (
     <View style={styles.card}>
-      <Pressable accessibilityRole="button" accessibilityLabel={job?.title ?? t(locale, 'saved.unavailable')} accessibilityState={{ disabled: !job }} disabled={!job} onPress={onOpen} style={styles.cardOpen}>
+      <Pressable
+        accessibilityLabel={job?.title ?? t(locale, 'saved.unavailable')}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !job }}
+        disabled={!job}
+        onPress={onOpen}
+        style={({ pressed }) => [styles.cardOpen, pressed && styles.pressed]}
+      >
         <View style={styles.cardIcon}><Text style={styles.cardIconText}>{(job?.company ?? '?').slice(0, 1).toUpperCase()}</Text></View>
-        <View style={styles.cardCopy}><Text style={styles.cardTitle} numberOfLines={2}>{job?.title ?? t(locale, 'saved.unavailable')}</Text><Text style={styles.company} numberOfLines={1}>{job?.company ?? archived}</Text><View style={styles.metaRow}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={14} tintColor={Palette.textSecondary} /><Text style={styles.meta} numberOfLines={1}>{job ? `${job.city}, ${localizeCountry(locale, job.country)} · ${localizeJobType(locale, job.jobType)}` : archived}</Text></View><Text style={styles.date}>{job?.sourceName ?? archived} · {new Date(job?.lastSeenAt || favorite.createdAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text></View>
+        <View style={styles.cardCopy}>
+          <Text numberOfLines={2} style={styles.cardTitle}>{job?.title ?? t(locale, 'saved.unavailable')}</Text>
+          <Text numberOfLines={1} style={styles.company}>{job?.company ?? archived}</Text>
+          <View style={styles.metaRow}>
+            <AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={15} tintColor={Palette.textSecondary} />
+            <Text numberOfLines={1} style={styles.meta}>{job ? `${job.city}, ${localizeCountry(locale, job.country)} · ${localizeJobType(locale, job.jobType)}` : archived}</Text>
+          </View>
+          <Text style={styles.date}>{job?.sourceName ?? archived} · {new Date(job?.lastSeenAt || favorite.createdAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text>
+        </View>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'saved.remove')} onPress={onRemove} style={({ pressed }) => [styles.remove, pressed && styles.pressed]}><AppIcon name={{ ios: 'bookmark.slash', android: 'bookmark_remove', web: 'bookmark_remove' }} size={18} tintColor={Palette.blue} /></Pressable>
+      <Pressable
+        accessibilityLabel={`${t(locale, 'saved.remove')}: ${job?.title ?? t(locale, 'saved.unavailable')}`}
+        accessibilityRole="button"
+        onPress={onRemove}
+        style={({ pressed }) => [styles.remove, pressed && styles.pressed]}
+      >
+        <AppIcon name={{ ios: 'bookmark.slash', android: 'bookmark_remove', web: 'bookmark_remove' }} size={19} tintColor={Palette.blue} />
+      </Pressable>
     </View>
   );
 }
 
-function Comparison({ favorites, locale }: { favorites: FavoriteJob[]; locale: 'de' | 'en' }) {
-  return <View style={styles.compare}><View style={styles.compareHeading}><Text style={styles.heading}>{t(locale, 'saved.compare')}</Text><AppIcon name={{ ios: 'square.split.2x1', android: 'compare', web: 'compare' }} size={18} tintColor={Palette.textSecondary} /></View>{buildComparisonRows(favorites, locale).map((row) => <View key={row.label} style={styles.compareRow}><Text style={styles.compareLabel}>{row.label}</Text><View style={styles.compareValues}>{row.values.map((value, index) => <Text key={`${row.label}-${index}`} style={styles.compareValue}>{value}</Text>)}</View></View>)}</View>;
+function Comparison({ favorites, locale }: { favorites: FavoriteJob[]; locale: Locale }) {
+  return (
+    <View style={styles.compare}>
+      <View style={styles.compareHeading}><Text style={styles.heading}>{t(locale, 'saved.compare')}</Text><AppIcon name={{ ios: 'square.split.2x1', android: 'compare', web: 'compare' }} size={18} tintColor={Palette.textSecondary} /></View>
+      {buildComparisonRows(favorites, locale).map((row) => (
+        <View key={row.label} style={styles.compareRow}>
+          <Text style={styles.compareLabel}>{row.label}</Text>
+          <View style={styles.compareValues}>{row.values.map((value, index) => <Text key={`${row.label}-${index}`} style={styles.compareValue}>{value}</Text>)}</View>
+        </View>
+      ))}
+    </View>
+  );
 }
 
-function State({ text, action, onPress }: { text: string; action?: string; onPress?: () => void }) {
-  return <View style={styles.state}><AppIcon name={{ ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={38} tintColor={Palette.blue} /><Text accessibilityRole="alert" style={styles.stateCopy}>{text}</Text>{action && onPress && <Pressable accessibilityRole="button" accessibilityLabel={action} onPress={onPress} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Text style={styles.actionText}>{action}</Text></Pressable>}</View>;
+function SavedState({ action, error, icon, loading, onPress, text, title }: { action?: string; error?: boolean; icon?: Parameters<typeof AppIcon>[0]['name']; loading?: boolean; onPress?: () => void; text: string; title?: string }) {
+  return (
+    <View accessibilityRole={error ? 'alert' : undefined} style={styles.state}>
+      {loading ? <ActivityIndicator color={Palette.blue} /> : <AppIcon name={icon ?? { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={38} tintColor={Palette.blue} />}
+      {title && <Text style={styles.stateTitle}>{title}</Text>}
+      <Text style={styles.stateCopy}>{text}</Text>
+      {action && onPress && (
+        <Pressable accessibilityLabel={action} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
+          <Text style={styles.actionText}>{action}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
 }
 
-function EmptySaved({ locale, onPress }: { locale: 'de' | 'en'; onPress: () => void }) {
-  return <View style={styles.emptyState}>
-    <View style={styles.emptyIcon}><View style={styles.emptyIconInset}><AppIcon name={{ ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }} size={31} tintColor={Palette.blue} /></View><View style={styles.emptyDot}><AppIcon name={{ ios: 'plus', android: 'add', web: 'add' }} size={13} tintColor={Palette.white} /></View></View>
-    <Text style={styles.emptyTitle}>{t(locale, 'saved.emptyTitle')}</Text>
-    <Text style={styles.emptyCopy}>{t(locale, 'saved.emptyHint')}</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'saved.emptyAction')} onPress={onPress} style={({ pressed }) => [styles.emptyAction, pressed && styles.pressed]}><Text style={styles.emptyActionText}>{t(locale, 'saved.emptyAction')}</Text><AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={17} tintColor={Palette.white} /></Pressable>
-  </View>;
+function EmptySaved({ locale, onPress }: { locale: Locale; onPress: () => void }) {
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIcon}><AppIcon name={{ ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }} size={38} tintColor={Palette.blue} /></View>
+      <Text style={styles.emptyTitle}>{t(locale, 'saved.emptyTitle')}</Text>
+      <Text style={styles.emptyCopy}>{t(locale, 'saved.emptyHint')}</Text>
+      <Pressable accessibilityLabel={t(locale, 'saved.emptyAction')} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.emptyAction, pressed && styles.pressed]}>
+        <Text style={styles.emptyActionText}>{t(locale, 'saved.emptyAction')}</Text>
+        <AppIcon name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }} size={17} tintColor={Palette.white} />
+      </Pressable>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Palette.background },
+  safe: { flex: 1, backgroundColor: Palette.white },
   content: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 120 },
-  header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { color: Palette.text, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.5 },
-  savedCountText: { color: Palette.textSecondary, fontSize: 17, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  account: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, padding: 10, marginBottom: 8, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.surface },
-  avatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: Palette.blue, fontSize: 16, fontWeight: '700' },
-  accountCopy: { flex: 1, minWidth: 0 },
-  accountLabel: { color: Palette.textSecondary, fontSize: 12, marginTop: 2 },
-  accountEmail: { color: Palette.text, fontWeight: '600', fontSize: 15 },
-  signOut: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' },
-  signOutText: { color: Palette.blue, fontWeight: '600', fontSize: 13 },
+  header: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { color: Palette.text, fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -0.5 },
+  savedCountText: { minWidth: 32, color: Palette.textSecondary, fontSize: 17, fontWeight: '700', textAlign: 'right', fontVariant: ['tabular-nums'] },
   cards: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
-  card: { minHeight: 108, backgroundColor: Palette.white, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border, paddingVertical: 14, flexDirection: 'row', alignItems: 'center' },
-  cardOpen: { flex: 1, minHeight: 82, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  card: { minHeight: 112, backgroundColor: Palette.white, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border, paddingVertical: 14, flexDirection: 'row', alignItems: 'center' },
+  cardOpen: { flex: 1, minHeight: 84, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   cardIcon: { width: 46, height: 46, borderRadius: 12, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   cardIconText: { color: Palette.blue, fontSize: 18, fontWeight: '700' },
   cardCopy: { flex: 1, minWidth: 0 },
-  cardTitle: { color: Palette.text, fontSize: 17, lineHeight: 21, fontWeight: '700' },
-  company: { color: Palette.text, fontWeight: '500', marginTop: 4, fontSize: 13 },
+  cardTitle: { color: Palette.text, fontSize: 17, lineHeight: 22, fontWeight: '700' },
+  company: { color: Palette.text, fontWeight: '500', marginTop: 3, fontSize: 13 },
   metaRow: { flexDirection: 'row', gap: 4, alignItems: 'center', marginTop: 6 },
-  meta: { flex: 1, color: Palette.textSecondary, fontSize: 12 },
-  date: { color: Palette.textSecondary, marginTop: 7, fontSize: 10 },
+  meta: { flex: 1, color: Palette.textSecondary, fontSize: 13 },
+  date: { color: Palette.textSecondary, marginTop: 6, fontSize: 13, lineHeight: 18 },
   remove: { width: 44, height: 44, minHeight: 44, minWidth: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  compare: { backgroundColor: Palette.surface, borderRadius: 14, paddingHorizontal: 16, marginTop: 24 },
+  compare: { marginTop: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
   compareHeading: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heading: { color: Palette.text, fontSize: 18, fontWeight: '700' },
-  compareRow: { borderTopWidth: 1, borderTopColor: Palette.border, paddingVertical: 12 },
-  compareLabel: { color: Palette.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 7 },
+  compareRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border, paddingVertical: 12 },
+  compareLabel: { color: Palette.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 7 },
   compareValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   compareValue: { flex: 1, minWidth: 120, color: Palette.text, fontSize: 13, lineHeight: 18 },
-  state: { width: '100%', minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
-  stateCopy: { color: Palette.textSecondary, textAlign: 'center', maxWidth: 360, lineHeight: 21 },
-  emptyState: { minHeight: 390, alignItems: 'center', paddingHorizontal: 28, paddingTop: 72 },
-  emptyIcon: { width: 92, height: 92, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
-  emptyIconInset: { width: 78, height: 78, borderRadius: 26, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-5deg' }] },
-  emptyDot: { position: 'absolute', right: 2, bottom: 5, width: 28, height: 28, borderRadius: 14, backgroundColor: Palette.blue, borderWidth: 3, borderColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { color: Palette.text, fontSize: 24, lineHeight: 29, fontWeight: '700', letterSpacing: -0.4, textAlign: 'center' },
-  emptyCopy: { color: Palette.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 310, marginTop: 9 },
-  emptyAction: { minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blue, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 24 },
+  state: { width: '100%', minHeight: 330, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
+  stateTitle: { color: Palette.text, fontSize: 21, lineHeight: 26, fontWeight: '700', textAlign: 'center' },
+  stateCopy: { color: Palette.textSecondary, fontSize: 15, textAlign: 'center', maxWidth: 360, lineHeight: 22 },
+  emptyState: { minHeight: 380, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  emptyIcon: { width: 76, height: 76, borderRadius: 24, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  emptyTitle: { color: Palette.text, fontSize: 23, lineHeight: 28, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center' },
+  emptyCopy: { color: Palette.textSecondary, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 310, marginTop: 8 },
+  emptyAction: { minHeight: 50, borderRadius: 14, backgroundColor: Palette.blue, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 22 },
   emptyActionText: { color: Palette.white, fontSize: 16, fontWeight: '700' },
-  action: { minHeight: 48, backgroundColor: Palette.blue, borderRadius: 14, paddingHorizontal: 18, justifyContent: 'center' },
-  actionText: { color: Palette.white, fontWeight: '700' },
-  pressed: { opacity: 0.68 },
-  error: { color: Palette.danger, marginBottom: 10, fontWeight: '700' },
+  action: { minHeight: 48, backgroundColor: Palette.blue, borderRadius: 14, paddingHorizontal: 18, justifyContent: 'center', marginTop: 8 },
+  actionText: { color: Palette.white, fontSize: 15, fontWeight: '700' },
+  pressed: { opacity: 0.7, transform: [{ scale: 0.98 }] },
+  error: { color: Palette.danger, marginBottom: 10, fontSize: 13, lineHeight: 18, fontWeight: '700' },
 });

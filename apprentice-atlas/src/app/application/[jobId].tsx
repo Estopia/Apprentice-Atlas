@@ -21,7 +21,7 @@ import {
   isValidApplicationJobId,
   resolveApplicationSheetLoad,
 } from '@/lib/application-flow';
-import { localizeApplicationStatus, t, useLocale } from '@/lib/i18n';
+import { localizeApplicationStatus, t, useLocale, type TranslationKey } from '@/lib/i18n';
 import { getJob } from '@/lib/jobs';
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
 
@@ -211,25 +211,37 @@ export default function ApplicationSheet() {
 
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>{t(locale, 'application.status')}</Text>
-            <View style={styles.group} accessibilityRole="radiogroup">
+            <View style={styles.journey} accessibilityRole="radiogroup">
               {APPLICATION_STATUSES.map((candidate, index) => {
                 const selected = status === candidate;
+                const selectedIndex = APPLICATION_STATUSES.indexOf(status);
+                const completed = index < selectedIndex;
                 const label = localizeApplicationStatus(locale, candidate);
+                const hint = t(locale, `application.statusHint.${candidate}` as TranslationKey);
                 return (
                   <Pressable
                     key={candidate}
                     accessibilityLabel={label}
+                    accessibilityHint={hint}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: selected, disabled: busy }}
                     disabled={busy}
                     onPress={() => { setStatus(candidate); setError(null); }}
-                    style={({ pressed }) => [styles.statusRow, index < APPLICATION_STATUSES.length - 1 && styles.divider, selected && styles.statusSelected, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.statusRow, pressed && styles.pressed]}
                   >
-                    <View style={[styles.radio, selected && styles.radioSelected]}>
-                      {selected && <View style={styles.radioDot} />}
+                    <View style={styles.stepRail}>
+                      {index < APPLICATION_STATUSES.length - 1 && <View style={[styles.stepLine, completed && styles.stepLineComplete]} />}
+                      <View style={[styles.stepCircle, (selected || completed) && styles.stepCircleActive]}>
+                        {completed
+                          ? <AppIcon name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={14} tintColor={Palette.white} />
+                          : <Text style={[styles.stepNumber, selected && styles.stepNumberActive]}>{index + 1}</Text>}
+                      </View>
                     </View>
-                    <Text style={[styles.statusText, selected && styles.statusTextSelected]}>{label}</Text>
-                    {selected && <AppIcon name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={17} tintColor={Palette.blue} />}
+                    <View style={styles.statusCopy}>
+                      <Text style={[styles.statusText, selected && styles.statusTextSelected]}>{label}</Text>
+                      <Text style={styles.statusHint}>{hint}</Text>
+                    </View>
+                    {selected && <View style={styles.currentPill}><Text style={styles.currentPillText}>{t(locale, 'application.current')}</Text></View>}
                   </Pressable>
                 );
               })}
@@ -298,34 +310,40 @@ function StatePanel({ action, loading, message, onPress }: { action?: string; lo
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Palette.surface },
+  screen: { flex: 1, backgroundColor: Palette.white },
   content: { flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 56 },
   form: { gap: 18 },
-  jobContext: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white },
+  jobContext: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border, backgroundColor: Palette.white },
   jobIcon: { width: 44, height: 44, borderRadius: 14, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
   jobCopy: { flex: 1, minWidth: 0, gap: 3 },
   jobTitle: { color: Palette.text, fontSize: 16, lineHeight: 21, fontWeight: '700' },
   jobCompany: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   privateHint: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
-  privateHintText: { flex: 1, color: Palette.textSecondary, fontSize: 12, lineHeight: 17 },
+  privateHintText: { flex: 1, color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   error: { color: Palette.danger, fontSize: 13, lineHeight: 18, fontWeight: '600', paddingHorizontal: 4 },
   section: { gap: 8 },
   sectionLabel: { color: Palette.text, fontSize: 14, fontWeight: '700', paddingHorizontal: 4 },
   labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  counter: { color: Palette.textSecondary, fontSize: 12, fontVariant: ['tabular-nums'] },
+  counter: { color: Palette.textSecondary, fontSize: 13, fontVariant: ['tabular-nums'] },
   counterInvalid: { color: Palette.danger, fontWeight: '700' },
-  group: { overflow: 'hidden', borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white },
-  statusRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: Palette.white },
-  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
-  statusSelected: { backgroundColor: Palette.blueSoft },
-  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: Palette.border, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.white },
-  radioSelected: { borderColor: Palette.blue },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Palette.blue },
-  statusText: { flex: 1, color: Palette.text, fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  journey: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: Palette.border, paddingVertical: 4 },
+  statusRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, backgroundColor: Palette.white },
+  stepRail: { width: 30, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  stepLine: { position: 'absolute', top: 34, bottom: -34, width: 2, backgroundColor: Palette.border },
+  stepLineComplete: { backgroundColor: Palette.blue },
+  stepCircle: { zIndex: 1, width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: Palette.border, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
+  stepCircleActive: { borderColor: Palette.blue, backgroundColor: Palette.blue },
+  stepNumber: { color: Palette.textSecondary, fontSize: 13, fontWeight: '700' },
+  stepNumberActive: { color: Palette.white },
+  statusCopy: { flex: 1, minWidth: 0, gap: 2 },
+  statusText: { color: Palette.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
   statusTextSelected: { color: Palette.blue },
+  statusHint: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
+  currentPill: { minHeight: 28, borderRadius: 14, backgroundColor: Palette.blueSoft, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
+  currentPillText: { color: Palette.blue, fontSize: 13, fontWeight: '700' },
   noteInput: { minHeight: 126, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white, color: Palette.text, fontSize: 15, lineHeight: 21, padding: 14 },
   noteInputInvalid: { borderColor: Palette.danger },
-  validationError: { color: Palette.danger, fontSize: 12, lineHeight: 17, paddingHorizontal: 4 },
+  validationError: { color: Palette.danger, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
   saveButton: { minHeight: 52, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 18 },
   saveText: { color: Palette.white, fontSize: 16, fontWeight: '700' },
   removeButton: { minHeight: 48, borderRadius: 16, borderCurve: 'continuous', borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 18 },
