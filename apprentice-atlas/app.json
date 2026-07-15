@@ -92,7 +92,8 @@
         "ACCESS_FINE_LOCATION"
       ],
       "blockedPermissions": [
-        "android.permission.READ_CALENDAR"
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "web": {
@@ -106,7 +107,7 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": false,
+          "calendarPermission": "Apprentice Atlas accesses your calendar only to add application deadlines and interview dates.",
           "writeOnlyCalendarPermission": "Apprentice Atlas adds application deadlines and interview dates to your calendar.",
           "remindersPermission": false,
           "writeOnlyAccess": true

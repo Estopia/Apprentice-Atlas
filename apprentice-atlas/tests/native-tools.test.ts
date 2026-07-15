@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const nativeState = vi.hoisted(() => ({
   storage: new Map<string, string>(),
   cancelScheduledNotificationAsync: vi.fn(async () => undefined),
   scheduleNotificationAsync: vi.fn(async () => 'new-notification-id'),
+  requestCalendarPermissions: vi.fn(async () => ({ granted: true })),
+  createEventInCalendarAsync: vi.fn(async () => ({ action: 'saved', id: 'event-id' })),
+  platformVersion: 17 as string | number,
 }));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -24,8 +28,24 @@ vi.mock('expo-notifications', () => ({
   setNotificationChannelAsync: async () => undefined,
 }));
 
-import { buildCalendarEventPayload } from '../src/lib/calendar-sync';
+vi.mock('expo-calendar', () => ({
+  requestCalendarPermissions: nativeState.requestCalendarPermissions,
+}));
+
+vi.mock('expo-calendar/legacy', () => ({
+  createEventInCalendarAsync: nativeState.createEventInCalendarAsync,
+}));
+
+vi.mock('react-native', () => ({
+  Platform: {
+    OS: 'ios',
+    get Version() { return nativeState.platformVersion; },
+  },
+}));
+
+import { buildCalendarEventPayload, openCalendarEventForm } from '../src/lib/calendar-sync';
 import {
+  cancelDeadlineReminder,
   getDeadlineReminderDate,
   parseNotificationJobRoute,
   scheduleDeadlineReminder,
@@ -33,6 +53,27 @@ import {
 import { shouldRequestAppReview } from '../src/lib/review-prompt';
 
 const jobId = '11111111-1111-4111-8111-111111111111';
+const userId = '22222222-2222-4222-8222-222222222222';
+const reminderStorageKey = `apprentice-atlas:deadline-reminder:${userId}:${jobId}`;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((fulfill) => { resolve = fulfill; });
+  return { promise, resolve };
+}
+
+const nextTick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+function reminderInput(title: string) {
+  return {
+    userId,
+    jobId,
+    deadlineAt: '2026-07-22T10:00:00.000Z',
+    title,
+    body: 'Three days remain.',
+    now: new Date('2026-07-15T10:00:00.000Z'),
+  };
+}
 
 describe('app review eligibility', () => {
   it('allows the first successful non-offer to offer transition for an app version', () => {
@@ -77,22 +118,54 @@ describe('deadline reminders', () => {
   });
 
   it('removes a canceled identifier when replacement scheduling fails', async () => {
-    const userId = '22222222-2222-4222-8222-222222222222';
-    const storageKey = `apprentice-atlas:deadline-reminder:${userId}:${jobId}`;
-    nativeState.storage.set(storageKey, 'old-notification-id');
+    nativeState.storage.set(reminderStorageKey, 'old-notification-id');
     nativeState.scheduleNotificationAsync.mockRejectedValueOnce(new Error('scheduling unavailable'));
 
-    await expect(scheduleDeadlineReminder({
-      userId,
-      jobId,
-      deadlineAt: '2026-07-22T10:00:00.000Z',
-      title: 'Deadline soon',
-      body: 'Three days remain.',
-      now,
-    })).resolves.toBeNull();
+    await expect(scheduleDeadlineReminder(reminderInput('Deadline soon'))).resolves.toBeNull();
 
     expect(nativeState.cancelScheduledNotificationAsync).toHaveBeenCalledWith('old-notification-id');
-    expect(nativeState.storage.has(storageKey)).toBe(false);
+    expect(nativeState.storage.has(reminderStorageKey)).toBe(false);
+  });
+
+  it('serializes two schedules so the first notification cannot be orphaned', async () => {
+    const firstNativeSchedule = deferred<string>();
+    nativeState.scheduleNotificationAsync
+      .mockImplementationOnce(() => firstNativeSchedule.promise)
+      .mockResolvedValueOnce('notification-2');
+
+    const firstSchedule = scheduleDeadlineReminder(reminderInput('First deadline'));
+    await vi.waitFor(() => expect(nativeState.scheduleNotificationAsync).toHaveBeenCalledTimes(1));
+
+    const secondSchedule = scheduleDeadlineReminder(reminderInput('Updated deadline'));
+    await nextTick();
+    expect(nativeState.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+
+    firstNativeSchedule.resolve('notification-1');
+    await expect(firstSchedule).resolves.toBe('notification-1');
+    await expect(secondSchedule).resolves.toBe('notification-2');
+
+    expect(nativeState.cancelScheduledNotificationAsync).toHaveBeenCalledWith('notification-1');
+    expect(nativeState.storage.get(reminderStorageKey)).toBe('notification-2');
+  });
+
+  it('serializes cancellation behind an in-flight schedule', async () => {
+    const nativeSchedule = deferred<string>();
+    nativeState.scheduleNotificationAsync.mockImplementationOnce(() => nativeSchedule.promise);
+
+    const schedule = scheduleDeadlineReminder(reminderInput('Deadline soon'));
+    await vi.waitFor(() => expect(nativeState.scheduleNotificationAsync).toHaveBeenCalledTimes(1));
+
+    let cancelSettled = false;
+    const cancel = cancelDeadlineReminder(userId, jobId).finally(() => { cancelSettled = true; });
+    await nextTick();
+    expect(cancelSettled).toBe(false);
+
+    nativeSchedule.resolve('notification-1');
+    await expect(schedule).resolves.toBe('notification-1');
+    await expect(cancel).resolves.toBe(true);
+
+    expect(nativeState.cancelScheduledNotificationAsync).toHaveBeenCalledWith('notification-1');
+    expect(nativeState.storage.has(reminderStorageKey)).toBe(false);
   });
 });
 
@@ -117,6 +190,12 @@ describe('calendar event payloads', () => {
     contactEmail: 'invented@example.test',
   };
 
+  beforeEach(() => {
+    vi.stubEnv('EXPO_OS', 'ios');
+    nativeState.requestCalendarPermissions.mockClear();
+    nativeState.createEventInCalendarAsync.mockClear();
+  });
+
   it('uses the official listing deadline for deadline events', () => {
     const payload = buildCalendarEventPayload('deadline', job);
 
@@ -136,5 +215,44 @@ describe('calendar event payloads', () => {
     });
     expect(buildCalendarEventPayload('interview', { ...job, interviewAt: null })).toBeNull();
     expect(buildCalendarEventPayload('deadline', { ...job, deadlineAt: null })).toBeNull();
+  });
+
+  it('requests legacy calendar authorization on iOS 16 before opening the form', async () => {
+    nativeState.platformVersion = '16.7';
+    const payload = buildCalendarEventPayload('deadline', job)!;
+
+    await expect(openCalendarEventForm(payload)).resolves.toBe(true);
+
+    expect(nativeState.requestCalendarPermissions).toHaveBeenCalledWith(false);
+    expect(nativeState.createEventInCalendarAsync).toHaveBeenCalledWith(payload);
+  });
+
+  it('requests write-only calendar authorization on iOS 17 and newer', async () => {
+    nativeState.platformVersion = 17;
+    const payload = buildCalendarEventPayload('interview', job)!;
+
+    await expect(openCalendarEventForm(payload)).resolves.toBe(true);
+
+    expect(nativeState.requestCalendarPermissions).toHaveBeenCalledWith(true);
+    expect(nativeState.createEventInCalendarAsync).toHaveBeenCalledWith(payload);
+  });
+});
+
+describe('calendar native configuration', () => {
+  it('supports legacy iOS authorization and blocks all Android calendar permissions', () => {
+    const config = JSON.parse(readFileSync('app.json', 'utf8')).expo;
+    const calendarPlugin = config.plugins.find(
+      (plugin: unknown) => Array.isArray(plugin) && plugin[0] === 'expo-calendar',
+    );
+
+    expect(calendarPlugin?.[1]).toMatchObject({
+      calendarPermission: expect.stringContaining('application deadlines and interview dates'),
+      writeOnlyCalendarPermission: expect.stringContaining('application deadlines and interview dates'),
+      writeOnlyAccess: true,
+    });
+    expect(config.android.blockedPermissions).toEqual(expect.arrayContaining([
+      'android.permission.READ_CALENDAR',
+      'android.permission.WRITE_CALENDAR',
+    ]));
   });
 });

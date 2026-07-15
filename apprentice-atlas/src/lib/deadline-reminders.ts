@@ -12,6 +12,7 @@ const APPLIED_STATUSES: ReadonlySet<ApplicationStatus> = new Set([
   'offer',
   'closed',
 ]);
+const reminderOperationQueues = new Map<string, Promise<void>>();
 
 export type NotificationJobRoute = `/job/${string}`;
 
@@ -50,6 +51,21 @@ function reminderStorageKey(userId: string, jobId: string): string | null {
   return `${REMINDER_STORAGE_PREFIX}:${userId}:${jobId}`;
 }
 
+function serializeReminderOperation<T>(storageKey: string, operation: () => Promise<T>): Promise<T> {
+  const previous = reminderOperationQueues.get(storageKey) ?? Promise.resolve();
+  const result = previous.then(operation);
+  const tail = result.then(() => undefined, () => undefined);
+
+  reminderOperationQueues.set(storageKey, tail);
+  void tail.then(() => {
+    if (reminderOperationQueues.get(storageKey) === tail) {
+      reminderOperationQueues.delete(storageKey);
+    }
+  });
+
+  return result;
+}
+
 async function loadNotifications() {
   if (process.env.EXPO_OS === 'web') return null;
   try {
@@ -63,19 +79,21 @@ export async function cancelDeadlineReminder(userId: string, jobId: string): Pro
   const storageKey = reminderStorageKey(userId, jobId);
   if (!storageKey) return false;
 
-  const notificationId = await AsyncStorage.getItem(storageKey);
-  if (!notificationId) return false;
+  return serializeReminderOperation(storageKey, async () => {
+    const notificationId = await AsyncStorage.getItem(storageKey);
+    if (!notificationId) return false;
 
-  const Notifications = await loadNotifications();
-  if (!Notifications) return false;
+    const Notifications = await loadNotifications();
+    if (!Notifications) return false;
 
-  try {
-    await Notifications.cancelScheduledNotificationAsync(notificationId);
-    await AsyncStorage.removeItem(storageKey);
-    return true;
-  } catch {
-    return false;
-  }
+    try {
+      await Notifications.cancelScheduledNotificationAsync(notificationId);
+      await AsyncStorage.removeItem(storageKey);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export async function scheduleDeadlineReminder(
@@ -90,51 +108,53 @@ export async function scheduleDeadlineReminder(
   const route = parseNotificationJobRoute(`/job/${input.jobId}`);
   if (!storageKey || !reminderDate || !route) return null;
 
-  const Notifications = await loadNotifications();
-  if (!Notifications) return null;
-
-  try {
-    if (process.env.EXPO_OS === 'android') {
-      await Notifications.setNotificationChannelAsync(DEADLINE_CHANNEL_ID, {
-        name: 'Application deadlines',
-        importance: Notifications.AndroidImportance.DEFAULT,
-      });
-    }
-
-    let permission = await Notifications.getPermissionsAsync();
-    if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
-    if (!permission.granted) return null;
-
-    const previousId = await AsyncStorage.getItem(storageKey);
-    if (previousId) {
-      await Notifications.cancelScheduledNotificationAsync(previousId);
-      await AsyncStorage.removeItem(storageKey);
-    }
-
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: input.title,
-        body: input.body,
-        data: { route },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: reminderDate,
-        ...(process.env.EXPO_OS === 'android' ? { channelId: DEADLINE_CHANNEL_ID } : {}),
-      },
-    });
+  return serializeReminderOperation(storageKey, async () => {
+    const Notifications = await loadNotifications();
+    if (!Notifications) return null;
 
     try {
-      await AsyncStorage.setItem(storageKey, notificationId);
-    } catch (error) {
-      await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
-      throw error;
-    }
+      if (process.env.EXPO_OS === 'android') {
+        await Notifications.setNotificationChannelAsync(DEADLINE_CHANNEL_ID, {
+          name: 'Application deadlines',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        });
+      }
 
-    return notificationId;
-  } catch {
-    return null;
-  }
+      let permission = await Notifications.getPermissionsAsync();
+      if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+      if (!permission.granted) return null;
+
+      const previousId = await AsyncStorage.getItem(storageKey);
+      if (previousId) {
+        await Notifications.cancelScheduledNotificationAsync(previousId);
+        await AsyncStorage.removeItem(storageKey);
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: input.title,
+          body: input.body,
+          data: { route },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: reminderDate,
+          ...(process.env.EXPO_OS === 'android' ? { channelId: DEADLINE_CHANNEL_ID } : {}),
+        },
+      });
+
+      try {
+        await AsyncStorage.setItem(storageKey, notificationId);
+      } catch (error) {
+        await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
+        throw error;
+      }
+
+      return notificationId;
+    } catch {
+      return null;
+    }
+  });
 }
 
 type NotificationRouteHandler = (route: NotificationJobRoute) => void;

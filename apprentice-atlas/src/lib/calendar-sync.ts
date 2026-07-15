@@ -14,6 +14,11 @@ export interface CalendarEventPayload {
   allDay: false;
 }
 
+function supportsWriteOnlyCalendarAccess(version: string | number): boolean {
+  const majorVersion = Number.parseInt(String(version).split('.')[0], 10);
+  return Number.isFinite(majorVersion) && majorVersion >= 17;
+}
+
 export function buildCalendarEventPayload(
   kind: CalendarEventKind,
   job: CalendarJobDates,
@@ -36,9 +41,20 @@ export async function openCalendarEventForm(payload: CalendarEventPayload): Prom
   if (process.env.EXPO_OS === 'web') return false;
 
   try {
+    const [{ Platform }, Calendar] = await Promise.all([
+      import('react-native'),
+      import('expo-calendar'),
+    ]);
+    if (Platform.OS === 'ios') {
+      const permission = await Calendar.requestCalendarPermissions(
+        supportsWriteOnlyCalendarAccess(Platform.Version),
+      );
+      if (!permission.granted) return false;
+    }
+
     // The system form is the only cross-platform add-only path; it does not enumerate calendars.
-    const Calendar = await import('expo-calendar/legacy');
-    await Calendar.createEventInCalendarAsync(payload);
+    const LegacyCalendar = await import('expo-calendar/legacy');
+    await LegacyCalendar.createEventInCalendarAsync(payload);
     return true;
   } catch {
     return false;
