@@ -58,7 +58,7 @@ export default function AuthScreen() {
           </View>
           <View style={styles.formGroup}>
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-            <AuthForm onSuccess={() => void complete()} redirectTo={redirectTo} />
+            <AuthForm onSuccess={complete} redirectTo={redirectTo} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

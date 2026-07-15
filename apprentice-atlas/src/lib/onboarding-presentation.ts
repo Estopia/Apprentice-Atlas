@@ -22,6 +22,10 @@ export function getOnboardingLayoutMode({ height, fontScale }: {
   return height < 600 || fontScale >= 1.4 ? 'whole-page-scroll' : 'contained';
 }
 
+export function getOnboardingScrollKey(mode: OnboardingLayoutMode, step: number): string {
+  return `${mode}:${step}`;
+}
+
 export function beginOnboardingTransition(
   gate: SingleFlightGate,
   { step, totalSteps, isValid, isSaving }: {

@@ -16,3 +16,15 @@ export function createSingleFlightGate(): SingleFlightGate {
     },
   };
 }
+
+export async function runSingleFlightAction<T>(
+  gate: SingleFlightGate,
+  action: () => Promise<T>,
+): Promise<{ started: false } | { started: true; result: T }> {
+  if (!gate.tryAcquire()) return { started: false };
+  try {
+    return { started: true, result: await action() };
+  } finally {
+    gate.release();
+  }
+}

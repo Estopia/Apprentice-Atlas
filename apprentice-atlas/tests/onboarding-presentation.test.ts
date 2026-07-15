@@ -4,6 +4,7 @@ import { createSingleFlightGate } from '../src/lib/single-flight-gate';
 import {
   beginOnboardingTransition,
   getOnboardingLayoutMode,
+  getOnboardingScrollKey,
   shouldEnableOnboardingScroll,
 } from '../src/lib/onboarding-presentation';
 
@@ -37,6 +38,12 @@ describe('onboarding layout mode', () => {
 
   it('uses whole-page scrolling for accessibility text sizes', () => {
     expect(getOnboardingLayoutMode({ height: 844, fontScale: 1.5 })).toBe('whole-page-scroll');
+  });
+
+  it('remounts the active scroll container for every step in either mode', () => {
+    expect(getOnboardingScrollKey('whole-page-scroll', 0)).not.toBe(getOnboardingScrollKey('whole-page-scroll', 1));
+    expect(getOnboardingScrollKey('contained', 0)).not.toBe(getOnboardingScrollKey('contained', 1));
+    expect(getOnboardingScrollKey('whole-page-scroll', 1)).not.toBe(getOnboardingScrollKey('contained', 1));
   });
 });
 

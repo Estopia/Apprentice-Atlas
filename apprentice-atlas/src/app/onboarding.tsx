@@ -19,6 +19,7 @@ import { getPostOnboardingDestination } from '@/lib/onboarding-destination';
 import {
   beginOnboardingTransition,
   getOnboardingLayoutMode,
+  getOnboardingScrollKey,
   shouldEnableOnboardingScroll,
 } from '@/lib/onboarding-presentation';
 import type { UserPreferences } from '@/lib/preferences';
@@ -165,6 +166,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
   if (layoutMode === 'whole-page-scroll') {
     return (
       <ScrollView
+        key={getOnboardingScrollKey('whole-page-scroll', step)}
         style={styles.screen}
         contentContainerStyle={[
           styles.wholePageScrollContent,
@@ -187,7 +189,7 @@ function OnboardingFlow({ complete, continuationParams, initialPreferences }: {
       <View style={[styles.page, styles.containedPage, { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]}>
         {header}
         <ScrollView
-          key={step}
+          key={getOnboardingScrollKey('contained', step)}
           style={styles.contentViewport}
           contentContainerStyle={styles.content}
           contentInsetAdjustmentBehavior="never"

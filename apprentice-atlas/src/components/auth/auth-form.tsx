@@ -17,9 +17,9 @@ import {
   submitEmailWhenValid,
 } from '@/lib/auth-presentation';
 import { t, useLocale } from '@/lib/i18n';
-import { createSingleFlightGate } from '@/lib/single-flight-gate';
+import { createSingleFlightGate, runSingleFlightAction } from '@/lib/single-flight-gate';
 
-export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; redirectTo: string }) {
+export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void | Promise<void>; redirectTo: string }) {
   const [locale] = useLocale();
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
@@ -44,52 +44,52 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: () => void; red
 
   const submitEmail = async () => {
     if (!emailSubmission.isValid) { setEmailTouched(true); return; }
-    if (!actionGate.tryAcquire()) return;
-    try {
-      setEmailTouched(true);
-      setLoadingMethod('email');
-      setError(null);
-      setSentTo(null);
-      const submission = await submitEmailWhenValid(email, (normalizedEmail) => sendMagicLink(normalizedEmail, redirectTo));
-      if (submission.result?.error) setError(submission.result.error);
-      else if (submission.attempted) setSentTo(submission.normalizedEmail);
-    } finally {
-      setLoadingMethod(null);
-      actionGate.release();
-    }
+    await runSingleFlightAction(actionGate, async () => {
+      try {
+        setEmailTouched(true);
+        setLoadingMethod('email');
+        setError(null);
+        setSentTo(null);
+        const submission = await submitEmailWhenValid(email, (normalizedEmail) => sendMagicLink(normalizedEmail, redirectTo));
+        if (submission.result?.error) setError(submission.result.error);
+        else if (submission.attempted) setSentTo(submission.normalizedEmail);
+      } finally {
+        setLoadingMethod(null);
+      }
+    });
   };
 
   const submitApple = async () => {
-    if (!actionGate.tryAcquire()) return;
-    try {
-      setLoadingMethod('apple');
-      setError(null);
-      const rawNonce = Crypto.randomUUID();
-      const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
-      });
-      const result = await signInWithAppleIdToken({
-        identityToken: credential.identityToken ?? '',
-        authorizationCode: credential.authorizationCode,
-        nonce: rawNonce,
-        fullName: credential.fullName,
-      });
-      if (result.error) setError(result.error);
-      else onSuccess();
-    } catch (caught) {
-      const code = typeof caught === 'object' && caught && 'code' in caught ? String(caught.code) : '';
-      if (code !== 'ERR_REQUEST_CANCELED') {
-        setError({ code: 'provider', message: caught instanceof Error ? caught.message : 'Apple sign-in failed.' });
+    await runSingleFlightAction(actionGate, async () => {
+      try {
+        setLoadingMethod('apple');
+        setError(null);
+        const rawNonce = Crypto.randomUUID();
+        const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+        const credential = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+          nonce: hashedNonce,
+        });
+        const result = await signInWithAppleIdToken({
+          identityToken: credential.identityToken ?? '',
+          authorizationCode: credential.authorizationCode,
+          nonce: rawNonce,
+          fullName: credential.fullName,
+        });
+        if (result.error) setError(result.error);
+        else await onSuccess();
+      } catch (caught) {
+        const code = typeof caught === 'object' && caught && 'code' in caught ? String(caught.code) : '';
+        if (code !== 'ERR_REQUEST_CANCELED') {
+          setError({ code: 'provider', message: caught instanceof Error ? caught.message : 'Apple sign-in failed.' });
+        }
+      } finally {
+        setLoadingMethod(null);
       }
-    } finally {
-      setLoadingMethod(null);
-      actionGate.release();
-    }
+    });
   };
 
   return (
