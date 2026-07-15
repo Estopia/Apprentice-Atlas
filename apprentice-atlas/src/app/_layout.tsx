@@ -1,11 +1,11 @@
 import { DefaultTheme, router, Stack, ThemeProvider, useGlobalSearchParams, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { LaunchGate } from '@/components/launch/launch-gate';
 import { Palette } from '@/constants/theme';
 import { usePreferences } from '@/hooks/use-preferences';
-import { hydrateLocale, t, useLocale } from '@/lib/i18n';
+import { t, useLocale } from '@/lib/i18n';
 import { registerLocalNotificationHandling } from '@/lib/deadline-reminders';
 import { getOnboardingGateParams } from '@/lib/onboarding-destination';
 import { loadPreferences } from '@/lib/preferences';
@@ -21,10 +21,9 @@ export default function RootLayout() {
   }>();
   const [locale] = useLocale();
   const { preferences, isHydrated: preferencesHydrated } = usePreferences();
-  const [localeHydrated, setLocaleHydrated] = useState(false);
 
   useEffect(() => {
-    void Promise.all([loadPreferences(), hydrateLocale()]).then(() => setLocaleHydrated(true));
+    void loadPreferences();
   }, []);
 
   useEffect(() => {
@@ -45,16 +44,16 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (!preferencesHydrated || !localeHydrated) return;
+    if (!preferencesHydrated) return;
     if (!preferences.onboardingComplete && pathname !== '/onboarding') {
       router.replace({
         pathname: '/onboarding',
         params: getOnboardingGateParams(pathname, { jobId, pendingAction, returnTo }),
       });
     }
-  }, [jobId, localeHydrated, pathname, pendingAction, preferences.onboardingComplete, preferencesHydrated, returnTo]);
+  }, [jobId, pathname, pendingAction, preferences.onboardingComplete, preferencesHydrated, returnTo]);
 
-  const bootstrapReady = preferencesHydrated && localeHydrated;
+  const bootstrapReady = preferencesHydrated;
 
   return (
     <ThemeProvider value={{ ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: Palette.blue, background: Palette.background, card: Palette.background, text: Palette.text, border: Palette.border } }}>

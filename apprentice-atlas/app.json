@@ -104,6 +104,12 @@
     "plugins": [
       "expo-router",
       "expo-location",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": ["de", "en"]
+        }
+      ],
       "expo-apple-authentication",
       [
         "expo-calendar",

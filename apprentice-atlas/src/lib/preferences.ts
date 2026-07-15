@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getLocales } from 'expo-localization';
 
+import { getFirstRunDeviceDefaults } from './device-preferences';
 import { updateDiscoveryFilters } from './discovery-state';
 import { setLocale } from './i18n';
 
@@ -74,10 +76,13 @@ export async function loadPreferences(): Promise<UserPreferences> {
     if (stored) {
       const parsed: unknown = JSON.parse(stored);
       if (isPreferences(parsed)) preferences = parsed;
+    } else {
+      preferences = { ...DEFAULT_PREFERENCES, ...getFirstRunDeviceDefaults(getLocales()) };
     }
   } catch {
     // First-run defaults keep anonymous discovery available if storage is unavailable.
   }
+  setLocale(preferences.locale);
   publish(preferences);
   applyDiscoveryPersonalization(preferences);
   return preferences;
