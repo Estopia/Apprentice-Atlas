@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -8,10 +8,12 @@ import { useAuth } from '@/hooks/use-auth';
 import { prepareForJob } from '@/lib/ai';
 import {
   CAREER_PROFILE_MAX_LENGTH,
-  getIdentityScopedPreparationState,
+  getPreparationScopedState,
+  isPreparationRequestCurrent,
   loadCareerProfile,
   saveCareerProfile,
   type IdentityScopedPreparationState,
+  type PreparationRequestSnapshot,
 } from '@/lib/career-profile';
 import { t, useLocale, type Locale } from '@/lib/i18n';
 import type { JobPreparation } from '@/types/jobs';
@@ -28,7 +30,18 @@ export default function PrepareScreen() {
   const [personalState, setPersonalState] = useState<IdentityScopedPreparationState<JobPreparation> | null>(null);
   const [loadedForUser, setLoadedForUser] = useState<string | null>(null);
   const userId = auth.session?.user.id ?? null;
-  const { background, error, generating, result, saveError } = getIdentityScopedPreparationState(personalState, userId);
+  const preparationScope = useMemo(() => ({ userId, jobId: routeJobId, locale, scopeId: {} }), [locale, routeJobId, userId]);
+  const { background, error, generating, result, saveError } = getPreparationScopedState(personalState, preparationScope);
+  const requestSequence = useRef(0);
+  const latestRequestRef = useRef<PreparationRequestSnapshot | null>(null);
+
+  useEffect(() => {
+    latestRequestRef.current = {
+      requestId: ++requestSequence.current,
+      ...preparationScope,
+      background: background.trim(),
+    };
+  }, [background, preparationScope]);
   const profileLoading = Boolean(userId && loadedForUser !== userId);
   const generateDisabled = profileLoading || generating || !validJobId || background.trim().length < 10;
 
@@ -37,10 +50,9 @@ export default function PrepareScreen() {
     let active = true;
     void loadCareerProfile(userId).then((profile) => {
       if (!active) return;
-      setPersonalState((current) => ({
-        ...getIdentityScopedPreparationState(current, userId),
-        background: profile,
-      }));
+      setPersonalState((current) => current?.userId === userId
+        ? { ...current, background: profile }
+        : { userId, jobId: '', locale: '', background: profile, result: null, error: null, saveError: false, generating: false });
       setLoadedForUser(userId);
     });
     return () => { active = false; };
@@ -50,36 +62,48 @@ export default function PrepareScreen() {
     if (!userId || loadedForUser !== userId) return;
     const timer = setTimeout(() => {
       void saveCareerProfile(userId, background)
-        .then(() => setPersonalState((current) => current?.userId === userId ? { ...current, saveError: false } : current))
-        .catch(() => setPersonalState((current) => current?.userId === userId ? { ...current, saveError: true } : current));
+        .then(() => setPersonalState((current) => current?.userId === userId ? { ...getPreparationScopedState(current, preparationScope), saveError: false } : current))
+        .catch(() => setPersonalState((current) => current?.userId === userId ? { ...getPreparationScopedState(current, preparationScope), saveError: true } : current));
     }, 250);
     return () => clearTimeout(timer);
-  }, [background, loadedForUser, userId]);
+  }, [background, loadedForUser, preparationScope, userId]);
 
   const generate = async () => {
     if (generateDisabled || !userId) return;
-    const requestUserId = userId;
     const requestBackground = background.trim();
+    const requestSnapshot: PreparationRequestSnapshot = {
+      requestId: ++requestSequence.current,
+      ...preparationScope,
+      background: requestBackground,
+    };
+    latestRequestRef.current = requestSnapshot;
     setPersonalState((current) => ({
-      ...getIdentityScopedPreparationState(current, requestUserId),
+      ...getPreparationScopedState(current, preparationScope),
       generating: true,
       error: null,
     }));
     const response = await prepareForJob(routeJobId, locale, requestBackground);
     setPersonalState((current) => {
-      if (!current || current.userId !== requestUserId) return current;
+      if (!isPreparationRequestCurrent(requestSnapshot, latestRequestRef.current)) return current;
+      const scoped = getPreparationScopedState(current, preparationScope);
       return response.error || !response.data
-        ? { ...current, generating: false, error: t(locale, 'prepare.error') }
-        : { ...current, generating: false, result: response.data, error: null };
+        ? { ...scoped, generating: false, error: t(locale, 'prepare.error') }
+        : { ...scoped, generating: false, result: response.data, error: null };
     });
   };
 
   const updateBackground = (value: string) => {
+    latestRequestRef.current = {
+      requestId: ++requestSequence.current,
+      ...preparationScope,
+      background: value.trim(),
+    };
     setPersonalState((current) => ({
-      ...getIdentityScopedPreparationState(current, userId),
+      ...getPreparationScopedState(current, preparationScope),
       background: value,
       result: null,
       error: null,
+      generating: false,
     }));
   };
 

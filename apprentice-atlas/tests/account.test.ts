@@ -21,6 +21,27 @@ describe('account privacy controls', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('removes the local career profile only after successful server account deletion', async () => {
+    const events: string[] = [];
+    const removeCareerProfile = vi.fn(async (id: string) => { events.push(`profile:${id}`); });
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null })),
+        signOut: vi.fn(async () => { events.push('signout'); return { error: null }; }),
+      },
+      functions: { invoke: vi.fn(async () => { events.push('server-delete'); return { data: { deleted: true }, error: null }; }) },
+    };
+
+    await expect(deleteAccount(client as never, removeCareerProfile)).resolves.toMatchObject({ error: null });
+    expect(events).toEqual(['server-delete', 'profile:user-1', 'signout']);
+
+    events.length = 0;
+    client.functions.invoke.mockResolvedValueOnce({ data: { deleted: false }, error: null });
+    await expect(deleteAccount(client as never, removeCareerProfile)).resolves.toMatchObject({ error: { code: 'delete' } });
+    expect(removeCareerProfile).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([]);
+  });
+
   it('authenticates from the bearer token and deletes assets before the auth user', async () => {
     const events: string[] = [];
     const remove = vi.fn(async (paths: string[]) => { events.push(`assets:${paths.join(',')}`); return { error: null }; });

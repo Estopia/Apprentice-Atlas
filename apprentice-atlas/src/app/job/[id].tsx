@@ -128,7 +128,7 @@ export default function JobDetailScreen() {
       router.push({ pathname: '/auth', params: { returnTo: `/prepare/${job.id}` } });
       return;
     }
-    router.push({ pathname: '/prepare/[jobId]', params: { jobId: job.id } } as never);
+    router.push({ pathname: '/prepare/[jobId]', params: { jobId: job.id } });
   };
 
   if (loading) return <State text={t(locale, 'loading.jobDetails')} locale={locale} />;

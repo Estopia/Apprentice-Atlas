@@ -4,6 +4,7 @@ import { preparePrompt, type PromptJob } from '../_shared/prompts.ts';
 
 type QueryError = { message?: string } | null;
 type QueryResult = Promise<{ data: Record<string, unknown> | null; error: QueryError }>;
+type RpcResult = Promise<{ data: unknown; error: QueryError }>;
 
 export type PrepareUserClient = {
   auth: { getUser(token: string): Promise<{ data: { user: { id: string } | null }; error: QueryError }> };
@@ -14,7 +15,10 @@ export type PrepareQuery = {
   limit(value: number): PrepareQuery;
   maybeSingle(): QueryResult;
 };
-export type PrepareAdminClient = { from(table: string): PrepareQuery };
+export type PrepareAdminClient = {
+  from(table: string): PrepareQuery;
+  rpc(name: string, args: Record<string, unknown>): RpcResult;
+};
 export type PrepareDeps = {
   env(name: string): string;
   createUserClient(url: string, anonKey: string): PrepareUserClient;
@@ -25,6 +29,7 @@ export type PrepareDeps = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const JOB_COLUMNS = 'id,title,company,country,city,job_type,level,category,tags,raw_description,requirements,status,expires_at';
 const MAX_OUTPUT_TOKENS = 2200;
+export const OPENAI_TIMEOUT_MS = 20_000;
 const model = (deps: PrepareDeps) => deps.env('OPENAI_MODEL') || 'gpt-5.6';
 
 const toPromptJob = (job: Record<string, unknown>): PromptJob => ({
@@ -54,10 +59,28 @@ async function ownsInactiveJob(db: PrepareAdminClient, jobId: string, userId: st
 
 function extractOutputText(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;
-  const item = payload as { output_text?: unknown; output?: Array<{ content?: Array<{ text?: unknown }> }> };
-  if (typeof item.output_text === 'string' && item.output_text) return item.output_text;
-  const text = item.output?.flatMap((output) => output.content ?? []).map((content) => typeof content.text === 'string' ? content.text : '').join('') ?? '';
+  const item = payload as {
+    status?: unknown;
+    output?: { type?: unknown; content?: { type?: unknown; text?: unknown; refusal?: unknown }[] }[];
+  };
+  if (item.status !== 'completed' || !Array.isArray(item.output)) return null;
+  const content = item.output
+    .filter((output) => output?.type === 'message' && Array.isArray(output.content))
+    .flatMap((output) => output.content ?? []);
+  if (content.some((part) => part?.type === 'refusal')) return null;
+  const text = content
+    .filter((part) => part?.type === 'output_text' && typeof part.text === 'string')
+    .map((part) => part.text as string)
+    .join('');
   return text || null;
+}
+
+async function releaseQuota(db: PrepareAdminClient, userId: string, quotaWindow: string): Promise<void> {
+  try {
+    await db.rpc('release_ai_prepare_quota', { p_user_id: userId, p_window_started_at: quotaWindow });
+  } catch {
+    // The original failure remains safe and retryable even if compensation fails.
+  }
 }
 
 export function createPrepareHandler(deps: PrepareDeps) {
@@ -101,23 +124,59 @@ export function createPrepareHandler(deps: PrepareDeps) {
       const key = deps.env('OPENAI_API_KEY');
       if (!key) return errorResponse('AI_CONFIGURATION_ERROR', 'The preparation service is unavailable.', 503);
       const prompt = preparePrompt(toPromptJob(jobResult.data), language as Language, background.trim());
-      const provider = await deps.fetcher('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          model: model(deps),
-          store: false,
-          max_output_tokens: MAX_OUTPUT_TOKENS,
-          instructions: prompt.instructions,
-          input: prompt.input,
-          text: { format: { type: 'json_schema', name: 'job_preparation', strict: true, schema: preparationJsonSchema } },
-        }),
-      });
-      if (!provider.ok) return errorResponse('AI_PROVIDER_ERROR', 'The preparation service is temporarily unavailable.', 502);
-      const outputText = extractOutputText(await provider.json());
+
+      const reservation = await db.rpc('reserve_ai_prepare_quota', { p_user_id: userId });
+      if (reservation.error) return errorResponse('AI_QUOTA_ERROR', 'The preparation service is temporarily unavailable.', 503);
+      if (reservation.data === null) {
+        return errorResponse('AI_RATE_LIMITED', 'Your hourly preparation limit has been reached. Try again later.', 429);
+      }
+      if (typeof reservation.data !== 'string' || !reservation.data) {
+        return errorResponse('AI_QUOTA_ERROR', 'The preparation service is temporarily unavailable.', 503);
+      }
+      const quotaWindow = reservation.data;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+      let provider: Response;
+      try {
+        provider = await deps.fetcher('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: model(deps),
+            store: false,
+            max_output_tokens: MAX_OUTPUT_TOKENS,
+            instructions: prompt.instructions,
+            input: prompt.input,
+            text: { format: { type: 'json_schema', name: 'job_preparation', strict: true, schema: preparationJsonSchema } },
+          }),
+          signal: controller.signal,
+        });
+      } catch {
+        await releaseQuota(db, userId, quotaWindow);
+        return controller.signal.aborted
+          ? errorResponse('AI_TIMEOUT', 'The preparation service timed out. Please try again.', 504)
+          : errorResponse('AI_PROVIDER_ERROR', 'The preparation service is temporarily unavailable.', 502);
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!provider.ok) {
+        await releaseQuota(db, userId, quotaWindow);
+        return errorResponse('AI_PROVIDER_ERROR', 'The preparation service is temporarily unavailable.', 502);
+      }
+      let payload: unknown;
+      try {
+        payload = await provider.json();
+      } catch {
+        await releaseQuota(db, userId, quotaWindow);
+        return errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502);
+      }
+      const outputText = extractOutputText(payload);
       let parsed: ReturnType<typeof parsePreparation> = null;
       try { parsed = outputText ? parsePreparation(JSON.parse(outputText)) : null; } catch { parsed = null; }
-      if (!parsed) return errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502);
+      if (!parsed) {
+        await releaseQuota(db, userId, quotaWindow);
+        return errorResponse('AI_INVALID_RESPONSE', 'The preparation service returned an invalid response.', 502);
+      }
       return json({ jobId, language, ...parsed, generatedAt: new Date().toISOString(), model: model(deps) });
     } catch {
       return errorResponse('AI_ERROR', 'Unable to create preparation right now.', 500);

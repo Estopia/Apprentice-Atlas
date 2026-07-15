@@ -89,7 +89,7 @@ export default function AtlasScreen() {
             action={nextAction}
             locale={locale}
             onPress={() => nextAction.kind === 'prepare-interview' && nextAction.application
-              ? router.push({ pathname: '/prepare/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
+              ? router.push({ pathname: '/prepare/[jobId]', params: { jobId: nextAction.application.jobId } })
               : nextAction.application
                 ? router.push({ pathname: '/application/[jobId]', params: { jobId: nextAction.application.jobId } } as never)
                 : router.push('/')}

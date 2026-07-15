@@ -2,6 +2,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 
 import type { UserPreferences } from './preferences';
 import type { FavoriteJob, TrackedApplication } from '@/types/jobs';
+import { deleteCareerProfile } from './career-profile';
 
 export type AccountOperationError = { code: 'configuration' | 'auth-required' | 'export' | 'delete'; message: string };
 export type AccountResult<T> = { data: T | null; error: AccountOperationError | null };
@@ -34,7 +35,10 @@ export function buildAccountExport(input: {
   };
 }
 
-export async function deleteAccount(client?: SupabaseClient): Promise<AccountResult<{ appleAccessNeedsRevocation: boolean }>> {
+export async function deleteAccount(
+  client?: SupabaseClient,
+  removeCareerProfile: (userId: string) => Promise<void> = deleteCareerProfile,
+): Promise<AccountResult<{ appleAccessNeedsRevocation: boolean }>> {
   let supabase: SupabaseClient;
   try {
     supabase = client ?? (await import('./supabase')).getSupabaseClient();
@@ -48,6 +52,7 @@ export async function deleteAccount(client?: SupabaseClient): Promise<AccountRes
     if (!session.data.session) return failure('auth-required', 'Sign in before deleting an account.');
     const result = await supabase.functions.invoke('delete-account', { method: 'POST', body: {} });
     if (result.error || result.data?.deleted !== true) return failure('delete', 'The account could not be deleted.');
+    await removeCareerProfile(session.data.session.user.id);
     await supabase.auth.signOut({ scope: 'local' });
     return { data: { appleAccessNeedsRevocation: result.data.appleAccessNeedsRevocation === true }, error: null };
   } catch {

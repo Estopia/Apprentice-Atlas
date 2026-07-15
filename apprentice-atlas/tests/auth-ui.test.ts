@@ -6,11 +6,18 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: async (key: string) => storedProfiles.get(key) ?? null,
     setItem: async (key: string, value: string) => { storedProfiles.set(key, value); },
+    removeItem: async (key: string) => { storedProfiles.delete(key); },
   },
 }));
 
 import { isSafeReturnPath } from '../src/lib/auth';
-import { getIdentityScopedPreparationState, loadCareerProfile, saveCareerProfile } from '../src/lib/career-profile';
+import {
+  deleteCareerProfile,
+  getPreparationScopedState,
+  isPreparationRequestCurrent,
+  loadCareerProfile,
+  saveCareerProfile,
+} from '../src/lib/career-profile';
 import { t } from '../src/lib/i18n';
 
 const authForm = readFileSync(new URL('../src/components/auth/auth-form.tsx', import.meta.url), 'utf8');
@@ -76,9 +83,23 @@ describe('native auth and onboarding configuration', () => {
     expect(await loadCareerProfile('user-2')).toBe('');
   });
 
-  it('clears personalized preparation state when the authenticated identity changes', () => {
+  it('deletes only the requested user career-profile key', async () => {
+    storedProfiles.clear();
+    await saveCareerProfile('user-1', 'Private profile one');
+    await saveCareerProfile('user-2', 'Private profile two');
+
+    await deleteCareerProfile('user-1');
+
+    expect(await loadCareerProfile('user-1')).toBe('');
+    expect(await loadCareerProfile('user-2')).toBe('Private profile two');
+    expect(storedProfiles.has('apprentice-atlas:career-profile:user-1')).toBe(false);
+  });
+
+  it('clears personalized preparation state when identity, job, or locale changes', () => {
     const userOneState = {
       userId: 'user-1',
+      jobId,
+      locale: 'en',
       background: 'Private background for user one',
       result: { interviewQuestions: ['private result'] },
       error: 'Private error for user one',
@@ -86,16 +107,39 @@ describe('native auth and onboarding configuration', () => {
       generating: true,
     };
 
-    expect(getIdentityScopedPreparationState(userOneState, 'user-1')).toBe(userOneState);
-    expect(getIdentityScopedPreparationState(userOneState, 'user-2')).toEqual({
+    expect(getPreparationScopedState(userOneState, { userId: 'user-1', jobId, locale: 'en' })).toBe(userOneState);
+    expect(getPreparationScopedState(userOneState, { userId: 'user-2', jobId, locale: 'en' })).toEqual({
       userId: 'user-2',
+      jobId,
+      locale: 'en',
       background: '',
       result: null,
       error: null,
       saveError: false,
       generating: false,
     });
-    expect(prepareScreen).toContain('getIdentityScopedPreparationState(personalState, userId)');
+    expect(getPreparationScopedState(userOneState, { userId: 'user-1', jobId: '33333333-3333-4333-8333-333333333333', locale: 'en' })).toMatchObject({
+      background: userOneState.background, result: null, error: null, generating: false,
+    });
+    expect(getPreparationScopedState(userOneState, { userId: 'user-1', jobId, locale: 'de' })).toMatchObject({
+      background: userOneState.background, result: null, error: null, generating: false,
+    });
+    const firstVisit = { ...userOneState, scopeId: {} };
+    expect(getPreparationScopedState(firstVisit, { userId: 'user-1', jobId, locale: 'en', scopeId: {} })).toMatchObject({
+      background: userOneState.background, result: null, error: null, generating: false,
+    });
+    expect(prepareScreen).toContain('getPreparationScopedState(personalState, preparationScope)');
+  });
+
+  it('rejects completed requests after request, profile, identity, locale, or job changes', () => {
+    const request = { requestId: 7, userId: 'user-1', jobId, locale: 'en', background: 'Current profile' };
+    expect(isPreparationRequestCurrent(request, request)).toBe(true);
+    expect(isPreparationRequestCurrent(request, { ...request, requestId: 8 })).toBe(false);
+    expect(isPreparationRequestCurrent(request, { ...request, background: 'Edited profile' })).toBe(false);
+    expect(isPreparationRequestCurrent(request, { ...request, userId: 'user-2' })).toBe(false);
+    expect(isPreparationRequestCurrent(request, { ...request, locale: 'de' })).toBe(false);
+    expect(isPreparationRequestCurrent(request, { ...request, jobId: '33333333-3333-4333-8333-333333333333' })).toBe(false);
+    expect(prepareScreen).toContain('isPreparationRequestCurrent(requestSnapshot, latestRequestRef.current)');
   });
 
   it('provides a dedicated authenticated preparation route with complete native states', () => {
@@ -118,6 +162,8 @@ describe('native auth and onboarding configuration', () => {
     expect(jobDetail).toContain('returnTo: `/prepare/${job.id}`');
     expect(atlasScreen).toContain("nextAction.kind === 'prepare-interview'");
     expect(atlasScreen).toContain("pathname: '/prepare/[jobId]'");
+    expect(jobDetail).not.toMatch(/pathname: '\/prepare\/\[jobId\]'[\s\S]{0,100}as never/);
+    expect(atlasScreen).not.toMatch(/pathname: '\/prepare\/\[jobId\]'[\s\S]{0,100}as never/);
   });
 
   it('has matching German and English preparation copy', () => {

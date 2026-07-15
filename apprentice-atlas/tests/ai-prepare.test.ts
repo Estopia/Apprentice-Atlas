@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { createPrepareHandler, type PrepareAdminClient, type PrepareDeps } from '../supabase/functions/ai-prepare/handler';
+import { createPrepareHandler, OPENAI_TIMEOUT_MS, type PrepareAdminClient, type PrepareDeps } from '../supabase/functions/ai-prepare/handler';
 
 const jobId = '11111111-1111-4111-8111-111111111111';
 const userId = '22222222-2222-4222-8222-222222222222';
 const background = 'I built a school website, enjoy programming, and work well in a team.';
+const quotaWindow = '2026-07-15T17:00:00.000Z';
 const canonicalJob = {
   id: jobId,
   title: 'Web apprentice',
@@ -41,13 +42,29 @@ const env = (overrides: Record<string, string> = {}) => (name: string) => ({
   ...overrides,
 }[name] ?? '');
 
-function response(value: unknown, status = 200) {
-  return new Response(JSON.stringify({ output_text: JSON.stringify(value) }), { status });
+function rawResponse(value: unknown, status = 200) {
+  return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 }
 
-function adminClient(options: { job?: Record<string, unknown> | null; favorite?: boolean; application?: boolean } = {}) {
+function response(value: unknown) {
+  return rawResponse({
+    id: 'resp_123',
+    object: 'response',
+    status: 'completed',
+    output: [{ id: 'msg_123', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify(value), annotations: [] }] }],
+  });
+}
+
+function adminClient(options: {
+  job?: Record<string, unknown> | null;
+  favorite?: boolean;
+  application?: boolean;
+  quotaAvailable?: boolean;
+  rpcError?: boolean;
+} = {}) {
   const reads: Array<{ table: string; filters: Array<[string, unknown]> }> = [];
   const writes: string[] = [];
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const db = {
     from(table: string) {
       const filters: Array<[string, unknown]> = [];
@@ -68,8 +85,13 @@ function adminClient(options: { job?: Record<string, unknown> | null; favorite?:
       };
       return chain;
     },
+    async rpc(name: string, args: Record<string, unknown>) {
+      rpcCalls.push({ name, args });
+      if (options.rpcError) return { data: null, error: { message: 'quota database secret' } };
+      return { data: name === 'reserve_ai_prepare_quota' ? (options.quotaAvailable === false ? null : quotaWindow) : true, error: null };
+    },
   } as PrepareAdminClient;
-  return { db, reads, writes };
+  return { db, reads, writes, rpcCalls };
 }
 
 function deps(options: {
@@ -157,19 +179,117 @@ describe('authenticated AI preparation Edge Function', () => {
     expect(providerRequest.instructions).toContain('untrusted quoted data');
     expect(admin.writes).toEqual([]);
     expect(admin.reads.map((read) => read.table)).toEqual(['jobs']);
+    expect(admin.rpcCalls).toEqual([{ name: 'reserve_ai_prepare_quota', args: { p_user_id: userId } }]);
   });
 
-  it('rejects malformed provider output with a safe error envelope', async () => {
-    const malformed = createPrepareHandler(deps({ fetcher: async () => response({ interviewQuestions: [], skillGap: {} }) }));
-    const result = await malformed(request({ jobId, language: 'en', background }));
-    expect(result.status).toBe(502);
-    expect(await result.json()).toEqual({ error: { code: 'AI_INVALID_RESPONSE', message: 'The preparation service returned an invalid response.' } });
+  it('atomically reserves immediately before OpenAI and returns 429 when the hourly quota is exhausted', async () => {
+    const admin = adminClient({ quotaAvailable: false });
+    const fetcher = vi.fn(async () => response(output)) as unknown as typeof fetch;
+    const result = await createPrepareHandler(deps({ admin, fetcher }))(request({ jobId, language: 'en', background }));
 
-    const failed = createPrepareHandler(deps({ fetcher: async () => new Response('provider leaked openai-secret', { status: 500 }) }));
+    expect(result.status).toBe(429);
+    expect(await result.json()).toEqual({ error: { code: 'AI_RATE_LIMITED', message: 'Your hourly preparation limit has been reached. Try again later.' } });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(admin.rpcCalls).toEqual([{ name: 'reserve_ai_prepare_quota', args: { p_user_id: userId } }]);
+  });
+
+  it('returns a safe service error when quota reservation fails', async () => {
+    const admin = adminClient({ rpcError: true });
+    const fetcher = vi.fn(async () => response(output)) as unknown as typeof fetch;
+    const result = await createPrepareHandler(deps({ admin, fetcher }))(request({ jobId, language: 'en', background }));
+
+    expect(result.status).toBe(503);
+    const payload = await result.json();
+    expect(payload).toEqual({ error: { code: 'AI_QUOTA_ERROR', message: 'The preparation service is temporarily unavailable.' } });
+    expect(JSON.stringify(payload)).not.toContain('quota database secret');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('extracts completed output_text content across realistic response items', async () => {
+    const serialized = JSON.stringify(output);
+    const split = Math.floor(serialized.length / 2);
+    const fetcher = async () => rawResponse({
+      id: 'resp_split',
+      status: 'completed',
+      output: [
+        { type: 'reasoning', id: 'reasoning_1', summary: [] },
+        { type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: serialized.slice(0, split), annotations: [] }] },
+        { type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: serialized.slice(split), annotations: [] }] },
+      ],
+    });
+
+    const result = await createPrepareHandler(deps({ fetcher }))(request({ jobId, language: 'en', background }));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject(output);
+  });
+
+  it('rejects refusal, incomplete, top-level-only, and malformed output and releases each reservation', async () => {
+    const fixtures = [
+      { status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'No.' }] }] },
+      { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [] },
+      { status: 'completed', output_text: JSON.stringify(output), output: [] },
+      { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '{not-json' }] }] },
+    ];
+
+    for (const fixture of fixtures) {
+      const admin = adminClient();
+      const result = await createPrepareHandler(deps({ admin, fetcher: async () => rawResponse(fixture) }))(request({ jobId, language: 'en', background }));
+      expect(result.status).toBe(502);
+      expect(await result.json()).toEqual({ error: { code: 'AI_INVALID_RESPONSE', message: 'The preparation service returned an invalid response.' } });
+      expect(admin.rpcCalls).toEqual([
+        { name: 'reserve_ai_prepare_quota', args: { p_user_id: userId } },
+        { name: 'release_ai_prepare_quota', args: { p_user_id: userId, p_window_started_at: quotaWindow } },
+      ]);
+    }
+  });
+
+  it('aborts timed-out OpenAI requests, returns a retryable 504, and releases the quota', async () => {
+    vi.useFakeTimers();
+    try {
+      const admin = adminClient();
+      let receivedSignal: AbortSignal | null | undefined;
+      const fetchMock = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        receivedSignal = init?.signal;
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('provider secret timeout', 'AbortError')), { once: true });
+      }));
+      const fetcher = fetchMock as unknown as typeof fetch;
+      const pending = createPrepareHandler(deps({ admin, fetcher }))(request({ jobId, language: 'en', background }));
+      await vi.advanceTimersByTimeAsync(OPENAI_TIMEOUT_MS);
+      const result = await pending;
+
+      expect(result.status).toBe(504);
+      expect(await result.json()).toEqual({ error: { code: 'AI_TIMEOUT', message: 'The preparation service timed out. Please try again.' } });
+      expect(admin.rpcCalls.map((call) => call.name)).toEqual(['reserve_ai_prepare_quota', 'release_ai_prepare_quota']);
+      expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases quota on provider and network failures without leaking provider details', async () => {
+    const providerAdmin = adminClient();
+    const failed = createPrepareHandler(deps({ admin: providerAdmin, fetcher: async () => new Response('provider leaked openai-secret', { status: 500 }) }));
     const providerFailure = await failed(request({ jobId, language: 'en', background }));
     expect(providerFailure.status).toBe(502);
+    expect(providerAdmin.rpcCalls.map((call) => call.name)).toEqual(['reserve_ai_prepare_quota', 'release_ai_prepare_quota']);
     const providerError = JSON.stringify(await providerFailure.json());
     expect(providerError).not.toContain('openai-secret');
     expect(providerError).not.toContain('provider leaked');
+
+    const networkAdmin = adminClient();
+    const network = createPrepareHandler(deps({ admin: networkAdmin, fetcher: async () => { throw new Error('network secret'); } }));
+    const networkFailure = await network(request({ jobId, language: 'en', background }));
+    expect(networkFailure.status).toBe(502);
+    expect(networkAdmin.rpcCalls.map((call) => call.name)).toEqual(['reserve_ai_prepare_quota', 'release_ai_prepare_quota']);
+    expect(await networkFailure.json()).toEqual({ error: { code: 'AI_PROVIDER_ERROR', message: 'The preparation service is temporarily unavailable.' } });
+  });
+
+  it('rejects schema-invalid provider output and releases its reservation', async () => {
+    const admin = adminClient();
+    const malformed = createPrepareHandler(deps({ admin, fetcher: async () => response({ interviewQuestions: [], skillGap: {} }) }));
+    const result = await malformed(request({ jobId, language: 'en', background }));
+    expect(result.status).toBe(502);
+    expect(await result.json()).toEqual({ error: { code: 'AI_INVALID_RESPONSE', message: 'The preparation service returned an invalid response.' } });
+    expect(admin.rpcCalls.map((call) => call.name)).toEqual(['reserve_ai_prepare_quota', 'release_ai_prepare_quota']);
   });
 });
