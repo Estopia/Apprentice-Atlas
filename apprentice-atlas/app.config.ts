@@ -16,6 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       ...(baseConfig.plugins ?? []),
       ...mapsPlugin,
+      
     ],
   };
 };
