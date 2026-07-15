@@ -28,7 +28,8 @@ export default function DiscoveryScreen() {
   const search = searchState.external === filters.search ? searchState.draft : filters.search ?? '';
   const setSearch = (draft: string) => setSearchState({ draft, external: filters.search });
   const [selectedJobId, setSelectedJobId] = useState<string>();
-  const [viewMode, setViewMode] = useState<ViewMode>(view === 'list' ? 'list' : 'map');
+  const [localViewMode, setLocalViewMode] = useState<ViewMode>(view === 'list' ? 'list' : 'map');
+  const viewMode: ViewMode = view === 'list' || view === 'map' ? view : localViewMode;
   const [mapViewport, setMapViewport] = useState<JobMapRegion | null>(null);
   const [showSearchArea, setShowSearchArea] = useState(false);
   const [favorite, setFavorite] = useState<FavoriteJob | null>(null);
@@ -37,10 +38,6 @@ export default function DiscoveryScreen() {
   const auth = useAuth();
   const { jobs, loading, error, reload } = useJobs(filters);
   const { markDiscoveryReady } = useLaunchReadiness();
-
-  useEffect(() => {
-    if (view === 'list' || view === 'map') setViewMode(view);
-  }, [view]);
 
   useEffect(() => {
     const timer = setTimeout(() => updateDiscoveryFilters({ search: search.trim() || undefined }), 300);
@@ -94,6 +91,12 @@ export default function DiscoveryScreen() {
     if (!mapViewport) return;
     updateDiscoveryFilters(getMapAreaSearchFilters(filters, mapViewport));
     setShowSearchArea(false);
+  };
+
+  const toggleViewMode = () => {
+    const nextView = viewMode === 'map' ? 'list' : 'map';
+    setLocalViewMode(nextView);
+    router.setParams({ view: nextView });
   };
 
   const toggleFavorite = async () => {
@@ -172,7 +175,7 @@ export default function DiscoveryScreen() {
         <View style={styles.controls}>
           <ControlButton kind="flexible" icon={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }} label={locationLabel} onPress={() => router.push('/location')} />
           <ControlButton kind="compact" badge={activeFilterCount} icon={{ ios: 'line.3.horizontal.decrease', android: 'filter_list', web: 'filter_list' }} label={t(locale, 'discovery.filtersShort')} onPress={() => router.push('/filters')} />
-          <ControlButton kind="compact" icon={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map', android: 'map', web: 'map' }} label={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={() => setViewMode((current) => current === 'map' ? 'list' : 'map')} />
+          <ControlButton kind="compact" icon={viewMode === 'map' ? { ios: 'list.bullet', android: 'view_list', web: 'view_list' } : { ios: 'map', android: 'map', web: 'map' }} label={viewMode === 'map' ? t(locale, 'discovery.list') : t(locale, 'discovery.map')} onPress={toggleViewMode} />
         </View>
         {viewMode === 'map' && showSearchArea && <Pressable accessibilityRole="button" onPress={searchMapArea} style={({ pressed }) => [styles.searchArea, pressed && styles.pressed]}><AppIcon name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={15} tintColor={Palette.white} /><Text style={styles.searchAreaText}>{t(locale, 'discovery.searchArea')}</Text></Pressable>}
       </View>
