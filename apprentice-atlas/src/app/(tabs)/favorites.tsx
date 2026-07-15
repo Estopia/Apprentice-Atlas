@@ -108,7 +108,7 @@ export default function FavoritesScreen() {
       setFavorites((current) => beginFavoriteRemoval(current, favorite.jobId).favorites);
       if (userId) {
         const copy = buildDeadlineReminderCopy(locale, favorite.job?.title ?? t(locale, 'saved.unavailable'));
-        void reconcileDeadlineReminder({ userId, jobId: favorite.jobId, deadlineAt: favorite.job?.expiresAt ?? null, applicationStatus: null, saved: false, ...copy });
+        void reconcileDeadlineReminder({ userId, jobId: favorite.jobId, deadlineAt: favorite.job?.expiresAt ?? null, applicationStatus: null, saved: false, generation: result.reminderGeneration, ...copy });
       }
     }
   };

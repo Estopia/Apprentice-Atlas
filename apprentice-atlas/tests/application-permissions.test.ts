@@ -21,7 +21,8 @@ describe('application tracker schema and permissions', () => {
     expect(sql).toMatch(/alter table public\.applications\s+add column interview_at timestamptz/i);
     expect(sql).not.toMatch(/alter table public\.jobs[\s\S]+interview_at/i);
     expect(sql).toMatch(/drop function public\.upsert_application\(uuid, text, text\)/i);
-    expect(sql).toMatch(/create function public\.upsert_application\(\s*p_job_id uuid,\s*p_status text,\s*p_note text,\s*p_interview_at timestamptz default null\s*\)/i);
+    expect(sql).toMatch(/create function public\.upsert_application\(\s*p_job_id uuid,\s*p_status text,\s*p_note text,\s*p_interview_at timestamptz\s*\)/i);
+    expect(sql).not.toMatch(/p_interview_at timestamptz default/i);
     expect(sql).toMatch(/caller_id uuid := auth\.uid\(\)/i);
     expect(sql).toMatch(/where user_id = caller_id\s+and job_id = p_job_id/i);
     expect(sql).toMatch(/set status = p_status,\s+note = normalized_note,\s+interview_at = p_interview_at/i);
@@ -32,6 +33,7 @@ describe('application tracker schema and permissions', () => {
     expect(sql.match(/p_interview_at <= now\(\)/gi)).toHaveLength(2);
     expect(sql.match(/p_interview_at > now\(\) \+ interval '2 years'/gi)).toHaveLength(2);
     expect(sql.match(/raise exception 'Interview date must be in the future and within two years' using errcode = '22023'/gi)).toHaveLength(2);
+    expect(sql).toMatch(/create function public\.upsert_application\(\s*p_job_id uuid,\s*p_status text,\s*p_note text\s*\)[\s\S]+perform pg_advisory_xact_lock[\s\S]+where user_id = caller_id\s+and job_id = p_job_id[\s\S]+public\.upsert_application\(p_job_id, p_status, p_note, tracked\.interview_at\)/i);
   });
 
   it('keeps application grants narrow and explicitly denies anonymous RPC execution', () => {
@@ -47,10 +49,15 @@ describe('application tracker schema and permissions', () => {
     expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text, timestamptz) from public;');
     expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text, timestamptz) from anon;');
     expect(sql).toContain('grant execute on function public.upsert_application(uuid, text, text, timestamptz) to authenticated;');
+    expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text) from public;');
+    expect(sql).toContain('revoke execute on function public.upsert_application(uuid, text, text) from anon;');
+    expect(sql).toContain('grant execute on function public.upsert_application(uuid, text, text) to authenticated;');
     expect(sql).not.toMatch(/grant\s+[^;]+\s+to anon/i);
     expect(sql).not.toMatch(/create policy|alter policy|drop policy/i);
     expect(sql).toMatch(/has_function_privilege\('anon', 'public\.upsert_application\(uuid,text,text,timestamptz\)', 'execute'\)[\s\S]+raise exception/i);
     expect(sql).toMatch(/not has_function_privilege\('authenticated', 'public\.upsert_application\(uuid,text,text,timestamptz\)', 'execute'\)[\s\S]+raise exception/i);
+    expect(sql).toMatch(/has_function_privilege\('anon', 'public\.upsert_application\(uuid,text,text\)', 'execute'\)[\s\S]+raise exception/i);
+    expect(sql).toMatch(/not has_function_privilege\('authenticated', 'public\.upsert_application\(uuid,text,text\)', 'execute'\)[\s\S]+raise exception/i);
   });
 
   it('creates the constrained applications table and update trigger', () => {

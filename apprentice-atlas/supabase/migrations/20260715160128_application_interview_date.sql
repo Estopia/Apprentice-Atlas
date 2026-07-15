@@ -17,7 +17,7 @@ create function public.upsert_application(
   p_job_id uuid,
   p_status text,
   p_note text,
-  p_interview_at timestamptz default null
+  p_interview_at timestamptz
 )
 returns public.applications
 language plpgsql
@@ -90,9 +90,43 @@ begin
 end;
 $$;
 
+-- Keep rolling clients safe: legacy calls preserve the private interview date
+-- while sharing the same owner/job lock and validation path as the new RPC.
+create function public.upsert_application(
+  p_job_id uuid,
+  p_status text,
+  p_note text
+)
+returns public.applications
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_id uuid := auth.uid();
+  tracked public.applications;
+begin
+  if caller_id is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(caller_id::text || ':' || p_job_id::text, 0));
+
+  select * into tracked
+  from public.applications
+  where user_id = caller_id
+    and job_id = p_job_id;
+
+  return public.upsert_application(p_job_id, p_status, p_note, tracked.interview_at);
+end;
+$$;
+
 revoke execute on function public.upsert_application(uuid, text, text, timestamptz) from public;
 revoke execute on function public.upsert_application(uuid, text, text, timestamptz) from anon;
 grant execute on function public.upsert_application(uuid, text, text, timestamptz) to authenticated;
+revoke execute on function public.upsert_application(uuid, text, text) from public;
+revoke execute on function public.upsert_application(uuid, text, text) from anon;
+grant execute on function public.upsert_application(uuid, text, text) to authenticated;
 
 do $$
 begin
@@ -101,6 +135,12 @@ begin
   end if;
   if not has_function_privilege('authenticated', 'public.upsert_application(uuid,text,text,timestamptz)', 'execute') then
     raise exception 'upsert_application must be executable by authenticated';
+  end if;
+  if has_function_privilege('anon', 'public.upsert_application(uuid,text,text)', 'execute') then
+    raise exception 'legacy upsert_application must not be executable by anon';
+  end if;
+  if not has_function_privilege('authenticated', 'public.upsert_application(uuid,text,text)', 'execute') then
+    raise exception 'legacy upsert_application must be executable by authenticated';
   end if;
 end;
 $$;

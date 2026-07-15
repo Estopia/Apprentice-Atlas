@@ -105,12 +105,7 @@ where user_id = '${userOne}' and job_id = '${activeJob}';
 
 set local role authenticated;
 do $$ begin perform set_config('request.jwt.claim.sub', '${userOne}', true); end $$;
-select status from public.upsert_application(
-  '${activeJob}',
-  'offer',
-  'Historical interview preserved',
-  (select interview_at from public.applications where user_id = '${userOne}' and job_id = '${activeJob}')
-);
+select status from public.upsert_application('${activeJob}', 'offer', 'Historical interview preserved');
 
 do $$
 begin
@@ -149,7 +144,7 @@ rollback;
 `;
 
 describe('upsert_application PostgreSQL integration', () => {
-  it.skipIf(!databaseUrl || !hasPsql)('rejects unavailable jobs, preserves history, and isolates owners', () => {
+  it.skipIf(!databaseUrl || !hasPsql)('rejects unavailable jobs, preserves dates through legacy calls, and isolates owners', () => {
     const output = execFileSync('psql', ['-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', databaseUrl!], {
       input: sql,
       encoding: 'utf8',

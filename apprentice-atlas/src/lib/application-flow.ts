@@ -1,4 +1,5 @@
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
+import type { DeadlineReminderGeneration } from './deadline-reminders';
 
 export const APPLICATION_STATUSES = [
   'interested',
@@ -109,6 +110,7 @@ type ApplicationRemovalReminderInput = {
   deadlineAt: string | null;
   title: string;
   body: string;
+  generation?: DeadlineReminderGeneration | null;
   getFavorite: (jobId: string) => Promise<ApplicationRemovalFavoriteResult>;
   reconcile: (input: {
     userId: string;
@@ -118,6 +120,7 @@ type ApplicationRemovalReminderInput = {
     saved: boolean;
     title: string;
     body: string;
+    generation?: DeadlineReminderGeneration | null;
   }) => Promise<unknown>;
 };
 
@@ -139,6 +142,7 @@ export async function reconcileApplicationRemovalReminder(
       deadlineAt: input.deadlineAt,
       applicationStatus: null,
       saved,
+      ...(input.generation ? { generation: input.generation } : {}),
       title: input.title,
       body: input.body,
     });

@@ -191,6 +191,75 @@ describe('deadline reminders', () => {
     expect(nativeState.cancelScheduledNotificationAsync).toHaveBeenCalledWith('notification-1');
     expect(nativeState.storage.has(reminderStorageKey)).toBe(false);
   });
+
+  it('discards a delayed saved-state lookup after a later unsave succeeds', async () => {
+    const begin = (deadlineReminders as unknown as {
+      beginDeadlineReminderReconciliation?: (userId: string, jobId: string) => unknown;
+    }).beginDeadlineReminderReconciliation;
+    expect(begin).toBeTypeOf('function');
+    if (!begin) return;
+
+    const lookup = deferred<void>();
+    const schedule = vi.fn(async () => ({ state: 'scheduled', notificationId: 'stale' }));
+    const cancel = vi.fn(async () => true);
+    const staleGeneration = begin(userId, jobId);
+    const staleSave = lookup.promise.then(() => deadlineReminders.reconcileDeadlineReminder({
+      ...reminderInput('Delayed save'),
+      saved: true,
+      generation: staleGeneration,
+      schedule,
+      cancel,
+    } as never));
+
+    const unsaveGeneration = begin(userId, jobId);
+    await deadlineReminders.reconcileDeadlineReminder({
+      ...reminderInput('Unsave'),
+      saved: false,
+      generation: unsaveGeneration,
+      schedule,
+      cancel,
+    } as never);
+    lookup.resolve();
+    await staleSave;
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(schedule).not.toHaveBeenCalled();
+  });
+
+  it('discards a delayed saved-state lookup after a later applied status succeeds', async () => {
+    const begin = (deadlineReminders as unknown as {
+      beginDeadlineReminderReconciliation?: (userId: string, jobId: string) => unknown;
+    }).beginDeadlineReminderReconciliation;
+    expect(begin).toBeTypeOf('function');
+    if (!begin) return;
+
+    const lookup = deferred<void>();
+    const schedule = vi.fn(async () => ({ state: 'scheduled', notificationId: 'stale' }));
+    const cancel = vi.fn(async () => true);
+    const staleGeneration = begin(userId, jobId);
+    const staleSave = lookup.promise.then(() => deadlineReminders.reconcileDeadlineReminder({
+      ...reminderInput('Delayed save'),
+      saved: true,
+      generation: staleGeneration,
+      schedule,
+      cancel,
+    } as never));
+
+    const appliedGeneration = begin(userId, jobId);
+    await deadlineReminders.reconcileDeadlineReminder({
+      ...reminderInput('Applied'),
+      applicationStatus: 'applied',
+      saved: true,
+      generation: appliedGeneration,
+      schedule,
+      cancel,
+    } as never);
+    lookup.resolve();
+    await staleSave;
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(schedule).not.toHaveBeenCalled();
+  });
 });
 
 describe('notification routes', () => {

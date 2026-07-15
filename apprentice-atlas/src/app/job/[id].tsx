@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,7 +16,7 @@ import { getDeadlineReminderState, reconcileDeadlineReminder, type DeadlineRemin
 import { getDescriptionDisclosure } from '@/lib/discovery-presentation';
 import { addFavorite, buildDeadlineReminderCopy, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
 import { localizeApplicationStatus, localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
-import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
+import { getOriginalListingUrl, isCurrentJobDetailOwnership, jobDetailOwnershipKey, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
 import { cleanJobDescription } from '@/lib/job-presentation';
 import { getJob } from '@/lib/jobs';
 import { errorFeedback, successFeedback } from '@/lib/native-feedback';
@@ -33,20 +33,49 @@ export default function JobDetailScreen() {
   const [state, setState] = useState<JobDetailState>({ job: null, explanation: null, loading: true, aiLoading: false, error: null, aiError: null });
   const [loadedId, setLoadedId] = useState(routeId);
   const [favorite, setFavorite] = useState<FavoriteJob | null>(null);
-  const [favoriteJobId, setFavoriteJobId] = useState<string | null>(null);
-  const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [favoriteOwnershipKey, setFavoriteOwnershipKey] = useState<string | null>(null);
+  const [favoriteBusyOwnershipKey, setFavoriteBusyOwnershipKey] = useState<string | null>(null);
   const [favoriteError, setFavoriteError] = useState<FavoritesError | null>(null);
   const [application, setApplication] = useState<TrackedApplication | null>(null);
-  const [applicationJobId, setApplicationJobId] = useState<string | null>(null);
+  const [applicationOwnershipKey, setApplicationOwnershipKey] = useState<string | null>(null);
   const [applicationLoading, setApplicationLoading] = useState(false);
+  const [applicationLoadingOwnershipKey, setApplicationLoadingOwnershipKey] = useState<string | null>(null);
   const [applicationError, setApplicationError] = useState<ApplicationsError | null>(null);
   const [reminderState, setReminderState] = useState<DeadlineReminderState>('not-scheduled');
+  const [reminderOwnershipKey, setReminderOwnershipKey] = useState<string | null>(null);
   const [deadlineToolMessage, setDeadlineToolMessage] = useState<string | null>(null);
   const [descriptionMeasurement, setDescriptionMeasurement] = useState<{ key: string; lineCount: number } | null>(null);
   const [descriptionExpansion, setDescriptionExpansion] = useState<{ key: string; expanded: boolean } | null>(null);
   const activeState = loadedId === routeId ? state : resetJobDetailState(state);
   const { job, explanation, loading, aiLoading, error, aiError } = activeState;
-  const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
+  const authUserId = auth.session?.user.id ?? null;
+  const ownershipIdentity = jobDetailOwnershipKey(authUserId, job?.id ?? null);
+  const [ownership, setOwnership] = useState(() => ({ identity: ownershipIdentity, epoch: 0 }));
+  let currentOwnership = ownership;
+  if (ownership.identity !== ownershipIdentity) {
+    currentOwnership = { identity: ownershipIdentity, epoch: ownership.epoch + 1 };
+    setOwnership(currentOwnership);
+    setFavorite(null);
+    setFavoriteOwnershipKey(null);
+    setFavoriteBusyOwnershipKey(null);
+    setFavoriteError(null);
+    setApplication(null);
+    setApplicationOwnershipKey(null);
+    setApplicationLoading(false);
+    setApplicationLoadingOwnershipKey(null);
+    setApplicationError(null);
+    setReminderState('not-scheduled');
+    setReminderOwnershipKey(null);
+    setDeadlineToolMessage(null);
+  }
+  const ownershipKey = currentOwnership.identity
+    ? `${currentOwnership.identity}\u0000${currentOwnership.epoch}`
+    : null;
+  const currentOwnershipKeyRef = useRef<string | null>(ownershipKey);
+
+  useLayoutEffect(() => {
+    currentOwnershipKeyRef.current = ownershipKey;
+  }, [ownershipKey]);
 
   useEffect(() => {
     let mounted = true;
@@ -65,77 +94,112 @@ export default function JobDetailScreen() {
   }, [routeId, locale]);
 
   useEffect(() => {
-    if (!auth.session || !job) return;
+    if (!ownershipKey || !job) return;
     let mounted = true;
-    void getFavoriteForJob(job.id).then((result) => { if (mounted) { setFavoriteJobId(job.id); setFavorite(result.data); setFavoriteError(result.error); } });
+    const operationKey = ownershipKey;
+    void getFavoriteForJob(job.id).then((result) => {
+      if (!mounted || !isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
+      setFavoriteOwnershipKey(operationKey);
+      setFavorite(result.data);
+      setFavoriteError(result.error);
+    });
     return () => { mounted = false; };
-  }, [auth.session, job]);
+  }, [job, ownershipKey]);
 
   const loadApplication = useCallback(() => {
-    if (auth.loading || !sessionKey || !job) {
-      if (!auth.loading && !sessionKey) {
+    if (auth.loading || !ownershipKey || !job) {
+      if (!auth.loading && !ownershipKey) {
         setApplication(null);
-        setApplicationJobId(null);
+        setApplicationOwnershipKey(null);
         setApplicationError(null);
         setApplicationLoading(false);
       }
       return undefined;
     }
     let active = true;
+    const operationKey = ownershipKey;
     const requestedJobId = job.id;
     setApplicationLoading(true);
+    setApplicationLoadingOwnershipKey(operationKey);
     setApplicationError(null);
     void getApplicationForJob(requestedJobId).then((result) => {
-      if (!active) return;
-      setApplicationJobId(requestedJobId);
+      if (!active || !isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
+      setApplicationOwnershipKey(operationKey);
       setApplication(result.data);
       setApplicationError(result.error);
       setApplicationLoading(false);
+      setApplicationLoadingOwnershipKey(null);
     });
     return () => { active = false; };
-  }, [auth.loading, job, sessionKey]);
+  }, [auth.loading, job, ownershipKey]);
 
   useFocusEffect(loadApplication);
 
   useFocusEffect(useCallback(() => {
-    if (!auth.session || !job) return undefined;
+    if (!authUserId || !job || !ownershipKey) return undefined;
     let active = true;
+    const operationKey = ownershipKey;
     setReminderState('not-scheduled');
-    void getDeadlineReminderState(auth.session.user.id, job.id).then((nextState) => {
-      if (active) setReminderState(nextState);
+    setReminderOwnershipKey(null);
+    void getDeadlineReminderState(authUserId, job.id).then((nextState) => {
+      if (active && isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) {
+        setReminderState(nextState);
+        setReminderOwnershipKey(operationKey);
+      }
     });
     return () => { active = false; };
-  }, [auth.session, job]));
+  }, [authUserId, job, ownershipKey]));
 
-  const activeFavorite = auth.session && favoriteJobId === job?.id ? favorite : null;
-  const activeApplication = auth.session && applicationJobId === job?.id ? application : null;
+  const activeFavorite = ownershipKey && favoriteOwnershipKey === ownershipKey ? favorite : null;
+  const activeApplication = ownershipKey && applicationOwnershipKey === ownershipKey ? application : null;
+  const favoriteBusy = Boolean(ownershipKey && favoriteBusyOwnershipKey === ownershipKey);
+  const activeApplicationLoading = Boolean(ownershipKey && applicationLoadingOwnershipKey === ownershipKey && applicationLoading);
+  const activeReminderState = ownershipKey && reminderOwnershipKey === ownershipKey ? reminderState : 'not-scheduled';
+  const activeFavoriteError = ownershipKey && favoriteOwnershipKey === ownershipKey ? favoriteError : null;
+  const activeApplicationError = ownershipKey && applicationOwnershipKey === ownershipKey ? applicationError : null;
   const toggleFavorite = async () => {
     if (!job || favoriteBusy) return;
-    if (!auth.session) { router.push({ pathname: '/auth', params: { returnTo: `/job/${job.id}`, pendingAction: 'save', jobId: job.id } }); return; }
+    if (!authUserId || !ownershipKey) { router.push({ pathname: '/auth', params: { returnTo: `/job/${job.id}`, pendingAction: 'save', jobId: job.id } }); return; }
+    const operationKey = ownershipKey;
+    const operationUserId = authUserId;
+    const operationJob = job;
+    const applicationStatus = activeApplication?.status ?? null;
     const previous = activeFavorite;
-    setFavoriteJobId(job.id); setFavoriteBusy(true); setFavoriteError(null);
+    setFavoriteOwnershipKey(operationKey); setFavoriteBusyOwnershipKey(operationKey); setFavoriteError(null);
     if (activeFavorite) {
       setFavorite(null);
-      const result = await removeFavorite(job.id);
+      const result = await removeFavorite(operationJob.id);
+      if (!isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
       if (result.error) { setFavorite(rollbackFavoriteState(previous)); setFavoriteError(result.error); }
       else {
-        const copy = buildDeadlineReminderCopy(locale, job.title);
-        void reconcileDeadlineReminder({ userId: auth.session.user.id, jobId: job.id, deadlineAt: job.expiresAt, applicationStatus: activeApplication?.status ?? null, saved: false, ...copy })
-          .then((reminder) => setReminderState(reminder.state));
+        const copy = buildDeadlineReminderCopy(locale, operationJob.title);
+        void reconcileDeadlineReminder({ userId: operationUserId, jobId: operationJob.id, deadlineAt: operationJob.expiresAt, applicationStatus, saved: false, generation: result.reminderGeneration, ...copy })
+          .then((reminder) => {
+            if (isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) {
+              setReminderState(reminder.state);
+              setReminderOwnershipKey(operationKey);
+            }
+          });
       }
     } else {
-      const optimistic = { id: `optimistic-${job.id}`, userId: auth.session.user.id, jobId: job.id, createdAt: new Date().toISOString(), job };
+      const optimistic = { id: `optimistic-${operationJob.id}`, userId: operationUserId, jobId: operationJob.id, createdAt: new Date().toISOString(), job: operationJob };
       setFavorite(optimistic);
-      const result = await addFavorite(job.id);
+      const result = await addFavorite(operationJob.id);
+      if (!isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) return;
       if (result.error) { setFavorite(rollbackFavoriteState(previous)); setFavoriteError(result.error); }
       else {
         setFavorite(result.data ?? optimistic);
-        const copy = buildDeadlineReminderCopy(locale, job.title);
-        void reconcileDeadlineReminder({ userId: auth.session.user.id, jobId: job.id, deadlineAt: job.expiresAt, applicationStatus: activeApplication?.status ?? null, saved: true, ...copy })
-          .then((reminder) => setReminderState(reminder.state));
+        const copy = buildDeadlineReminderCopy(locale, operationJob.title);
+        void reconcileDeadlineReminder({ userId: operationUserId, jobId: operationJob.id, deadlineAt: operationJob.expiresAt, applicationStatus, saved: true, generation: result.reminderGeneration, ...copy })
+          .then((reminder) => {
+            if (isCurrentJobDetailOwnership(operationKey, currentOwnershipKeyRef.current)) {
+              setReminderState(reminder.state);
+              setReminderOwnershipKey(operationKey);
+            }
+          });
       }
     }
-    setFavoriteBusy(false);
+    setFavoriteBusyOwnershipKey(null);
   };
 
   const openApplicationJourney = () => {
@@ -214,11 +278,11 @@ export default function JobDetailScreen() {
             <View style={styles.deadlineToolCopy}>
               <Text style={styles.deadlineToolLabel}>{t(locale, 'deadline.reminder.label')}</Text>
               <Text style={styles.deadlineToolState}>{activeFavorite
-                ? t(locale, reminderState === 'scheduled'
+                ? t(locale, activeReminderState === 'scheduled'
                   ? 'deadline.reminder.scheduled'
-                  : reminderState === 'permission-denied'
+                  : activeReminderState === 'permission-denied'
                     ? 'deadline.reminder.permissionDenied'
-                    : reminderState === 'unavailable'
+                    : activeReminderState === 'unavailable'
                       ? 'deadline.reminder.unavailable'
                       : 'deadline.reminder.notScheduled')
                 : t(locale, 'deadline.reminder.saveHint')}</Text>
@@ -235,7 +299,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {favoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(favoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
+        {activeFavoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(activeFavoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
 
         {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
 
@@ -255,7 +319,7 @@ export default function JobDetailScreen() {
           <View style={styles.applicationJourneyIcon}><AppIcon name={{ ios: 'arrow.trianglehead.branch', android: 'route', web: 'route' }} size={20} tintColor={Palette.blue} /></View>
           <View style={styles.applicationJourneyCopy}>
             <Text style={styles.applicationJourneyLabel}>{t(locale, 'application.journey')}</Text>
-            <Text style={styles.applicationJourneyValue}>{applicationLoading && auth.session
+            <Text style={styles.applicationJourneyValue}>{activeApplicationLoading && auth.session
               ? t(locale, 'application.loading')
               : activeApplication
                 ? localizeApplicationStatus(locale, activeApplication.status)
@@ -263,7 +327,7 @@ export default function JobDetailScreen() {
           </View>
           <AppIcon name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={16} tintColor={Palette.textSecondary} />
         </Pressable>
-        {applicationError && applicationJobId === job.id && <Text accessibilityRole="alert" style={styles.error}>{getReadableApplicationsError(applicationError, locale, 'load')}</Text>}
+        {activeApplicationError && <Text accessibilityRole="alert" style={styles.error}>{getReadableApplicationsError(activeApplicationError, locale, 'load')}</Text>}
 
         <Pressable
           accessibilityLabel={t(locale, 'prepare.jobCtaTitle')}

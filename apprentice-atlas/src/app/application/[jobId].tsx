@@ -28,7 +28,7 @@ import {
   resolveApplicationSheetLoad,
 } from '@/lib/application-flow';
 import { buildCalendarEventPayload, openCalendarEventForm } from '@/lib/calendar-sync';
-import { reconcileDeadlineReminder } from '@/lib/deadline-reminders';
+import { beginDeadlineReminderReconciliation, reconcileDeadlineReminder } from '@/lib/deadline-reminders';
 import { buildDeadlineReminderCopy, getFavoriteForJob } from '@/lib/favorites';
 import { localizeApplicationStatus, t, useLocale, type TranslationKey } from '@/lib/i18n';
 import { getJob } from '@/lib/jobs';
@@ -141,6 +141,7 @@ export default function ApplicationSheet() {
 
   const save = async () => {
     const operationKey = workflowKey;
+    const operationUserId = authUserId;
     if (!validJobId || !workflowReady || !operationKey || busy) return;
     if (!isApplicationDraftValid(status, note)) {
       void errorFeedback();
@@ -150,33 +151,38 @@ export default function ApplicationSheet() {
     setError(null);
     setBusyOperation('save');
     const result = await upsertApplication(routeJobId, status, note, interviewAt);
+    const reminderGeneration = !result.error && operationUserId
+      ? beginDeadlineReminderReconciliation(operationUserId, routeJobId)
+      : null;
     if (!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
     if (result.error) {
       handleOperationError('save', result.error);
       return;
     }
     void successFeedback();
-    if (authUserId) {
+    if (operationUserId) {
       const copy = buildDeadlineReminderCopy(locale, job?.title ?? t(locale, 'application.listingUnavailableTitle'));
       if (status === 'interested' || status === 'preparing') {
         void getFavoriteForJob(routeJobId).then((favoriteResult) => {
           if (favoriteResult.error) return;
           return reconcileDeadlineReminder({
-            userId: authUserId,
+            userId: operationUserId,
             jobId: routeJobId,
             deadlineAt: job?.expiresAt ?? null,
             applicationStatus: status,
             saved: Boolean(favoriteResult.data),
+            generation: reminderGeneration,
             ...copy,
           });
         });
       } else {
         void reconcileDeadlineReminder({
-          userId: authUserId,
+          userId: operationUserId,
           jobId: routeJobId,
           deadlineAt: job?.expiresAt ?? null,
           applicationStatus: status,
           saved: false,
+          generation: reminderGeneration,
           ...copy,
         });
       }
@@ -191,23 +197,28 @@ export default function ApplicationSheet() {
 
   const remove = async () => {
     const operationKey = workflowKey;
+    const operationUserId = authUserId;
     if (!validJobId || !workflowReady || !operationKey || busy) return;
     setError(null);
     setBusyOperation('remove');
     const result = await removeApplication(routeJobId);
+    const reminderGeneration = !result.error && operationUserId
+      ? beginDeadlineReminderReconciliation(operationUserId, routeJobId)
+      : null;
     if (!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
     if (result.error) {
       handleOperationError('remove', result.error);
       return;
     }
     void successFeedback();
-    if (authUserId) {
+    if (operationUserId) {
       const copy = buildDeadlineReminderCopy(locale, job?.title ?? t(locale, 'application.listingUnavailableTitle'));
       void reconcileApplicationRemovalReminder({
-        userId: authUserId,
+        userId: operationUserId,
         jobId: routeJobId,
         deadlineAt: job?.expiresAt ?? null,
         ...copy,
+        generation: reminderGeneration,
         getFavorite: getFavoriteForJob,
         reconcile: reconcileDeadlineReminder,
       });

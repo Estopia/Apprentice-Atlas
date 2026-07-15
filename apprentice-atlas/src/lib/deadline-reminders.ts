@@ -13,6 +13,7 @@ const APPLIED_STATUSES: ReadonlySet<ApplicationStatus> = new Set([
   'closed',
 ]);
 const reminderOperationQueues = new Map<string, Promise<void>>();
+const reminderGenerations = new Map<string, number>();
 
 export type NotificationJobRoute = `/job/${string}`;
 
@@ -24,7 +25,13 @@ export interface ScheduleDeadlineReminderInput {
   title: string;
   body: string;
   now?: Date;
+  generation?: DeadlineReminderGeneration | null;
 }
+
+export type DeadlineReminderGeneration = {
+  storageKey: string;
+  version: number;
+};
 
 export type DeadlineReminderState = 'scheduled' | 'permission-denied' | 'unavailable' | 'not-scheduled';
 
@@ -36,7 +43,7 @@ export interface DeadlineReminderResult {
 export interface ReconcileDeadlineReminderInput extends ScheduleDeadlineReminderInput {
   saved: boolean;
   schedule?: (input: ScheduleDeadlineReminderInput) => Promise<DeadlineReminderResult>;
-  cancel?: (userId: string, jobId: string) => Promise<boolean>;
+  cancel?: (userId: string, jobId: string, generation?: DeadlineReminderGeneration | null) => Promise<boolean>;
 }
 
 export function getDeadlineReminderDate(
@@ -64,6 +71,25 @@ function reminderStorageKey(userId: string, jobId: string): string | null {
   return `${REMINDER_STORAGE_PREFIX}:${userId}:${jobId}`;
 }
 
+export function beginDeadlineReminderReconciliation(
+  userId: string,
+  jobId: string,
+): DeadlineReminderGeneration | null {
+  const storageKey = reminderStorageKey(userId, jobId);
+  if (!storageKey) return null;
+  const version = (reminderGenerations.get(storageKey) ?? 0) + 1;
+  reminderGenerations.set(storageKey, version);
+  return { storageKey, version };
+}
+
+function isCurrentDeadlineReminderGeneration(
+  storageKey: string,
+  generation: DeadlineReminderGeneration | null | undefined,
+): boolean {
+  return !generation
+    || (generation.storageKey === storageKey && reminderGenerations.get(storageKey) === generation.version);
+}
+
 function serializeReminderOperation<T>(storageKey: string, operation: () => Promise<T>): Promise<T> {
   const previous = reminderOperationQueues.get(storageKey) ?? Promise.resolve();
   const result = previous.then(operation);
@@ -88,11 +114,16 @@ async function loadNotifications() {
   }
 }
 
-export async function cancelDeadlineReminder(userId: string, jobId: string): Promise<boolean> {
+export async function cancelDeadlineReminder(
+  userId: string,
+  jobId: string,
+  generation?: DeadlineReminderGeneration | null,
+): Promise<boolean> {
   const storageKey = reminderStorageKey(userId, jobId);
-  if (!storageKey) return false;
+  if (!storageKey || !isCurrentDeadlineReminderGeneration(storageKey, generation)) return false;
 
   return serializeReminderOperation(storageKey, async () => {
+    if (!isCurrentDeadlineReminderGeneration(storageKey, generation)) return false;
     const notificationId = await AsyncStorage.getItem(storageKey);
     if (!notificationId) return false;
 
@@ -126,11 +157,15 @@ export async function scheduleDeadlineReminderWithState(
     input.now,
   );
   const route = parseNotificationJobRoute(`/job/${input.jobId}`);
-  if (!storageKey || !reminderDate || !route) {
+  if (!storageKey || !reminderDate || !route
+    || !isCurrentDeadlineReminderGeneration(storageKey, input.generation)) {
     return { state: 'unavailable', notificationId: null };
   }
 
   return serializeReminderOperation(storageKey, async () => {
+    if (!isCurrentDeadlineReminderGeneration(storageKey, input.generation)) {
+      return { state: 'not-scheduled', notificationId: null };
+    }
     const Notifications = await loadNotifications();
     if (!Notifications) return { state: 'unavailable', notificationId: null };
 
@@ -165,6 +200,11 @@ export async function scheduleDeadlineReminderWithState(
         },
       });
 
+      if (!isCurrentDeadlineReminderGeneration(storageKey, input.generation)) {
+        await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
+        return { state: 'not-scheduled', notificationId: null };
+      }
+
       try {
         await AsyncStorage.setItem(storageKey, notificationId);
       } catch (error) {
@@ -198,6 +238,10 @@ export async function getDeadlineReminderState(userId: string, jobId: string): P
 export async function reconcileDeadlineReminder(
   input: ReconcileDeadlineReminderInput,
 ): Promise<DeadlineReminderResult> {
+  const storageKey = reminderStorageKey(input.userId, input.jobId);
+  if (!storageKey || !isCurrentDeadlineReminderGeneration(storageKey, input.generation)) {
+    return { state: 'not-scheduled', notificationId: null };
+  }
   const schedule = input.schedule ?? scheduleDeadlineReminderWithState;
   const cancel = input.cancel ?? cancelDeadlineReminder;
   const shouldSchedule = input.saved && getDeadlineReminderDate(
@@ -207,7 +251,7 @@ export async function reconcileDeadlineReminder(
   ) !== null;
 
   if (!shouldSchedule) {
-    await cancel(input.userId, input.jobId).catch(() => false);
+    await cancel(input.userId, input.jobId, input.generation).catch(() => false);
     return { state: 'not-scheduled', notificationId: null };
   }
 

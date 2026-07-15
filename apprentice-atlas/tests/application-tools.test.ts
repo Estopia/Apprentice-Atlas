@@ -148,6 +148,22 @@ describe('Task 3 native integration source contracts', () => {
     expect(removeBlock).not.toMatch(/await cancelDeadlineReminder/);
   });
 
+  it('invalidates stale reminder work immediately after every relevant persistence success', () => {
+    const favoritesSource = readFileSync('src/lib/favorites.ts', 'utf8');
+    const sheet = readFileSync('src/app/application/[jobId].tsx', 'utf8');
+    const addBlock = favoritesSource.slice(favoritesSource.indexOf('export async function addFavorite'), favoritesSource.indexOf('export async function removeFavorite'));
+    const removeFavoriteBlock = favoritesSource.slice(favoritesSource.indexOf('export async function removeFavorite'), favoritesSource.indexOf('export function dedupeFavorites'));
+    const saveBlock = sheet.slice(sheet.indexOf('const save = async'), sheet.indexOf('const remove = async'));
+    const removeApplicationBlock = sheet.slice(sheet.indexOf('const remove = async'), sheet.indexOf('const openInterviewPicker'));
+
+    expect(addBlock).toMatch(/result\.error[\s\S]+beginDeadlineReminderReconciliation[\s\S]+reconcileSavedFavoriteDeadline/);
+    expect(removeFavoriteBlock).toMatch(/result\.error[\s\S]+beginDeadlineReminderReconciliation[\s\S]+cancelDeadlineReminder/);
+    expect(saveBlock).toMatch(/result\.error[\s\S]+beginDeadlineReminderReconciliation[\s\S]+getFavoriteForJob/);
+    expect(removeApplicationBlock).toMatch(/result\.error[\s\S]+beginDeadlineReminderReconciliation[\s\S]+reconcileApplicationRemovalReminder/);
+    expect(saveBlock.indexOf('beginDeadlineReminderReconciliation')).toBeLessThan(saveBlock.indexOf('!mountedRef.current'));
+    expect(removeApplicationBlock.indexOf('beginDeadlineReminderReconciliation')).toBeLessThan(removeApplicationBlock.indexOf('!mountedRef.current'));
+  });
+
   it('surfaces official deadline and reminder state without invented contact fields', () => {
     const detail = readFileSync('src/app/job/[id].tsx', 'utf8');
     const saved = readFileSync('src/app/(tabs)/favorites.tsx', 'utf8');

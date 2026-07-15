@@ -2,12 +2,21 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { FavoriteJob, Job } from '@/types/jobs';
 import { isApplicationStatus } from './application-flow';
-import { cancelDeadlineReminder, reconcileDeadlineReminder } from './deadline-reminders';
+import {
+  beginDeadlineReminderReconciliation,
+  cancelDeadlineReminder,
+  reconcileDeadlineReminder,
+  type DeadlineReminderGeneration,
+} from './deadline-reminders';
 import { getLocale, t, type Locale } from './i18n';
 
 export type FavoriteClient = SupabaseClient;
 export type FavoritesError = { code: 'configuration' | 'auth-required' | 'query' | 'mutation'; message: string };
-export type FavoritesResult<T> = { data: T | null; error: FavoritesError | null };
+export type FavoritesResult<T> = {
+  data: T | null;
+  error: FavoritesError | null;
+  reminderGeneration?: DeadlineReminderGeneration | null;
+};
 export type ComparisonRow = { label: string; values: string[] };
 
 export type FavoriteRemoval = {
@@ -92,14 +101,16 @@ function toFavorite(row: Record<string, unknown>): FavoriteJob {
   return { id: String(row.id), userId: String(row.user_id), jobId: String(row.job_id), createdAt: String(row.created_at), job: toJob((related ?? null) as Record<string, unknown> | null) };
 }
 
-async function reconcileSavedFavoriteDeadline(jobId: string, client: FavoriteClient): Promise<void> {
-  const user = await currentUserId(client);
-  if (user.error || !user.data) return;
-
+async function reconcileSavedFavoriteDeadline(
+  jobId: string,
+  client: FavoriteClient,
+  userId: string,
+  generation: DeadlineReminderGeneration | null,
+): Promise<void> {
   try {
     const [jobResult, applicationResult] = await Promise.all([
       client.from('jobs').select('title,expires_at').eq('id', jobId).maybeSingle(),
-      client.from('applications').select('status').eq('user_id', user.data).eq('job_id', jobId).maybeSingle(),
+      client.from('applications').select('status').eq('user_id', userId).eq('job_id', jobId).maybeSingle(),
     ]);
     if (jobResult.error || applicationResult.error || !jobResult.data) return;
     const row = jobResult.data as Record<string, unknown>;
@@ -109,11 +120,12 @@ async function reconcileSavedFavoriteDeadline(jobId: string, client: FavoriteCli
     const applicationStatus = isApplicationStatus(applicationRow?.status) ? applicationRow.status : null;
     const copy = buildDeadlineReminderCopy(getLocale(), row.title);
     await reconcileDeadlineReminder({
-      userId: user.data,
+      userId,
       jobId,
       deadlineAt,
       applicationStatus,
       saved: true,
+      generation,
       ...copy,
     });
   } catch {
@@ -134,12 +146,14 @@ export async function getFavoriteForJob(jobId: string, client?: FavoriteClient):
 
 export async function addFavorite(jobId: string, client?: FavoriteClient): Promise<FavoritesResult<FavoriteJob>> {
   const supabase = await clientOrError(client); if ('code' in supabase) return errorResult(supabase);
+  const user = await currentUserId(supabase); if (user.error || !user.data) return errorResult(user.error!);
   try {
     const result = await supabase.rpc('add_favorite', { p_job_id: jobId });
     if (result.error) return errorResult({ code: 'mutation', message: result.error.message || 'Could not save favorite.' });
     const favorite = toFavorite(result.data as Record<string, unknown>);
-    void reconcileSavedFavoriteDeadline(jobId, supabase);
-    return { data: favorite, error: null };
+    const reminderGeneration = beginDeadlineReminderReconciliation(user.data, jobId);
+    void reconcileSavedFavoriteDeadline(jobId, supabase, user.data, reminderGeneration);
+    return { data: favorite, error: null, reminderGeneration };
   }
   catch (error) { return errorResult({ code: 'mutation', message: error instanceof Error ? error.message : 'Could not save favorite.' }); }
 }
@@ -150,8 +164,9 @@ export async function removeFavorite(jobId: string, client?: FavoriteClient): Pr
   try {
     const result = await supabase.from('favorites').delete().eq('job_id', jobId).eq('user_id', user.data);
     if (result.error) return errorResult({ code: 'mutation', message: result.error.message || 'Could not remove favorite.' });
-    void cancelDeadlineReminder(user.data, jobId);
-    return { data: null, error: null };
+    const reminderGeneration = beginDeadlineReminderReconciliation(user.data, jobId);
+    void cancelDeadlineReminder(user.data, jobId, reminderGeneration);
+    return { data: null, error: null, reminderGeneration };
   }
   catch (error) { return errorResult({ code: 'mutation', message: error instanceof Error ? error.message : 'Could not remove favorite.' }); }
 }
