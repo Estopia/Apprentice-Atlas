@@ -8,6 +8,9 @@
       "developmentClient": true,
       "distribution": "internal",
       "autoIncrement": true,
+      "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
+      },
       "ios": {
         "simulator": false
       },
@@ -16,8 +19,15 @@
       }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
+      }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
+      }
+    }
   }
 }

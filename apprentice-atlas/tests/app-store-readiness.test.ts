@@ -4,6 +4,14 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(path, 'utf8');
 
 describe('App Store readiness contracts', () => {
+  it('builds Expo iOS modules from one source-compatible dependency set', () => {
+    const profiles = JSON.parse(read('eas.json')).build as Record<string, { env?: Record<string, string> }>;
+
+    for (const profile of ['development', 'preview', 'production']) {
+      expect(profiles[profile]?.env?.EXPO_USE_PRECOMPILED_MODULES).toBe('0');
+    }
+  });
+
   it('declares no tracking and all required-reason API categories used by native dependencies', () => {
     const config = JSON.parse(read('app.json')).expo.ios.privacyManifests;
     expect(config.NSPrivacyTracking).toBe(false);
