@@ -13,11 +13,13 @@ import {
 } from '../src/lib/auth';
 import {
   addFavorite,
+  advanceFavoriteOwnership,
   beginFavoriteRemoval,
   buildComparisonRows,
+  createFavoriteOwnership,
   dedupeFavorites,
   getReadableFavoritesError,
-  favoriteSessionKey,
+  favoriteOwnershipKey,
   invokeSignOut,
   isFavoritesLoading,
   listFavorites,
@@ -143,16 +145,21 @@ describe('auth route and readable errors', () => {
 });
 
 describe('favorite state and comparison', () => {
-  it('binds favorite operations to the exact authenticated session', () => {
-    const first = favoriteSessionKey('user-1', 'token-1');
-    const refreshed = favoriteSessionKey('user-1', 'token-2');
-    const otherUser = favoriteSessionKey('user-2', 'token-1');
+  it('keeps ownership stable for token refreshes but invalidates every account boundary', () => {
+    const first = createFavoriteOwnership('user-1');
+    const tokenRefresh = advanceFavoriteOwnership(first, 'user-1');
+    const signedOut = advanceFavoriteOwnership(tokenRefresh, null);
+    const sameUserAgain = advanceFavoriteOwnership(signedOut, 'user-1');
+    const otherUser = advanceFavoriteOwnership(sameUserAgain, 'user-2');
 
-    expect(first).not.toBeNull();
-    expect(favoriteSessionKey(null, null)).toBeNull();
-    expect(isCurrentFavoriteOperation(first, first)).toBe(true);
-    expect(isCurrentFavoriteOperation(first, refreshed)).toBe(false);
-    expect(isCurrentFavoriteOperation(first, otherUser)).toBe(false);
+    expect(tokenRefresh).toBe(first);
+    expect(favoriteOwnershipKey(tokenRefresh)).toBe(favoriteOwnershipKey(first));
+    expect(favoriteOwnershipKey(signedOut)).toBeNull();
+    expect(signedOut.epoch).toBe(1);
+    expect(sameUserAgain.epoch).toBe(2);
+    expect(otherUser.epoch).toBe(3);
+    expect(isCurrentFavoriteOperation(favoriteOwnershipKey(first), favoriteOwnershipKey(sameUserAgain))).toBe(false);
+    expect(isCurrentFavoriteOperation(favoriteOwnershipKey(sameUserAgain), favoriteOwnershipKey(otherUser))).toBe(false);
   });
 
   it('rolls back independent concurrent removals without restoring a full snapshot', () => {
@@ -198,6 +205,7 @@ describe('favorite state and comparison', () => {
     expect(isFavoritesLoading(true, null, null)).toBe(true);
     expect(isFavoritesLoading(false, 'user-1', null)).toBe(true);
     expect(isFavoritesLoading(false, 'user-1', 'user-1')).toBe(false);
+    expect(isFavoritesLoading(true, 'user-1', 'user-1')).toBe(false);
   });
 
   it('localizes database errors and invokes the supplied sign-out action', async () => {

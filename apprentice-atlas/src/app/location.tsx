@@ -7,7 +7,7 @@ import { Palette } from '@/constants/theme';
 import { useLocation } from '@/hooks/use-location';
 import { getDiscoveryState, setDiscoveryFilters, setDiscoverySort } from '@/lib/discovery-state';
 import { transitionLocationFilter } from '@/lib/filter-presentation';
-import { t, useLocale } from '@/lib/i18n';
+import { localizeCountry, t, useLocale } from '@/lib/i18n';
 import { applyDeviceLocationFilters, applyManualLocationFilters } from '@/lib/location';
 
 export default function LocationSheet() {
@@ -50,9 +50,9 @@ export default function LocationSheet() {
         </View>
         <Text style={styles.label}>{t(locale, 'discovery.country')}</Text>
         <View style={styles.fields}>
-          <CountryChoice active={country === 'Germany'} label="Deutschland" onPress={() => setCountry('Germany')} />
+          <CountryChoice active={country === 'Germany'} label={localizeCountry(locale, 'Germany')} onPress={() => setCountry('Germany')} />
           <View style={styles.separator} />
-          <CountryChoice active={country === 'United Kingdom'} label="United Kingdom" onPress={() => setCountry('United Kingdom')} />
+          <CountryChoice active={country === 'United Kingdom'} label={localizeCountry(locale, 'United Kingdom')} onPress={() => setCountry('United Kingdom')} />
         </View>
         {(location.status === 'denied' || location.status === 'unavailable') && <Text accessibilityRole="alert" style={styles.error}>{t(locale, 'location.denied')} {t(locale, 'location.fallback')}</Text>}
         <Pressable accessibilityRole="button" accessibilityState={{ disabled: !manualValid }} disabled={!manualValid} onPress={useManual} style={({ pressed }) => [styles.apply, !manualValid && styles.disabled, pressed && styles.pressed]}><Text style={styles.applyText}>{t(locale, 'discovery.useManual')}</Text></Pressable>

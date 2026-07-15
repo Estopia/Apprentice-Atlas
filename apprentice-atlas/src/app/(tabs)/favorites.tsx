@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
-import { beginFavoriteRemoval, buildComparisonRows, favoriteSessionKey, getReadableFavoritesError, isCurrentFavoriteOperation, isFavoritesLoading, listFavorites, removeFavorite, rollbackFavoriteRemoval, type FavoritesError } from '@/lib/favorites';
+import { advanceFavoriteOwnership, beginFavoriteRemoval, buildComparisonRows, createFavoriteOwnership, favoriteOwnershipKey, getReadableFavoritesError, isCurrentFavoriteOperation, isFavoritesLoading, listFavorites, removeFavorite, rollbackFavoriteRemoval, type FavoritesError } from '@/lib/favorites';
 import { localizeCountry, localizeJobType, t, useLocale, type Locale } from '@/lib/i18n';
 import type { FavoriteJob } from '@/types/jobs';
 
@@ -15,31 +15,37 @@ export default function FavoritesScreen() {
   const router = useRouter();
   const auth = useAuth();
   const [favorites, setFavorites] = useState<FavoriteJob[]>([]);
-  const [loadedForSessionKey, setLoadedForSessionKey] = useState<string | null>(null);
+  const [loadedForOwnershipKey, setLoadedForOwnershipKey] = useState<string | null>(null);
   const [error, setError] = useState<FavoritesError | null>(null);
   const [errorOperation, setErrorOperation] = useState<'save' | 'remove'>('save');
   const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set());
   const pendingOperationIdsRef = useRef(new Set<string>());
   const userId = auth.session?.user.id ?? null;
-  const sessionKey = favoriteSessionKey(userId, auth.session?.access_token ?? null);
-  const currentSessionKeyRef = useRef<string | null>(sessionKey);
+  const [ownership, setOwnership] = useState(() => createFavoriteOwnership(userId));
+  let currentOwnership = ownership;
+  if (ownership.userId !== userId) {
+    currentOwnership = advanceFavoriteOwnership(ownership, userId);
+    setOwnership(currentOwnership);
+  }
+  const ownershipKey = favoriteOwnershipKey(currentOwnership);
+  const currentOwnershipKeyRef = useRef<string | null>(ownershipKey);
 
   useLayoutEffect(() => {
-    currentSessionKeyRef.current = sessionKey;
-  }, [sessionKey]);
-  const loading = isFavoritesLoading(auth.loading, sessionKey, loadedForSessionKey);
-  const currentFavorites = loadedForSessionKey === sessionKey ? favorites : [];
-  const currentError = loadedForSessionKey === sessionKey ? error : null;
+    currentOwnershipKeyRef.current = ownershipKey;
+  }, [ownershipKey]);
+  const loading = isFavoritesLoading(auth.loading, ownershipKey, loadedForOwnershipKey);
+  const currentFavorites = loadedForOwnershipKey === ownershipKey ? favorites : [];
+  const currentError = loadedForOwnershipKey === ownershipKey ? error : null;
 
   const loadFavorites = useCallback(() => {
-    if (auth.loading || !sessionKey) return undefined;
+    if (!ownershipKey) return undefined;
     void refreshAttempt;
     let active = true;
-    const operationKey = sessionKey;
+    const operationKey = ownershipKey;
     setFavorites([]);
     setError(null);
-    setLoadedForSessionKey(null);
+    setLoadedForOwnershipKey(null);
     const operationPrefix = `${operationKey}\u0000`;
     setPendingJobIds(new Set(
       [...pendingOperationIdsRef.current]
@@ -47,20 +53,20 @@ export default function FavoritesScreen() {
         .map((operationId) => operationId.slice(operationPrefix.length)),
     ));
     void listFavorites().then((result) => {
-      if (!active || !isCurrentFavoriteOperation(operationKey, currentSessionKeyRef.current)) return;
+      if (!active || !isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
       setFavorites(result.data ?? []);
       setError(result.error);
       setErrorOperation('save');
-      setLoadedForSessionKey(operationKey);
+      setLoadedForOwnershipKey(operationKey);
     });
     return () => { active = false; };
-  }, [auth.loading, refreshAttempt, sessionKey]);
+  }, [ownershipKey, refreshAttempt]);
 
   useFocusEffect(loadFavorites);
 
   const remove = async (favorite: FavoriteJob) => {
-    const operationKey = sessionKey;
-    if (!operationKey || loadedForSessionKey !== operationKey) return;
+    const operationKey = ownershipKey;
+    if (!operationKey || loadedForOwnershipKey !== operationKey) return;
     const operationId = `${operationKey}\u0000${favorite.jobId}`;
     if (pendingOperationIdsRef.current.has(operationId)) return;
     pendingOperationIdsRef.current.add(operationId);
@@ -69,7 +75,7 @@ export default function FavoritesScreen() {
     setError(null);
     const result = await removeFavorite(favorite.jobId);
     pendingOperationIdsRef.current.delete(operationId);
-    if (!isCurrentFavoriteOperation(operationKey, currentSessionKeyRef.current)) return;
+    if (!isCurrentFavoriteOperation(operationKey, currentOwnershipKeyRef.current)) return;
     setPendingJobIds((current) => {
       const next = new Set(current);
       next.delete(favorite.jobId);
@@ -86,7 +92,7 @@ export default function FavoritesScreen() {
 
   const retry = () => {
     setError(null);
-    setLoadedForSessionKey(null);
+    setLoadedForOwnershipKey(null);
     setRefreshAttempt((attempt) => attempt + 1);
   };
 

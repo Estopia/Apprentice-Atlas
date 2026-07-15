@@ -13,8 +13,21 @@ export type FavoriteRemoval = {
   removed: FavoriteJob | null;
 };
 
-export function favoriteSessionKey(userId: string | null, accessToken: string | null): string | null {
-  return userId && accessToken ? `${userId}:${accessToken}` : null;
+export type FavoriteOwnership = {
+  userId: string | null;
+  epoch: number;
+};
+
+export function createFavoriteOwnership(userId: string | null): FavoriteOwnership {
+  return { userId, epoch: 0 };
+}
+
+export function advanceFavoriteOwnership(current: FavoriteOwnership, userId: string | null): FavoriteOwnership {
+  return current.userId === userId ? current : { userId, epoch: current.epoch + 1 };
+}
+
+export function favoriteOwnershipKey(ownership: FavoriteOwnership): string | null {
+  return ownership.userId ? `${ownership.userId}:${ownership.epoch}` : null;
 }
 
 export function isCurrentFavoriteOperation(capturedKey: string | null, currentKey: string | null): boolean {
@@ -35,8 +48,8 @@ export function rollbackFavoriteRemoval(favorites: readonly FavoriteJob[], remov
   ));
 }
 
-export function isFavoritesLoading(authLoading: boolean, sessionId: string | null, loadedForUserId: string | null): boolean {
-  return authLoading || Boolean(sessionId && sessionId !== loadedForUserId);
+export function isFavoritesLoading(authLoading: boolean, ownershipKey: string | null, loadedForOwnershipKey: string | null): boolean {
+  return (!ownershipKey && authLoading) || Boolean(ownershipKey && ownershipKey !== loadedForOwnershipKey);
 }
 
 export function getReadableFavoritesError(error: FavoritesError, locale: Locale, operation: 'save' | 'remove' = 'save'): string {
