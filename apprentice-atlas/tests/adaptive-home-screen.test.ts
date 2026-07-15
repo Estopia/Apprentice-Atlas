@@ -10,6 +10,7 @@ describe('adaptive home screen', () => {
     expect(home).toContain('deriveAtlasNextAction');
     expect(home).toContain('selectUpcomingDeadlines');
     expect(home).toContain('getHomeJobDistanceKm');
+    expect(home).toContain("filters.country ?? preferences.country ?? 'Germany'");
   });
 
   it('provides the primary search, map, settings, job, and application routes', () => {

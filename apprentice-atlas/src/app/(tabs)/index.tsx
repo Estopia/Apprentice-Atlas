@@ -24,7 +24,7 @@ export default function HomeScreen() {
   const auth = useAuth();
   const { preferences } = usePreferences();
   const { filters } = useDiscoveryState();
-  const country = preferences.country ?? filters.country ?? 'Germany';
+  const country = filters.country ?? preferences.country ?? 'Germany';
   const { jobs, loading, error, reload } = useJobs({ country });
   const { markDiscoveryReady } = useLaunchReadiness();
   const [favorites, setFavorites] = useState<FavoriteJob[]>([]);
