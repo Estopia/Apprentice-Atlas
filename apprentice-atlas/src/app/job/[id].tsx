@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   applicationJourneyCopy: { flex: 1, minWidth: 0, gap: 2 },
   applicationJourneyLabel: { color: Palette.text, fontSize: 14, fontWeight: '700' },
   applicationJourneyValue: { color: Palette.blue, fontSize: 13, fontWeight: '600' },
-  prepareCta: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.blue },
+  prepareCta: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.blue },
   prepareCtaIcon: { width: 42, height: 42, borderRadius: 13, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
   prepareCtaCopy: { flex: 1, minWidth: 0, gap: 3 },
   prepareCtaTitle: { color: Palette.white, fontSize: 16, lineHeight: 21, fontWeight: '800' },
