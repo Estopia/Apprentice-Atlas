@@ -8,8 +8,48 @@ export type FavoritesError = { code: 'configuration' | 'auth-required' | 'query'
 export type FavoritesResult<T> = { data: T | null; error: FavoritesError | null };
 export type ComparisonRow = { label: string; values: string[] };
 
-export function isFavoritesLoading(authLoading: boolean, sessionId: string | null, loadedForUserId: string | null): boolean {
-  return authLoading || Boolean(sessionId && sessionId !== loadedForUserId);
+export type FavoriteRemoval = {
+  favorites: FavoriteJob[];
+  removed: FavoriteJob | null;
+};
+
+export type FavoriteOwnership = {
+  userId: string | null;
+  epoch: number;
+};
+
+export function createFavoriteOwnership(userId: string | null): FavoriteOwnership {
+  return { userId, epoch: 0 };
+}
+
+export function advanceFavoriteOwnership(current: FavoriteOwnership, userId: string | null): FavoriteOwnership {
+  return current.userId === userId ? current : { userId, epoch: current.epoch + 1 };
+}
+
+export function favoriteOwnershipKey(ownership: FavoriteOwnership): string | null {
+  return ownership.userId ? `${ownership.userId}:${ownership.epoch}` : null;
+}
+
+export function isCurrentFavoriteOperation(capturedKey: string | null, currentKey: string | null): boolean {
+  return capturedKey !== null && capturedKey === currentKey;
+}
+
+export function beginFavoriteRemoval(favorites: readonly FavoriteJob[], jobId: string): FavoriteRemoval {
+  return {
+    favorites: favorites.filter((favorite) => favorite.jobId !== jobId),
+    removed: favorites.find((favorite) => favorite.jobId === jobId) ?? null,
+  };
+}
+
+export function rollbackFavoriteRemoval(favorites: readonly FavoriteJob[], removed: FavoriteJob | null): FavoriteJob[] {
+  if (!removed || favorites.some((favorite) => favorite.jobId === removed.jobId)) return [...favorites];
+  return [...favorites, removed].sort((left, right) => (
+    Date.parse(right.createdAt) - Date.parse(left.createdAt) || left.id.localeCompare(right.id)
+  ));
+}
+
+export function isFavoritesLoading(authLoading: boolean, ownershipKey: string | null, loadedForOwnershipKey: string | null): boolean {
+  return (!ownershipKey && authLoading) || Boolean(ownershipKey && ownershipKey !== loadedForOwnershipKey);
 }
 
 export function getReadableFavoritesError(error: FavoritesError, locale: Locale, operation: 'save' | 'remove' = 'save'): string {

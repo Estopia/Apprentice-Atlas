@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { normalizeJobLevel } from './job-presentation';
 import type { ApplicationStatus } from '@/types/jobs';
 
 export type Locale = 'de' | 'en';
@@ -45,6 +46,8 @@ const messages = {
     'discovery.entryLevel': 'Einstiegsjob',
     'discovery.level': 'Erfahrungslevel',
     'discovery.beginner': 'Für Einsteiger',
+    'discovery.intermediate': 'Mit erster Erfahrung',
+    'discovery.levelUnknown': 'Erfahrungslevel nicht verfügbar',
     'discovery.sort': 'Sortierung',
     'discovery.sortRecent': 'Neueste zuerst',
     'discovery.sortDistance': 'Nächste zuerst',
@@ -75,7 +78,11 @@ const messages = {
     'discovery.selectJob': 'Ausbildung auswählen',
     'discovery.loadingMap': 'Karte wird geladen …',
     'discovery.filters': 'Filter für Ausbildungen',
+    'discovery.filtersShort': 'Filter',
     'discovery.language': 'Sprache auswählen',
+    'discovery.activeFilters': 'Aktive Filter',
+    'discovery.reset': 'Zurücksetzen',
+    'discovery.showResults': 'Ergebnisse anzeigen',
     'location.permissionTitle': 'Standort verwenden?',
     'location.permissionDescription': 'Wir zeigen dir passende Ausbildungen in deiner Nähe.',
     'location.useLocation': 'Standort verwenden',
@@ -94,6 +101,7 @@ const messages = {
     'auth.working': 'Wird verarbeitet …',
     'auth.confirmEmail': 'Prüfe deine E-Mail und bestätige dein Konto, bevor du dich anmeldest.',
     'auth.emailHint': 'Kein Passwort nötig. Wir schicken dir einen sicheren Anmeldelink.',
+    'auth.invalidEmail': 'Gib eine gültige E-Mail-Adresse ein.',
     'auth.sendMagicLink': 'Anmeldelink senden',
     'auth.sendAgain': 'Link erneut senden',
     'auth.linkSent': 'E-Mail ist unterwegs',
@@ -158,6 +166,21 @@ const messages = {
     'atlas.signedOutTitle': 'Dein Atlas bleibt auch ohne Konto nützlich',
     'atlas.signedOutBody': 'Melde dich an, um Bewerbungen privat zu verfolgen und deinen Fortschritt auf allen Geräten zu behalten.',
     'atlas.signIn': 'Anmelden',
+    'atlas.nextAction': 'Dein nächster Schritt',
+    'atlas.next.discoverTitle': 'Finde eine Chance, die dich wirklich interessiert',
+    'atlas.next.discoverBody': 'Stöbere in Ausbildungen und Einstiegsjobs und starte deinen persönlichen Bewerbungsweg.',
+    'atlas.next.interestedTitle': 'Mach aus deinem Interesse einen Plan',
+    'atlas.next.interestedBody': 'Prüfe die Details und beginne mit der Vorbereitung deiner Bewerbung.',
+    'atlas.next.preparingTitle': 'Bring deine Bewerbung ins Ziel',
+    'atlas.next.preparingBody': 'Öffne deinen Bewerbungsweg und halte den nächsten konkreten Schritt fest.',
+    'atlas.next.appliedTitle': 'Bleib bei deiner Bewerbung dran',
+    'atlas.next.appliedBody': 'Prüfe Fristen und Kontakte und notiere, wann du nachfassen möchtest.',
+    'atlas.next.interviewTitle': 'Bereite dich auf dein Gespräch vor',
+    'atlas.next.interviewBody': 'Sammle deine Fragen und die wichtigsten Punkte für das Gespräch.',
+    'atlas.next.offerTitle': 'Prüfe dein Angebot in Ruhe',
+    'atlas.next.offerBody': 'Vergleiche Bedingungen, Fristen und offene Fragen, bevor du entscheidest.',
+    'atlas.next.openApplication': 'Bewerbung öffnen',
+    'atlas.next.discoverAction': 'Chancen entdecken',
     'atlas.status.interested': 'Interessiert',
     'atlas.status.preparing': 'In Vorbereitung',
     'atlas.status.applied': 'Beworben',
@@ -168,6 +191,13 @@ const messages = {
     'application.track': 'Bewerbung verfolgen',
     'application.sheetTitle': 'Bewerbungsweg',
     'application.status': 'Aktueller Status',
+    'application.current': 'Aktuell',
+    'application.statusHint.interested': 'Du möchtest diese Chance im Blick behalten.',
+    'application.statusHint.preparing': 'Du stellst Unterlagen und nächste Schritte zusammen.',
+    'application.statusHint.applied': 'Deine Bewerbung wurde abgeschickt.',
+    'application.statusHint.interview': 'Ein Gespräch oder Kennenlernen steht an.',
+    'application.statusHint.offer': 'Du hast ein Angebot erhalten.',
+    'application.statusHint.closed': 'Der Bewerbungsweg ist beendet.',
     'application.note': 'Notiz (optional)',
     'application.notePlaceholder': 'Nächste Schritte, Fristen oder Kontaktpersonen …',
     'application.privateHint': 'Nur du kannst deinen Status und deine Notiz sehen.',
@@ -196,6 +226,7 @@ const messages = {
     'application.error.authRequired': 'Melde dich an, um Bewerbungen privat zu verfolgen.',
     'saved.title': 'Gespeichert',
     'saved.account': 'Konto',
+    'saved.signedOutTitle': 'Deine gespeicherten Chancen, überall dabei',
     'saved.description': 'Melde dich an, um Ausbildungen für später zu speichern.',
     'saved.signIn': 'Anmelden',
     'saved.empty': 'Du hast noch keine Ausbildungen gespeichert.',
@@ -226,6 +257,11 @@ const messages = {
     'actions.share': 'Teilen',
     'job.lastUpdated': 'Zuletzt aktualisiert',
     'job.closingDate': 'Bewerbung bis',
+    'job.atAGlance': 'Auf einen Blick',
+    'job.originalListing': 'Originalanzeige',
+    'job.showMore': 'Ganze Anzeige lesen',
+    'job.showLess': 'Weniger anzeigen',
+    'job.officialSource': 'Offizielle Quelle',
     'job.description': 'Beschreibung',
     'job.requirements': 'Voraussetzungen',
     'job.openSource': 'Offizielle Quelle öffnen',
@@ -242,6 +278,7 @@ const messages = {
     'ai.questionPlaceholder': 'Zum Beispiel: Welche Voraussetzungen werden genannt?',
     'ai.ask': 'Frage senden',
     'ai.questionsAvailable': '2 Fragen möglich',
+    'ai.oneQuestionAvailable': '1 Frage übrig',
   },
   en: {
     'onboarding.eyebrow': 'Your personal atlas',
@@ -282,6 +319,8 @@ const messages = {
     'discovery.entryLevel': 'Entry-level job',
     'discovery.level': 'Experience level',
     'discovery.beginner': 'Beginner friendly',
+    'discovery.intermediate': 'Some experience',
+    'discovery.levelUnknown': 'Experience level unavailable',
     'discovery.sort': 'Sort order',
     'discovery.sortRecent': 'Newest first',
     'discovery.sortDistance': 'Nearest first',
@@ -312,7 +351,11 @@ const messages = {
     'discovery.selectJob': 'Select an apprenticeship',
     'discovery.loadingMap': 'Loading map …',
     'discovery.filters': 'Apprenticeship filters',
+    'discovery.filtersShort': 'Filters',
     'discovery.language': 'Choose language',
+    'discovery.activeFilters': 'Active filters',
+    'discovery.reset': 'Reset',
+    'discovery.showResults': 'Show results',
     'location.permissionTitle': 'Use your location?',
     'location.permissionDescription': 'We show apprenticeships near you.',
     'location.useLocation': 'Use location',
@@ -331,6 +374,7 @@ const messages = {
     'auth.working': 'Working …',
     'auth.confirmEmail': 'Check your email and confirm your account before signing in.',
     'auth.emailHint': 'No password needed. We will send you a secure sign-in link.',
+    'auth.invalidEmail': 'Enter a valid email address.',
     'auth.sendMagicLink': 'Send sign-in link',
     'auth.sendAgain': 'Send link again',
     'auth.linkSent': 'Email on its way',
@@ -395,6 +439,21 @@ const messages = {
     'atlas.signedOutTitle': 'Your Atlas is useful without an account',
     'atlas.signedOutBody': 'Sign in to track applications privately and keep your progress across devices.',
     'atlas.signIn': 'Sign in',
+    'atlas.nextAction': 'Your next step',
+    'atlas.next.discoverTitle': 'Find an opportunity you genuinely like',
+    'atlas.next.discoverBody': 'Browse apprenticeships and entry-level roles, then start your personal application journey.',
+    'atlas.next.interestedTitle': 'Turn your interest into a plan',
+    'atlas.next.interestedBody': 'Review the details and start preparing your application.',
+    'atlas.next.preparingTitle': 'Get your application over the line',
+    'atlas.next.preparingBody': 'Open your application journey and capture the next concrete step.',
+    'atlas.next.appliedTitle': 'Stay on top of your application',
+    'atlas.next.appliedBody': 'Check deadlines and contacts, then note when you want to follow up.',
+    'atlas.next.interviewTitle': 'Get ready for your interview',
+    'atlas.next.interviewBody': 'Collect your questions and the key points you want to discuss.',
+    'atlas.next.offerTitle': 'Review your offer carefully',
+    'atlas.next.offerBody': 'Compare terms, deadlines, and open questions before you decide.',
+    'atlas.next.openApplication': 'Open application',
+    'atlas.next.discoverAction': 'Discover opportunities',
     'atlas.status.interested': 'Interested',
     'atlas.status.preparing': 'Preparing',
     'atlas.status.applied': 'Applied',
@@ -405,6 +464,13 @@ const messages = {
     'application.track': 'Track application',
     'application.sheetTitle': 'Application journey',
     'application.status': 'Current status',
+    'application.current': 'Current',
+    'application.statusHint.interested': 'You want to keep this opportunity on your radar.',
+    'application.statusHint.preparing': 'You are preparing documents and next steps.',
+    'application.statusHint.applied': 'Your application has been submitted.',
+    'application.statusHint.interview': 'An interview or introductory conversation is coming up.',
+    'application.statusHint.offer': 'You have received an offer.',
+    'application.statusHint.closed': 'This application journey has ended.',
     'application.note': 'Note (optional)',
     'application.notePlaceholder': 'Next steps, deadlines, or contacts …',
     'application.privateHint': 'Only you can see your status and note.',
@@ -433,6 +499,7 @@ const messages = {
     'application.error.authRequired': 'Sign in to track applications privately.',
     'saved.title': 'Saved',
     'saved.account': 'Account',
+    'saved.signedOutTitle': 'Your saved opportunities, on every device',
     'saved.description': 'Sign in to keep apprenticeships here for later.',
     'saved.signIn': 'Log in',
     'saved.empty': 'You have not saved any apprenticeships yet.',
@@ -463,6 +530,11 @@ const messages = {
     'actions.share': 'Share',
     'job.lastUpdated': 'Last updated',
     'job.closingDate': 'Apply by',
+    'job.atAGlance': 'At a glance',
+    'job.originalListing': 'Original listing',
+    'job.showMore': 'Read full listing',
+    'job.showLess': 'Show less',
+    'job.officialSource': 'Official source',
     'job.description': 'Description',
     'job.requirements': 'Requirements',
     'job.openSource': 'Open official source',
@@ -479,6 +551,7 @@ const messages = {
     'ai.questionPlaceholder': 'For example: Which requirements are listed?',
     'ai.ask': 'Ask question',
     'ai.questionsAvailable': '2 questions available',
+    'ai.oneQuestionAvailable': '1 question left',
   },
 } as const;
 
@@ -531,9 +604,11 @@ export function localizeJobType(locale: Locale, jobType: string): string {
   return jobType;
 }
 
-export function localizeJobLevel(locale: Locale, level: string): string {
-  if (level === 'entry') return t(locale, 'discovery.beginner');
-  return level;
+export function localizeJobLevel(locale: Locale, level: unknown): string {
+  const normalized = normalizeJobLevel(level);
+  if (normalized === 'entry-level') return t(locale, 'discovery.beginner');
+  if (normalized === 'intermediate') return t(locale, 'discovery.intermediate');
+  return t(locale, 'discovery.levelUnknown');
 }
 
 export function localizeCountry(locale: Locale, country: string): string {

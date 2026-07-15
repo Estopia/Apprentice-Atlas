@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AiExplanation } from '@/components/jobs/ai-explanation';
@@ -11,9 +11,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { explainJob } from '@/lib/ai';
 import { getApplicationForJob, getReadableApplicationsError, type ApplicationsError } from '@/lib/applications';
 import { isValidApplicationJobId } from '@/lib/application-flow';
+import { getDescriptionDisclosure } from '@/lib/discovery-presentation';
 import { addFavorite, getFavoriteForJob, getReadableFavoritesError, removeFavorite, rollbackFavoriteState, type FavoritesError } from '@/lib/favorites';
 import { localizeApplicationStatus, localizeCategory, localizeCountry, localizeJobLevel, localizeJobType, t, useLocale } from '@/lib/i18n';
 import { getOriginalListingUrl, resetJobDetailState, type JobDetailState } from '@/lib/job-detail-state';
+import { cleanJobDescription } from '@/lib/job-presentation';
 import { getJob } from '@/lib/jobs';
 import { getValidHttpUrl } from '@/lib/official-listing-url';
 import type { FavoriteJob, TrackedApplication } from '@/types/jobs';
@@ -35,6 +37,8 @@ export default function JobDetailScreen() {
   const [applicationJobId, setApplicationJobId] = useState<string | null>(null);
   const [applicationLoading, setApplicationLoading] = useState(false);
   const [applicationError, setApplicationError] = useState<ApplicationsError | null>(null);
+  const [descriptionMeasurement, setDescriptionMeasurement] = useState<{ key: string; lineCount: number } | null>(null);
+  const [descriptionExpansion, setDescriptionExpansion] = useState<{ key: string; expanded: boolean } | null>(null);
   const activeState = loadedId === routeId ? state : resetJobDetailState(state);
   const { job, explanation, loading, aiLoading, error, aiError } = activeState;
   const sessionKey = auth.session ? `${auth.session.user.id}:${auth.session.access_token}` : null;
@@ -125,6 +129,15 @@ export default function JobDetailScreen() {
   const primaryUrl = applicationUrl ?? sourceUrl;
   const primaryLabel = applicationUrl ? t(locale, 'actions.apply') : t(locale, 'job.openSourceShort');
   const compactActions = width < 360;
+  const originalListing = cleanJobDescription(job.rawDescription || t(locale, 'ai.unknown'));
+  const descriptionKey = `${job.id}:${originalListing}`;
+  const descriptionExpanded = descriptionExpansion?.key === descriptionKey && descriptionExpansion.expanded;
+  const measuredLineCount = descriptionMeasurement?.key === descriptionKey ? descriptionMeasurement.lineCount : null;
+  const descriptionDisclosure = getDescriptionDisclosure(measuredLineCount, descriptionExpanded);
+  const measureDescription = (event: NativeSyntheticEvent<TextLayoutEventData>) => {
+    const lineCount = event.nativeEvent.lines.length;
+    setDescriptionMeasurement((current) => current?.key === descriptionKey && current.lineCount === lineCount ? current : { key: descriptionKey, lineCount });
+  };
   const shareJob = () => void Share.share({ title: job.title, message: `${job.title} — ${job.company}\n${applicationUrl ?? sourceUrl ?? ''}` });
 
   return (
@@ -137,15 +150,21 @@ export default function JobDetailScreen() {
           <View style={styles.heroLocation}><AppIcon name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }} size={16} tintColor={Palette.textSecondary} /><Text style={styles.heroLocationText}>{job.city}, {localizeCountry(locale, job.country)}</Text></View>
         </View>
 
+        <Text style={styles.factsHeading}>{t(locale, 'job.atAGlance')}</Text>
         <View style={styles.facts}>
-          <JobFact icon={{ ios: 'square.grid.2x2.fill', android: 'category', web: 'category' }} value={localizeCategory(locale, job.category)} />
-          <JobFact icon={{ ios: 'figure.wave', android: 'school', web: 'school' }} value={localizeJobLevel(locale, job.level)} />
+          <JobFact icon={{ ios: 'square.grid.2x2.fill', android: 'category', web: 'category' }} label={t(locale, 'discovery.category')} value={localizeCategory(locale, job.category)} />
+          <JobFact icon={{ ios: 'figure.wave', android: 'school', web: 'school' }} label={t(locale, 'discovery.level')} value={localizeJobLevel(locale, job.level)} />
           {job.expiresAt && <JobFact icon={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }} label={t(locale, 'job.closingDate')} value={new Date(job.expiresAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: 'short' })} />}
         </View>
 
         {favoriteError && <Text accessibilityRole="alert" style={styles.error}>{getReadableFavoritesError(favoriteError, locale, activeFavorite ? 'remove' : 'save')}</Text>}
 
         {process.env.EXPO_OS !== 'ios' && <View style={styles.utilityRow}><Pressable accessibilityRole="button" accessibilityLabel={t(locale, 'actions.share')} onPress={shareJob} style={styles.utilityButton}><AppIcon name={{ ios: 'square.and.arrow.up', android: 'share', web: 'share' }} size={19} tintColor={Palette.blue} /></Pressable></View>}
+
+        {primaryUrl && <View style={styles.topActions}>
+          <Pressable accessibilityRole="link" accessibilityLabel={primaryLabel} onPress={() => void Linking.openURL(primaryUrl)} style={({ pressed }) => [styles.topPrimary, pressed && styles.pressed]}><Text style={styles.topPrimaryText}>{primaryLabel}</Text><AppIcon name={{ ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' }} size={17} tintColor={Palette.white} /></Pressable>
+          {sourceUrl && sourceUrl !== primaryUrl && <Pressable accessibilityRole="link" accessibilityLabel={t(locale, 'job.officialSource')} onPress={() => void Linking.openURL(sourceUrl)} style={({ pressed }) => [styles.topSecondary, pressed && styles.pressed]}><Text style={styles.topSecondaryText}>{t(locale, 'job.officialSource')}</Text></Pressable>}
+        </View>}
 
         <View style={styles.source}><AppIcon name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }} size={19} tintColor={Palette.blue} /><View style={styles.sourceCopy}><Text style={styles.sourceText}>{job.sourceName}</Text><Text style={styles.updated}>{t(locale, 'job.lastUpdated')}: {new Date(job.updatedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB')}</Text></View></View>
 
@@ -169,9 +188,16 @@ export default function JobDetailScreen() {
         {applicationError && applicationJobId === job.id && <Text accessibilityRole="alert" style={styles.error}>{getReadableApplicationsError(applicationError, locale, 'load')}</Text>}
 
         <AiExplanation explanation={explanation} loading={aiLoading} error={aiError} />
-        <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.description')}</Text><Text style={styles.body}>{job.rawDescription || t(locale, 'ai.unknown')}</Text></View>
-        {job.requirements.length > 0 && <View style={styles.section}><Text style={styles.heading}>{t(locale, 'job.requirements')}</Text>{job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>)}</View>}
         <JobQa jobId={job.id} />
+        <View style={styles.originalSection}>
+          <Text style={styles.heading}>{t(locale, 'job.originalListing')}</Text>
+          <View style={styles.descriptionWrap}>
+            <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" onTextLayout={measureDescription} style={[styles.body, styles.descriptionMeasure]}>{originalListing}</Text>
+            <Text selectable style={styles.body} {...(descriptionDisclosure.lineLimit ? { numberOfLines: descriptionDisclosure.lineLimit } : {})}>{originalListing}</Text>
+          </View>
+          {descriptionDisclosure.collapsible && <Pressable accessibilityRole="button" accessibilityState={{ expanded: descriptionExpanded }} onPress={() => setDescriptionExpansion({ key: descriptionKey, expanded: !descriptionExpanded })} style={styles.showMore}><Text style={styles.showMoreText}>{t(locale, descriptionExpanded ? 'job.showLess' : 'job.showMore')}</Text><AppIcon name={{ ios: descriptionExpanded ? 'chevron.up' : 'chevron.down', android: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down', web: descriptionExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }} size={18} tintColor={Palette.blue} /></Pressable>}
+          {job.requirements.length > 0 && <View style={styles.requirements}><Text style={styles.requirementsHeading}>{t(locale, 'job.requirements')}</Text>{job.requirements.map((item) => <View key={item} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{item}</Text></View>)}</View>}
+        </View>
       </ScrollView>
       <SafeAreaView edges={['bottom']} style={styles.bottomBarSafe}>
         <View style={styles.bottomBar}>
@@ -185,14 +211,14 @@ export default function JobDetailScreen() {
           </Pressable>}
         </View>
       </SafeAreaView>
-      <Stack.Screen options={{ title: '', headerShown: true, headerTransparent: true, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen options={{ title: '', headerShown: true, headerTransparent: false, headerStyle: { backgroundColor: Palette.white }, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }} />
       {process.env.EXPO_OS === 'ios' && <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="square.and.arrow.up" onPress={shareJob} /></Stack.Toolbar>}
     </>
   );
 }
 
-function JobFact({ icon, label, value }: { icon: AppIconName; label?: string; value: string }) {
-  return <View style={styles.fact}><AppIcon name={icon} size={17} tintColor={Palette.blue} /><View style={styles.factCopy}>{label && <Text style={styles.factLabel}>{label}</Text>}<Text style={styles.factValue} numberOfLines={2}>{value}</Text></View></View>;
+function JobFact({ icon, label, value }: { icon: AppIconName; label: string; value: string }) {
+  return <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.fact}><AppIcon name={icon} size={17} tintColor={Palette.blue} /><View style={styles.factCopy}><Text style={styles.factLabel}>{label}</Text><Text style={styles.factValue} numberOfLines={2}>{value}</Text></View></View>;
 }
 
 function State({ text, back, locale }: { text: string; back?: () => void; locale: 'de' | 'en' }) {
@@ -200,38 +226,50 @@ function State({ text, back, locale }: { text: string; back?: () => void; locale
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Palette.background },
+  safe: { flex: 1, backgroundColor: Palette.white },
   content: { maxWidth: 720, width: '100%', alignSelf: 'center', paddingHorizontal: 18, paddingBottom: 120 },
-  hero: { paddingTop: 14, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
+  hero: { paddingTop: 8, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   jobType: { color: Palette.textSecondary, fontSize: 14, marginBottom: 7 },
   title: { color: Palette.text, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.5 },
   company: { color: Palette.text, fontSize: 17, fontWeight: '600', marginTop: 9 },
   heroLocation: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 },
   heroLocationText: { color: Palette.textSecondary, fontSize: 14 },
-  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 14 },
-  fact: { flexGrow: 1, flexBasis: 100, minHeight: 62, minWidth: 100, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.surface },
+  factsHeading: { color: Palette.text, fontSize: 15, fontWeight: '700', paddingTop: 18 },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 8 },
+  fact: { flexGrow: 1, flexBasis: 104, minHeight: 56, minWidth: 104, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 9, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: Palette.border },
   factCopy: { flex: 1, minWidth: 0 },
-  factLabel: { color: Palette.textSecondary, fontSize: 9, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 },
-  factValue: { color: Palette.text, fontSize: 12, lineHeight: 15, fontWeight: '600' },
+  factLabel: { color: Palette.textSecondary, fontSize: 13, fontWeight: '500', marginBottom: 2 },
+  factValue: { color: Palette.text, fontSize: 13, lineHeight: 17, fontWeight: '600' },
   error: { color: Palette.danger, marginTop: 12, fontWeight: '700' },
   utilityRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 12 },
   utilityButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: Palette.surface, alignItems: 'center', justifyContent: 'center' },
+  topActions: { flexDirection: 'row', gap: 9, paddingTop: 16 },
+  topPrimary: { flex: 1, minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14 },
+  topPrimaryText: { color: Palette.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  topSecondary: { flex: 1, minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  topSecondaryText: { color: Palette.blue, fontSize: 14, fontWeight: '700', textAlign: 'center' },
   sourceLinkText: { color: Palette.blue, fontWeight: '700' },
   source: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 15, marginTop: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
   sourceCopy: { flex: 1 },
   sourceText: { color: Palette.text, fontWeight: '600' },
-  updated: { color: Palette.textSecondary, marginTop: 4, fontSize: 11 },
+  updated: { color: Palette.textSecondary, marginTop: 4, fontSize: 13 },
   applicationJourney: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 14, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.blueSoft },
   applicationJourneyIcon: { width: 38, height: 38, borderRadius: 12, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.white },
   applicationJourneyCopy: { flex: 1, minWidth: 0, gap: 2 },
   applicationJourneyLabel: { color: Palette.text, fontSize: 14, fontWeight: '700' },
   applicationJourneyValue: { color: Palette.blue, fontSize: 13, fontWeight: '600' },
-  section: { paddingTop: 24 },
+  originalSection: { paddingTop: 30, marginTop: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
   heading: { color: Palette.text, fontWeight: '700', fontSize: 21 },
   body: { color: Palette.text, lineHeight: 23, marginTop: 10, fontSize: 15 },
+  descriptionWrap: { position: 'relative' },
+  descriptionMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0 },
+  showMore: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  showMoreText: { color: Palette.blue, fontSize: 14, fontWeight: '700' },
+  requirements: { paddingTop: 22 },
+  requirementsHeading: { color: Palette.text, fontWeight: '700', fontSize: 18 },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
   bullet: { width: 8, height: 8, borderRadius: 4, backgroundColor: Palette.blue, marginTop: 7 },
-  bulletText: { flex: 1, color: Palette.text, lineHeight: 22 },
+  bulletText: { flex: 1, color: Palette.text, fontSize: 15, lineHeight: 22 },
   bottomBarSafe: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border, boxShadow: '0 -6px 22px rgba(15, 23, 42, 0.08)' },
   bottomBar: { width: '100%', maxWidth: 720, minHeight: 72, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
   bottomSave: { minWidth: 116, minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blueSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 14 },
@@ -241,7 +279,7 @@ const styles = StyleSheet.create({
   bottomPrimary: { flex: 1, minHeight: 50, borderRadius: 14, borderCurve: 'continuous', backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
   bottomPrimaryText: { flexShrink: 1, color: Palette.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
-  state: { flex: 1, backgroundColor: Palette.background, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
+  state: { flex: 1, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
   stateIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   stateText: { color: Palette.textSecondary, textAlign: 'center', lineHeight: 21 },
   stateButton: { minHeight: 44, borderRadius: 12, backgroundColor: Palette.blueSoft, paddingHorizontal: 18, justifyContent: 'center' },

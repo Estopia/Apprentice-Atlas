@@ -16,7 +16,7 @@ export function JobQa({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const ask = async () => {
     if (!question.trim() || count >= 2 || loading) return;
@@ -27,12 +27,11 @@ export function JobQa({ jobId }: { jobId: string }) {
     setLoading(false);
   };
   const limited = count >= 2;
-  const counterText = limited ? t(locale, 'ai.limitReached') : count === 0 ? t(locale, 'ai.questionsAvailable') : locale === 'de' ? `${2 - count} Frage übrig` : `${2 - count} question left`;
+  const counterText = limited ? t(locale, 'ai.limitReached') : count === 0 ? t(locale, 'ai.questionsAvailable') : t(locale, 'ai.oneQuestionAvailable');
 
   return (
-    <View style={styles.card}>
+    <View style={styles.section}>
       <Pressable accessibilityRole="button" accessibilityLabel={`${t(locale, 'ai.askQuestion')}. ${counterText}`} accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={({ pressed }) => [styles.headingRow, pressed && styles.pressed]}>
-        <View style={styles.headingIcon}><AppIcon name={{ ios: 'bubble.left.and.text.bubble.right', android: 'forum', web: 'forum' }} size={19} tintColor={Palette.blue} /></View>
         <View style={styles.headingCopy}><Text style={styles.heading}>{t(locale, 'ai.askQuestion')}</Text><Text style={styles.counter}>{counterText}</Text></View>
         <AppIcon name={{ ios: expanded ? 'chevron.up' : 'chevron.down', android: expanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down', web: expanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down' }} size={19} tintColor={Palette.textSecondary} />
       </Pressable>
@@ -53,14 +52,13 @@ function createSessionId(): string {
 const clientSessionId = createSessionId();
 
 const styles = StyleSheet.create({
-  card: { paddingTop: 24 },
-  headingRow: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 13, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.surface },
-  headingIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: Palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  section: { paddingTop: 28 },
+  headingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headingCopy: { flex: 1, minWidth: 0 },
-  heading: { color: Palette.text, fontWeight: '700', fontSize: 16 },
-  counter: { color: Palette.textSecondary, fontSize: 12, fontWeight: '500', marginTop: 3, fontVariant: ['tabular-nums'] },
+  heading: { color: Palette.text, fontWeight: '700', fontSize: 21 },
+  counter: { color: Palette.textSecondary, fontSize: 13, fontWeight: '500', marginTop: 3, fontVariant: ['tabular-nums'] },
   form: { paddingTop: 2 },
-  input: { minHeight: 92, marginTop: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: Palette.border, backgroundColor: Palette.surface, borderRadius: 12, borderCurve: 'continuous', padding: 14, color: Palette.text, textAlignVertical: 'top' },
+  input: { minHeight: 104, marginTop: 8, borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.white, borderRadius: 14, borderCurve: 'continuous', padding: 14, color: Palette.text, fontSize: 15, textAlignVertical: 'top' },
   button: { alignSelf: 'flex-end', minHeight: 44, minWidth: 44, borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 18, backgroundColor: Palette.blue, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   disabled: { opacity: 0.4 },
   buttonText: { color: Palette.white, fontWeight: '700' },

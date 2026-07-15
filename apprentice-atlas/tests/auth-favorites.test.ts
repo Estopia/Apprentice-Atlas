@@ -13,13 +13,19 @@ import {
 } from '../src/lib/auth';
 import {
   addFavorite,
+  advanceFavoriteOwnership,
+  beginFavoriteRemoval,
   buildComparisonRows,
+  createFavoriteOwnership,
   dedupeFavorites,
   getReadableFavoritesError,
+  favoriteOwnershipKey,
   invokeSignOut,
   isFavoritesLoading,
   listFavorites,
   optimisticFavoriteState,
+  isCurrentFavoriteOperation,
+  rollbackFavoriteRemoval,
   rollbackFavoriteState,
   removeFavorite,
   type FavoriteClient,
@@ -139,6 +145,40 @@ describe('auth route and readable errors', () => {
 });
 
 describe('favorite state and comparison', () => {
+  it('keeps ownership stable for token refreshes but invalidates every account boundary', () => {
+    const first = createFavoriteOwnership('user-1');
+    const tokenRefresh = advanceFavoriteOwnership(first, 'user-1');
+    const signedOut = advanceFavoriteOwnership(tokenRefresh, null);
+    const sameUserAgain = advanceFavoriteOwnership(signedOut, 'user-1');
+    const otherUser = advanceFavoriteOwnership(sameUserAgain, 'user-2');
+
+    expect(tokenRefresh).toBe(first);
+    expect(favoriteOwnershipKey(tokenRefresh)).toBe(favoriteOwnershipKey(first));
+    expect(favoriteOwnershipKey(signedOut)).toBeNull();
+    expect(signedOut.epoch).toBe(1);
+    expect(sameUserAgain.epoch).toBe(2);
+    expect(otherUser.epoch).toBe(3);
+    expect(isCurrentFavoriteOperation(favoriteOwnershipKey(first), favoriteOwnershipKey(sameUserAgain))).toBe(false);
+    expect(isCurrentFavoriteOperation(favoriteOwnershipKey(sameUserAgain), favoriteOwnershipKey(otherUser))).toBe(false);
+  });
+
+  it('rolls back independent concurrent removals without restoring a full snapshot', () => {
+    const second: FavoriteJob = {
+      ...favorite,
+      id: '44444444-4444-4444-8444-444444444444',
+      jobId: '55555555-5555-4555-8555-555555555555',
+      createdAt: '2026-07-13T00:00:00.000Z',
+    };
+    const firstRemoval = beginFavoriteRemoval([favorite, second], favorite.jobId);
+    const secondRemoval = beginFavoriteRemoval(firstRemoval.favorites, second.jobId);
+
+    expect(firstRemoval.favorites).toEqual([second]);
+    expect(secondRemoval.favorites).toEqual([]);
+    expect(rollbackFavoriteRemoval(secondRemoval.favorites, firstRemoval.removed)).toEqual([favorite]);
+    expect(rollbackFavoriteRemoval([favorite], secondRemoval.removed)).toEqual([favorite, second]);
+    expect(rollbackFavoriteRemoval([favorite], firstRemoval.removed)).toEqual([favorite]);
+  });
+
   it('deduplicates optimistic additions and rolls back to the previous list', () => {
     const previous = [favorite];
     const next = optimisticFavoriteState(previous, favorite, 'add');
@@ -165,6 +205,7 @@ describe('favorite state and comparison', () => {
     expect(isFavoritesLoading(true, null, null)).toBe(true);
     expect(isFavoritesLoading(false, 'user-1', null)).toBe(true);
     expect(isFavoritesLoading(false, 'user-1', 'user-1')).toBe(false);
+    expect(isFavoritesLoading(true, 'user-1', 'user-1')).toBe(false);
   });
 
   it('localizes database errors and invokes the supplied sign-out action', async () => {

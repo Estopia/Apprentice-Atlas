@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Palette, Shadows } from '@/constants/theme';
+import { getJobAccessibilityLabel } from '@/lib/discovery-presentation';
 import { t, useLocale } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
-import type { Job } from '@/types/jobs';
 import type { JobMapProps } from './job-map';
 
 const markerPositions = [
@@ -22,16 +22,16 @@ export default function JobMap({ jobs, selectedJobId, onSelect }: JobMapProps) {
       <View style={[styles.road, styles.roadOne]} /><View style={[styles.road, styles.roadTwo]} /><View style={[styles.road, styles.roadThree]} /><View style={[styles.road, styles.roadFour]} /><View style={[styles.road, styles.roadFive]} />
       <Text style={[styles.cityLabel, styles.cityOne]}>BERLIN</Text><Text style={[styles.cityLabel, styles.cityTwo]}>LONDON</Text>
       {markers.slice(0, markerPositions.length).map((job, index) => (
-        <WebMarker key={job.id} job={job} position={markerPositions[index]} selected={job.id === selectedJobId} onPress={() => onSelect(job)} />
+        <WebMarker accessibilityLabel={getJobAccessibilityLabel(locale, job)} key={job.id} position={markerPositions[index]} selected={job.id === selectedJobId} onPress={() => onSelect(job)} />
       ))}
       {!markers.length && <View style={styles.empty}><Text style={styles.emptyText}>{t(locale, 'map.noPositions')}</Text></View>}
     </View>
   );
 }
 
-function WebMarker({ job, position, selected, onPress }: { job: Job; position: { left: string; top: string }; selected: boolean; onPress: () => void }) {
+function WebMarker({ accessibilityLabel, position, selected, onPress }: { accessibilityLabel: string; position: { left: string; top: string }; selected: boolean; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${job.title}, ${job.company}, ${job.city}, ${job.country}`} accessibilityState={{ selected: selected }} onPress={onPress} style={[styles.marker, position as ViewStyle, selected && styles.markerSelected, Shadows.floating]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ selected: selected }} onPress={onPress} style={[styles.marker, position as ViewStyle, selected && styles.markerSelected, Shadows.floating]}>
       <View style={[styles.markerInner, { backgroundColor: selected ? Palette.blueDark : Palette.blue }]}><View style={styles.markerDot} /></View>
     </Pressable>
   );

@@ -64,7 +64,8 @@ export async function listJobs(filters: JobFilter = {}, client?: SupabaseClient,
       if (selected.city) query = query.ilike('city', selected.city);
       if (selected.category) query = query.eq('category', selected.category);
       if (selected.jobType) query = query.eq('job_type', selected.jobType);
-      if (selected.level) query = query.eq('level', selected.level);
+      if (selected.level === 'entry-level') query = query.in('level', ['entry', 'entry-level']);
+      else if (selected.level) query = query.eq('level', selected.level);
       if (selected.tags?.length) query = query.overlaps('tags', selected.tags);
       if (selected.search) {
         const search = escapeSearchPattern(selected.search);

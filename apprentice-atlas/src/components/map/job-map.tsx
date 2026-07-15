@@ -4,21 +4,27 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { Palette } from '@/constants/theme';
+import { decideMapCameraSync, getJobAccessibilityLabel, type MapCameraSyncState } from '@/lib/discovery-presentation';
 import { t, useLocale } from '@/lib/i18n';
 import { hasMapPosition } from '@/lib/jobs';
 import { clusterJobsForRegion, type JobCluster, type PositionedJob } from '@/lib/map-clusters';
 import { getJobsMapRegion, hasMeaningfulRegionChange, type JobMapRegion } from '@/lib/map-region';
 import type { Job } from '@/types/jobs';
 
-export type JobMapProps = { jobs: Job[]; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (center: { latitude: number; longitude: number }) => void };
-export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }: JobMapProps) {
+export type JobMapProps = { jobs: Job[]; cameraIntent: string; resultsLoading: boolean; selectedJobId?: string; onSelect: (job: Job) => void; onRegionChange?: (center: { latitude: number; longitude: number }) => void };
+export default function JobMap({ jobs, cameraIntent, resultsLoading, selectedJobId, onSelect, onRegionChange }: JobMapProps) {
   const [locale] = useLocale();
   const mapRef = useRef<MapView>(null);
   const ignoreNextRegionChange = useRef(true);
+  const cameraSync = useRef<MapCameraSyncState>({ observedIntent: null, appliedIntent: null, pendingIntent: null, pendingResultIdentity: null, sawLoading: false });
   const markers = useMemo(() => jobs.filter(hasMapPosition) as PositionedJob[], [jobs]);
   const region = useMemo(() => getJobsMapRegion(jobs), [jobs]);
   const [visibleRegion, setVisibleRegion] = useState<JobMapRegion | null>(region);
   const clusteredRegion = useRef<JobMapRegion | null>(region);
+  const resultIdentity = useMemo(() => region ? [
+    region.latitude.toFixed(5), region.longitude.toFixed(5), region.latitudeDelta.toFixed(5), region.longitudeDelta.toFixed(5),
+    ...markers.map((job) => `${job.id}:${job.latitude.toFixed(5)},${job.longitude.toFixed(5)}`).sort(),
+  ].join('|') : null, [markers, region]);
   const clusters = useMemo(() => visibleRegion ? clusterJobsForRegion(markers, visibleRegion) : [], [markers, visibleRegion]);
   const displayClusters = useMemo(() => {
     if (!visibleRegion || visibleRegion.latitudeDelta > 0.025) return clusters;
@@ -37,19 +43,24 @@ export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }
   }, [clusters, visibleRegion]);
 
   useEffect(() => {
-    if (region) {
-      ignoreNextRegionChange.current = true;
-      mapRef.current?.animateToRegion(region, 350);
-    }
-  }, [region]);
+    const decision = decideMapCameraSync(cameraSync.current, { intent: cameraIntent, resultIdentity, loading: resultsLoading });
+    cameraSync.current = decision.state;
+    if (!decision.apply || !region) return;
+    ignoreNextRegionChange.current = true;
+    clusteredRegion.current = region;
+    setVisibleRegion(region);
+    mapRef.current?.animateToRegion(region, 350);
+  }, [cameraIntent, region, resultIdentity, resultsLoading]);
 
+  const selected = markers.find((job) => job.id === selectedJobId);
+  const selectedCameraKey = selected ? `${selected.id}:${selected.latitude.toFixed(5)},${selected.longitude.toFixed(5)}` : null;
+  const selectedLatitude = selected?.latitude;
+  const selectedLongitude = selected?.longitude;
   useEffect(() => {
-    const selected = markers.find((job) => job.id === selectedJobId);
-    if (selected) {
-      ignoreNextRegionChange.current = true;
-      mapRef.current?.animateCamera({ center: { latitude: selected.latitude, longitude: selected.longitude } }, { duration: 260 });
-    }
-  }, [markers, selectedJobId]);
+    if (selectedLatitude === undefined || selectedLongitude === undefined || !selectedCameraKey) return;
+    ignoreNextRegionChange.current = true;
+    mapRef.current?.animateCamera({ center: { latitude: selectedLatitude, longitude: selectedLongitude } }, { duration: 260 });
+  }, [selectedCameraKey, selectedLatitude, selectedLongitude]);
 
   const selectCluster = (cluster: JobCluster) => {
     if (cluster.jobs.length === 1) {
@@ -100,7 +111,7 @@ export default function JobMap({ jobs, selectedJobId, onSelect, onRegionChange }
         return (
           <Marker
             key={cluster.id}
-            accessibilityLabel={grouped ? `${cluster.jobs.length} ${t(locale, 'discovery.jobs')}` : `${job.title}, ${job.company}, ${job.city}, ${job.country}`}
+            accessibilityLabel={grouped ? `${cluster.jobs.length} ${t(locale, 'discovery.jobs')}` : getJobAccessibilityLabel(locale, job)}
             accessibilityState={{ selected }}
             anchor={{ x: 0.5, y: 0.5 }}
             coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}

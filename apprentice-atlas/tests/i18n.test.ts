@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const storage = new Map<string, string>();
@@ -8,7 +9,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-import { getLocale, hydrateLocale, LOCALE_STORAGE_KEY, setLocale } from '../src/lib/i18n';
+import { getLocale, hydrateLocale, localizeCountry, LOCALE_STORAGE_KEY, setLocale, t } from '../src/lib/i18n';
 
 describe('locale persistence', () => {
   beforeEach(() => {
@@ -31,5 +32,26 @@ describe('locale persistence', () => {
     setLocale('de');
     await hydrateLocale();
     expect(getLocale()).toBe('de');
+  });
+
+  it('localizes both location country choices in German and English', () => {
+    expect([
+      localizeCountry('de', 'Germany'),
+      localizeCountry('de', 'United Kingdom'),
+    ]).toEqual(['Deutschland', 'Vereinigtes Königreich']);
+    expect([
+      localizeCountry('en', 'Germany'),
+      localizeCountry('en', 'United Kingdom'),
+    ]).toEqual(['Germany', 'United Kingdom']);
+
+    const locationSheet = readFileSync(new URL('../src/app/location.tsx', import.meta.url), 'utf8');
+    expect(locationSheet).toContain("label={localizeCountry(locale, 'Germany')}");
+    expect(locationSheet).toContain("label={localizeCountry(locale, 'United Kingdom')}");
+  });
+
+  it('provides complete invalid-email and loading copy in both auth locales', () => {
+    expect(t('de', 'auth.invalidEmail')).toBe('Gib eine gültige E-Mail-Adresse ein.');
+    expect(t('en', 'auth.invalidEmail')).toBe('Enter a valid email address.');
+    expect(t('de', 'auth.working')).not.toBe(t('en', 'auth.working'));
   });
 });

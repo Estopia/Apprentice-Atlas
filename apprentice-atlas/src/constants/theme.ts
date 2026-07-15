@@ -20,6 +20,9 @@ export const Palette = {
   white: '#FFFFFF',
 } as const;
 
+// Apprentice Atlas intentionally presents a single light appearance.
+export const AppAppearance = 'light' as const;
+
 export const Colors = {
   light: {
     text: Palette.text,
@@ -28,16 +31,9 @@ export const Colors = {
     backgroundSelected: Palette.blueSoft,
     textSecondary: Palette.textSecondary,
   },
-  dark: {
-    text: Palette.text,
-    background: Palette.background,
-    backgroundElement: Palette.surface,
-    backgroundSelected: Palette.blueSoft,
-    textSecondary: Palette.textSecondary,
-  },
 } as const;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export type ThemeColor = keyof typeof Colors.light;
 
 export const Fonts = Platform.select({
   ios: {

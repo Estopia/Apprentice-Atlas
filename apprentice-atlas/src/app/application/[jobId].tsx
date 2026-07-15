@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -14,14 +14,16 @@ import {
   type ApplicationsOperation,
 } from '@/lib/applications';
 import {
-  APPLICATION_STATUSES,
+  applicationWorkflowKey,
   applicationNoteLength,
   confirmApplicationRemovalOnWeb,
+  deriveApplicationJourney,
+  isCurrentWorkflowOperation,
   isApplicationDraftValid,
   isValidApplicationJobId,
   resolveApplicationSheetLoad,
 } from '@/lib/application-flow';
-import { localizeApplicationStatus, t, useLocale } from '@/lib/i18n';
+import { localizeApplicationStatus, t, useLocale, type TranslationKey } from '@/lib/i18n';
 import { getJob } from '@/lib/jobs';
 import type { ApplicationStatus, Job, TrackedApplication } from '@/types/jobs';
 
@@ -37,12 +39,19 @@ export default function ApplicationSheet() {
   const [status, setStatus] = useState<ApplicationStatus>('interested');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadedWorkflowKey, setLoadedWorkflowKey] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busyOperation, setBusyOperation] = useState<ApplicationsOperation | null>(null);
   const mountedRef = useRef(false);
-  const redirectStarted = useRef(false);
+  const redirectStartedForJob = useRef<string | null>(null);
   const authUserId = auth.session?.user.id ?? null;
+  const workflowKey = validJobId ? applicationWorkflowKey(authUserId, routeJobId) : null;
+  const currentWorkflowKeyRef = useRef<string | null>(workflowKey);
+
+  useLayoutEffect(() => {
+    currentWorkflowKeyRef.current = workflowKey;
+  }, [workflowKey]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -50,8 +59,8 @@ export default function ApplicationSheet() {
   }, []);
 
   const redirectToAuth = useCallback(() => {
-    if (!validJobId || redirectStarted.current) return;
-    redirectStarted.current = true;
+    if (!validJobId || redirectStartedForJob.current === routeJobId) return;
+    redirectStartedForJob.current = routeJobId;
     router.replace({
       pathname: '/auth',
       params: { returnTo: `/job/${routeJobId}`, pendingAction: 'track', jobId: routeJobId },
@@ -60,21 +69,25 @@ export default function ApplicationSheet() {
 
   useEffect(() => {
     if (!validJobId || auth.loading) return;
-    if (!authUserId) {
+    if (!workflowKey) {
       redirectToAuth();
       return;
     }
 
     let active = true;
+    const operationKey = workflowKey;
     void Promise.all([getJob(routeJobId, undefined, locale), getApplicationForJob(routeJobId)]).then(([jobResult, applicationResult]) => {
-      if (!active || !mountedRef.current) return;
+      if (!active || !mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
       const resolution = resolveApplicationSheetLoad(jobResult, applicationResult);
       if (resolution.kind === 'redirect') {
         setLoading(false);
+        setLoadedWorkflowKey(operationKey);
         redirectToAuth();
         return;
       }
       if (resolution.kind === 'error') {
+        setJob(null);
+        setApplication(null);
         setError(resolution.reason === 'application' && applicationResult.error
           ? getReadableApplicationsError(applicationResult.error, locale, 'load')
           : t(locale, resolution.reason === 'job-load' ? 'application.error.load' : 'application.error.jobUnavailable'));
@@ -86,14 +99,17 @@ export default function ApplicationSheet() {
         setStatus(existing?.status ?? 'interested');
         setNote(existing?.note ?? '');
       }
+      setBusyOperation(null);
+      setLoadedWorkflowKey(operationKey);
       setLoading(false);
     });
     return () => { active = false; };
-  }, [auth.loading, authUserId, loadAttempt, locale, redirectToAuth, routeJobId, validJobId]);
+  }, [auth.loading, loadAttempt, locale, redirectToAuth, routeJobId, validJobId, workflowKey]);
 
   const noteLength = applicationNoteLength(note);
   const noteTooLong = noteLength > 500;
   const busy = busyOperation !== null;
+  const workflowReady = workflowKey !== null && loadedWorkflowKey === workflowKey;
 
   const handleOperationError = (operation: ApplicationsOperation, operationError: ApplicationsError) => {
     if (operationError.code === 'auth-required') {
@@ -106,7 +122,8 @@ export default function ApplicationSheet() {
   };
 
   const save = async () => {
-    if (!validJobId || busy) return;
+    const operationKey = workflowKey;
+    if (!validJobId || !workflowReady || !operationKey || busy) return;
     if (!isApplicationDraftValid(status, note)) {
       setError(t(locale, 'application.noteTooLong'));
       return;
@@ -114,7 +131,7 @@ export default function ApplicationSheet() {
     setError(null);
     setBusyOperation('save');
     const result = await upsertApplication(routeJobId, status, note);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
     if (result.error) {
       handleOperationError('save', result.error);
       return;
@@ -123,11 +140,12 @@ export default function ApplicationSheet() {
   };
 
   const remove = async () => {
-    if (!validJobId || busy) return;
+    const operationKey = workflowKey;
+    if (!validJobId || !workflowReady || !operationKey || busy) return;
     setError(null);
     setBusyOperation('remove');
     const result = await removeApplication(routeJobId);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || !isCurrentWorkflowOperation(operationKey, currentWorkflowKeyRef.current)) return;
     if (result.error) {
       handleOperationError('remove', result.error);
       return;
@@ -170,13 +188,13 @@ export default function ApplicationSheet() {
         <StatePanel message={t(locale, 'application.error.invalidJob')} />
       ) : auth.loading || !auth.session ? (
         <StatePanel loading message={t(locale, 'application.redirecting')} />
-      ) : loading ? (
+      ) : loading || !workflowReady ? (
         <StatePanel loading message={t(locale, 'application.loading')} />
       ) : error && !job && !application ? (
         <StatePanel
           action={t(locale, 'application.retry')}
           message={error}
-          onPress={() => { setError(null); setLoading(true); setLoadAttempt((attempt) => attempt + 1); }}
+          onPress={() => { setError(null); setLoading(true); setLoadedWorkflowKey(null); setLoadAttempt((attempt) => attempt + 1); }}
         />
       ) : job || application ? (
         <View style={styles.form}>
@@ -211,25 +229,40 @@ export default function ApplicationSheet() {
 
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>{t(locale, 'application.status')}</Text>
-            <View style={styles.group} accessibilityRole="radiogroup">
-              {APPLICATION_STATUSES.map((candidate, index) => {
-                const selected = status === candidate;
+            <View style={styles.journey} accessibilityRole="radiogroup">
+              {deriveApplicationJourney(status).map((step, index) => {
+                const candidate = step.status;
+                const selected = step.selected;
+                const completed = step.state === 'completed';
+                const terminal = step.state === 'terminal';
                 const label = localizeApplicationStatus(locale, candidate);
+                const hint = t(locale, `application.statusHint.${candidate}` as TranslationKey);
                 return (
                   <Pressable
                     key={candidate}
                     accessibilityLabel={label}
+                    accessibilityHint={hint}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: selected, disabled: busy }}
                     disabled={busy}
                     onPress={() => { setStatus(candidate); setError(null); }}
-                    style={({ pressed }) => [styles.statusRow, index < APPLICATION_STATUSES.length - 1 && styles.divider, selected && styles.statusSelected, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.statusRow, terminal && styles.terminalRow, pressed && styles.pressed]}
                   >
-                    <View style={[styles.radio, selected && styles.radioSelected]}>
-                      {selected && <View style={styles.radioDot} />}
+                    <View style={styles.stepRail}>
+                      {!terminal && candidate !== 'offer' && <View style={[styles.stepLine, completed && styles.stepLineComplete]} />}
+                      <View style={[styles.stepCircle, terminal && styles.terminalCircle, (selected || completed) && styles.stepCircleActive]}>
+                        {terminal
+                          ? <AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={14} tintColor={selected ? Palette.white : Palette.textSecondary} />
+                          : completed
+                          ? <AppIcon name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={14} tintColor={Palette.white} />
+                          : <Text style={[styles.stepNumber, selected && styles.stepNumberActive]}>{index + 1}</Text>}
+                      </View>
                     </View>
-                    <Text style={[styles.statusText, selected && styles.statusTextSelected]}>{label}</Text>
-                    {selected && <AppIcon name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={17} tintColor={Palette.blue} />}
+                    <View style={styles.statusCopy}>
+                      <Text style={[styles.statusText, selected && styles.statusTextSelected]}>{label}</Text>
+                      <Text style={styles.statusHint}>{hint}</Text>
+                    </View>
+                    {selected && <View style={styles.currentPill}><Text style={styles.currentPillText}>{t(locale, 'application.current')}</Text></View>}
                   </Pressable>
                 );
               })}
@@ -298,34 +331,42 @@ function StatePanel({ action, loading, message, onPress }: { action?: string; lo
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Palette.surface },
+  screen: { flex: 1, backgroundColor: Palette.white },
   content: { flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 56 },
   form: { gap: 18 },
-  jobContext: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white },
+  jobContext: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border, backgroundColor: Palette.white },
   jobIcon: { width: 44, height: 44, borderRadius: 14, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.blueSoft },
   jobCopy: { flex: 1, minWidth: 0, gap: 3 },
   jobTitle: { color: Palette.text, fontSize: 16, lineHeight: 21, fontWeight: '700' },
   jobCompany: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   privateHint: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
-  privateHintText: { flex: 1, color: Palette.textSecondary, fontSize: 12, lineHeight: 17 },
+  privateHintText: { flex: 1, color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
   error: { color: Palette.danger, fontSize: 13, lineHeight: 18, fontWeight: '600', paddingHorizontal: 4 },
   section: { gap: 8 },
   sectionLabel: { color: Palette.text, fontSize: 14, fontWeight: '700', paddingHorizontal: 4 },
   labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  counter: { color: Palette.textSecondary, fontSize: 12, fontVariant: ['tabular-nums'] },
+  counter: { color: Palette.textSecondary, fontSize: 13, fontVariant: ['tabular-nums'] },
   counterInvalid: { color: Palette.danger, fontWeight: '700' },
-  group: { overflow: 'hidden', borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white },
-  statusRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: Palette.white },
-  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Palette.border },
-  statusSelected: { backgroundColor: Palette.blueSoft },
-  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: Palette.border, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.white },
-  radioSelected: { borderColor: Palette.blue },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Palette.blue },
-  statusText: { flex: 1, color: Palette.text, fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  journey: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: Palette.border, paddingVertical: 4 },
+  statusRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, backgroundColor: Palette.white },
+  terminalRow: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
+  stepRail: { width: 30, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  stepLine: { position: 'absolute', top: 34, bottom: -34, width: 2, backgroundColor: Palette.border },
+  stepLineComplete: { backgroundColor: Palette.blue },
+  stepCircle: { zIndex: 1, width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: Palette.border, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
+  terminalCircle: { borderStyle: 'dashed', borderColor: Palette.textSecondary },
+  stepCircleActive: { borderColor: Palette.blue, backgroundColor: Palette.blue },
+  stepNumber: { color: Palette.textSecondary, fontSize: 13, fontWeight: '700' },
+  stepNumberActive: { color: Palette.white },
+  statusCopy: { flex: 1, minWidth: 0, gap: 2 },
+  statusText: { color: Palette.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
   statusTextSelected: { color: Palette.blue },
+  statusHint: { color: Palette.textSecondary, fontSize: 13, lineHeight: 18 },
+  currentPill: { minHeight: 28, borderRadius: 14, backgroundColor: Palette.blueSoft, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
+  currentPillText: { color: Palette.blue, fontSize: 13, fontWeight: '700' },
   noteInput: { minHeight: 126, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, borderCurve: 'continuous', backgroundColor: Palette.white, color: Palette.text, fontSize: 15, lineHeight: 21, padding: 14 },
   noteInputInvalid: { borderColor: Palette.danger },
-  validationError: { color: Palette.danger, fontSize: 12, lineHeight: 17, paddingHorizontal: 4 },
+  validationError: { color: Palette.danger, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
   saveButton: { minHeight: 52, borderRadius: 16, borderCurve: 'continuous', backgroundColor: Palette.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 18 },
   saveText: { color: Palette.white, fontSize: 16, fontWeight: '700' },
   removeButton: { minHeight: 48, borderRadius: 16, borderCurve: 'continuous', borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 18 },
