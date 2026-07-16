@@ -151,7 +151,7 @@ Full setup, migration order, source configuration, security boundaries, native-b
 ```text
 .
 ├── README.md                 # Project and Build Week overview
-├── LICENSE                   # Proprietary license notice
+├── LICENSE                   # PolyForm Noncommercial 1.0.0
 └── apprentice-atlas/
     ├── src/                  # Expo application and shared product code
     ├── supabase/             # Migrations, Edge Functions, and local fixtures
@@ -176,6 +176,6 @@ Apprentice Atlas is a functional Build Week release tested through native develo
 
 ## License
 
-Copyright © 2026 **Estopia Engineering Ltd**. Apprentice Atlas is proprietary, source-available software: everyone may inspect and discuss the public repository, but no permission is granted to reuse, modify, deploy, commercialize, or redistribute the product outside functionality provided by the repository host. Hackathon organizers and judges may run it for evaluation. See the [license notice](LICENSE).
+Copyright © 2026 **Estopia Engineering Ltd**. Apprentice Atlas is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, study, modification, and distribution are permitted under its terms. Commercial use, commercial deployment, and commercial redistribution require a separate written license from Estopia Engineering Ltd.
 
 Third-party packages such as Expo and React Native, official-source content, trademarks, APIs, and provider data are not claimed as property of Estopia Engineering Ltd and remain subject to their respective licenses, terms, and ownership rights.
