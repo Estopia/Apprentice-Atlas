@@ -2,6 +2,12 @@
 
 **Find your future nearby.**
 
+> ## Test Apprentice Atlas on iPhone
+>
+> For the intended native experience, please test the app directly on an iPhone through TestFlight:
+>
+> **[Install Apprentice Atlas with TestFlight](https://testflight.apple.com/join/4xD3Ckd5)**
+
 Apprentice Atlas is a bilingual, map-first mobile app that helps students and people leaving university without a degree turn uncertainty about their future into a concrete next step. It combines official apprenticeship listings from Germany and the United Kingdom with grounded GPT-5.6 guidance, native discovery, and a private application journey.
 
 Built for the **Education** category of OpenAI Build Week 2026 with **Codex**, **GPT-5.6**, Expo, React Native, and Supabase.
