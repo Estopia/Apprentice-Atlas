@@ -3,7 +3,7 @@
     "name": "Apprentice Atlas",
     "description": "A location-aware apprenticeship discovery app with maps, saved jobs, and grounded AI help.",
     "slug": "apprentice-atlas",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "orientation": "portrait",
     "icon": "./assets/Apprentice Atlas-iOS-Default-1024x1024@2x.png",
     "scheme": "apprenticeatlas",
