@@ -6,6 +6,7 @@ import {
   isSafeReturnPath,
   parseAuthCallbackUrl,
   sendMagicLink,
+  signInForDemo,
   signInWithAppleIdToken,
   subscribeToAuth,
   validatedPendingSaveJobId,
@@ -110,6 +111,28 @@ describe('auth route and readable errors', () => {
       options: { emailRedirectTo: 'apprenticeatlas://auth-callback', shouldCreateUser: true },
     });
     expect(events).toEqual(['SIGNED_IN']);
+  });
+
+  it('creates an isolated anonymous session for the hidden demo flow', async () => {
+    const session = { access_token: 'demo-access', user: { id: 'demo-user', is_anonymous: true } };
+    const auth = {
+      getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+      signInAnonymously: vi.fn(async () => ({ data: { session }, error: null })),
+    };
+
+    await expect(signInForDemo({ auth } as any)).resolves.toEqual({ data: session, error: null });
+    expect(auth.signInAnonymously).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an existing account instead of replacing it with a demo session', async () => {
+    const session = { access_token: 'existing-access', user: { id: 'existing-user' } };
+    const auth = {
+      getSession: vi.fn(async () => ({ data: { session }, error: null })),
+      signInAnonymously: vi.fn(),
+    };
+
+    await expect(signInForDemo({ auth } as any)).resolves.toEqual({ data: session, error: null });
+    expect(auth.signInAnonymously).not.toHaveBeenCalled();
   });
 
   it('parses implicit callback tokens and restores the Supabase session', async () => {

@@ -1,5 +1,26 @@
 project_id = "apprentice-atlas"
 
+[auth]
+# Used by the private five-tap judge flow. Each device receives its own
+# authenticated user ID, so the existing owner-scoped RLS remains effective.
+site_url = "apprenticeatlas://auth-callback"
+additional_redirect_urls = ["apprenticeatlas://**"]
+enable_anonymous_sign_ins = true
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.email]
+enable_confirmations = true
+max_frequency = "1m"
+otp_length = 8
+
+[auth.external.apple]
+enabled = true
+client_id = "com.estopiaengineering.apprenticeatlas"
+secret = ""
+
 [functions.ai-prepare]
 # The gateway verifies JWTs first; the handler also calls auth.getUser(token).
 verify_jwt = true

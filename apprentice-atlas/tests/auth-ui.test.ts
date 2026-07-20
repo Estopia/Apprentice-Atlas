@@ -11,6 +11,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { isSafeReturnPath } from '../src/lib/auth';
+import { registerDemoUnlockTap } from '../src/lib/auth-presentation';
 import {
   deleteCareerProfile,
   getPreparationScopedState,
@@ -30,6 +31,26 @@ const atlasScreen = readFileSync(new URL('../src/app/(tabs)/atlas.tsx', import.m
 const jobId = '11111111-1111-4111-8111-111111111111';
 
 describe('native auth and onboarding configuration', () => {
+  it('unlocks the private demo only after five taps inside the time window', () => {
+    let state = { count: 0, lastTapAt: 0 };
+    for (const now of [1_000, 1_500, 2_000, 2_500]) {
+      const result = registerDemoUnlockTap(state, now);
+      state = result.state;
+      expect(result.unlocked).toBe(false);
+    }
+    expect(registerDemoUnlockTap(state, 3_000).unlocked).toBe(true);
+    expect(registerDemoUnlockTap({ count: 4, lastTapAt: 1_000 }, 5_001)).toMatchObject({
+      state: { count: 1, lastTapAt: 5_001 },
+      unlocked: false,
+    });
+  });
+
+  it('keeps the demo trigger out of the visible sign-in controls', () => {
+    expect(authScreen).toContain('registerDemoUnlockTap');
+    expect(authScreen).toContain('accessible={false}');
+    expect(authForm).not.toMatch(/demo/i);
+  });
+
   it('uses the native Apple button and has no Google or password control', () => {
     expect(authForm).toContain('AppleAuthentication.AppleAuthenticationButton');
     expect(authForm).toContain('AppleAuthenticationButtonStyle.BLACK');

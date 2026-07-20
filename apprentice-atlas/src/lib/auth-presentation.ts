@@ -6,6 +6,25 @@ export type EmailSubmissionState = {
 
 export type AuthLoadingMethod = 'email' | 'apple' | null;
 
+export type DemoUnlockTapState = {
+  count: number;
+  lastTapAt: number;
+};
+
+const demoUnlockTapCount = 5;
+const demoUnlockWindowMs = 4_000;
+
+export function registerDemoUnlockTap(
+  current: DemoUnlockTapState,
+  now: number,
+): { state: DemoUnlockTapState; unlocked: boolean } {
+  const count = now - current.lastTapAt <= demoUnlockWindowMs ? current.count + 1 : 1;
+  if (count >= demoUnlockTapCount) {
+    return { state: { count: 0, lastTapAt: 0 }, unlocked: true };
+  }
+  return { state: { count, lastTapAt: now }, unlocked: false };
+}
+
 export function getAuthNavigationPresentation() {
   return {
     headerOptions: {

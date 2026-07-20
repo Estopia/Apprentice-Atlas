@@ -22,6 +22,8 @@ export default function SettingsScreen() {
   const { preferences, savePreferences, completeOnboarding } = usePreferences();
   const [busy, setBusy] = useState<'export-json' | 'export-pdf' | 'delete' | 'signout' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isDemoAccount = auth.user?.is_anonymous === true;
+  const accountLabel = isDemoAccount ? t(locale, 'settings.demoAccount') : auth.user?.email ?? t(locale, 'settings.account');
 
   const chooseLanguage = () => Alert.alert(t(locale, 'settings.selectLanguage'), undefined, [
     { text: 'Deutsch', onPress: () => void savePreferences({ ...preferences, locale: 'de' }) },
@@ -164,8 +166,8 @@ export default function SettingsScreen() {
         {auth.session ? (
           <>
             <View style={styles.accountRow}>
-              <View style={styles.avatar}><Text style={styles.avatarText}>{(auth.user?.email ?? 'A').slice(0, 1).toUpperCase()}</Text></View>
-              <View style={styles.rowCopy}><Text style={styles.rowLabel}>{auth.user?.email}</Text><Text style={styles.rowDetail}>{t(locale, 'settings.account')}</Text></View>
+              <View style={styles.avatar}><Text style={styles.avatarText}>{accountLabel.slice(0, 1).toUpperCase()}</Text></View>
+              <View style={styles.rowCopy}><Text style={styles.rowLabel}>{accountLabel}</Text><Text style={styles.rowDetail}>{t(locale, isDemoAccount ? 'settings.demoAccountHint' : 'settings.account')}</Text></View>
             </View>
             <SettingsRow icon={{ ios: 'rectangle.portrait.and.arrow.right', android: 'logout', web: 'logout' }} label={busy === 'signout' ? t(locale, 'auth.signingOut') : t(locale, 'auth.signOut')} disabled={Boolean(busy)} onPress={() => void signOut()} />
             <SettingsRow icon={{ ios: 'doc.richtext.fill', android: 'picture_as_pdf', web: 'picture_as_pdf' }} label={busy === 'export-pdf' ? t(locale, 'settings.pdfExporting') : t(locale, 'settings.exportPdf')} detail={t(locale, 'settings.exportPdfHint')} disabled={Boolean(busy)} onPress={() => void exportPdf()} />

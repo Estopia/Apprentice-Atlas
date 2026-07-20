@@ -152,6 +152,24 @@ export async function sendMagicLink(
   }
 }
 
+export async function signInForDemo(client?: SupabaseClient): Promise<AuthResult<Session>> {
+  const supabase = await clientOrError(client);
+  if ('code' in supabase) return { data: null, error: supabase };
+  try {
+    const current = await supabase.auth.getSession();
+    if (current.error) return { data: null, error: normalizeAuthError(current.error) };
+    if (current.data.session) return { data: current.data.session, error: null };
+
+    const result = await supabase.auth.signInAnonymously();
+    return {
+      data: result.data.session,
+      error: result.error ? normalizeAuthError(result.error) : null,
+    };
+  } catch (error) {
+    return { data: null, error: normalizeAuthError(error) };
+  }
+}
+
 export function parseAuthCallbackUrl(url: string): AuthCallbackParams {
   const [withoutHash, hash = ''] = url.split('#', 2);
   const query = withoutHash.includes('?') ? withoutHash.slice(withoutHash.indexOf('?') + 1) : '';

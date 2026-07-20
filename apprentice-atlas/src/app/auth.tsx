@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import { useRef, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AuthForm } from '@/components/auth/auth-form';
 import { Palette } from '@/constants/theme';
 import { validatedPendingTrackJobId } from '@/lib/application-flow';
-import { isSafeReturnPath, validatedPendingSaveJobId } from '@/lib/auth';
-import { getAuthNavigationPresentation } from '@/lib/auth-presentation';
+import { getReadableAuthError, isSafeReturnPath, signInForDemo, validatedPendingSaveJobId } from '@/lib/auth';
+import { getAuthNavigationPresentation, registerDemoUnlockTap, type DemoUnlockTapState } from '@/lib/auth-presentation';
 import { addPendingFavorite, getReadableFavoritesError } from '@/lib/favorites';
 import { t, useLocale } from '@/lib/i18n';
 
@@ -16,6 +17,8 @@ export default function AuthScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string; pendingAction?: string; jobId?: string }>();
   const [error, setError] = useState<string | null>(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const demoTapState = useRef<DemoUnlockTapState>({ count: 0, lastTapAt: 0 });
   const navigationPresentation = getAuthNavigationPresentation();
   const returnTo = isSafeReturnPath(params.returnTo) ? params.returnTo : '/favorites';
   const pendingTrackJobId = validatedPendingTrackJobId(params);
@@ -43,6 +46,32 @@ export default function AuthScreen() {
     router.replace(returnTo);
   };
 
+  const handleDemoTap = async () => {
+    if (demoBusy) return;
+    const next = registerDemoUnlockTap(demoTapState.current, Date.now());
+    demoTapState.current = next.state;
+    if (!next.unlocked) return;
+
+    setDemoBusy(true);
+    setError(null);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      const result = await signInForDemo();
+      if (result.error) {
+        setError(getReadableAuthError(result.error, locale));
+        return;
+      }
+      const userId = result.data?.user.id;
+      if (!userId) {
+        setError(t(locale, 'auth.demoError'));
+        return;
+      }
+      await complete(userId);
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
   return (
     <>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.screen}>
@@ -53,12 +82,22 @@ export default function AuthScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.intro}>
-            <Text style={styles.title}>{t(locale, 'auth.title')}</Text>
+            <Pressable accessible={false} disabled={demoBusy} onPress={() => void handleDemoTap()}>
+              <Text accessibilityRole="header" style={styles.title}>{t(locale, 'auth.title')}</Text>
+            </Pressable>
             <Text style={styles.copy}>{t(locale, 'auth.description')}</Text>
+            {demoBusy && (
+              <View accessible accessibilityLiveRegion="assertive" accessibilityRole="progressbar" style={styles.demoStatus}>
+                <ActivityIndicator color={Palette.blue} size="small" />
+                <Text style={styles.demoStatusText}>{t(locale, 'auth.demoOpening')}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.formGroup}>
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-            <AuthForm onSuccess={complete} redirectTo={redirectTo} />
+            <View pointerEvents={demoBusy ? 'none' : 'auto'} style={demoBusy && styles.formDisabled}>
+              <AuthForm onSuccess={complete} redirectTo={redirectTo} />
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -78,6 +117,9 @@ const styles = StyleSheet.create({
   intro: { gap: 8, marginBottom: 28 },
   title: { color: Palette.text, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.4 },
   copy: { color: Palette.textSecondary, fontSize: 15, lineHeight: 22 },
+  demoStatus: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 4 },
+  demoStatusText: { color: Palette.blue, fontSize: 14, fontWeight: '700' },
   formGroup: { width: '100%' },
+  formDisabled: { opacity: 0.55 },
   error: { color: Palette.danger, fontSize: 14, lineHeight: 20, marginBottom: 12, fontWeight: '600' },
 });
