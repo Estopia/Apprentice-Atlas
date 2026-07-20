@@ -1,36 +1,3 @@
-const EMPLOYER_DOMAINS: readonly [needle: string, domain: string][] = [
-  ['deutsche rentenversicherung', 'deutsche-rentenversicherung.de'],
-  ['deutsche bahn', 'deutschebahn.com'],
-  ['deutsche telekom', 'telekom.com'],
-  ['deutsche post', 'deutschepost.de'],
-  ['mercedes', 'mercedes-benz.com'],
-  ['volkswagen', 'volkswagen.de'],
-  ['kaufland', 'kaufland.de'],
-  ['rossmann', 'rossmann.de'],
-  ['sainsbury', 'sainsburys.co.uk'],
-  ['british airways', 'britishairways.com'],
-  ['barclays', 'barclays.co.uk'],
-  ['vodafone', 'vodafone.com'],
-  ['siemens', 'siemens.com'],
-  ['bosch', 'bosch.com'],
-  ['amazon', 'amazon.jobs'],
-  ['tesco', 'tesco.com'],
-  ['lidl', 'lidl.de'],
-  ['aldi', 'aldi.de'],
-  ['rewe', 'rewe-group.com'],
-  ['edeka', 'edeka.de'],
-  ['penny', 'penny.de'],
-  ['dm-drogerie', 'dm.de'],
-  ['bmw', 'bmwgroup.com'],
-  ['dhl', 'dhl.com'],
-  ['sap', 'sap.com'],
-  ['nhs', 'nhs.uk'],
-  ['boots', 'boots.com'],
-  ['hsbc', 'hsbc.co.uk'],
-  ['pwc', 'pwc.com'],
-  ['deloitte', 'deloitte.com'],
-];
-
 const BRAND_PALETTE = [
   ['#155EEF', '#EAF1FF'],
   ['#0B7A75', '#E4F5F3'],
@@ -58,14 +25,10 @@ export function getCompanyInitials(company: string): string {
 }
 
 export function getCompanyBrand(company: string) {
-  const companyName = normalized(company);
-  const domain = EMPLOYER_DOMAINS.find(([needle]) => companyName.includes(needle))?.[1] ?? null;
   const [accent, soft] = BRAND_PALETTE[companyHash(company) % BRAND_PALETTE.length];
   return {
     accent,
-    domain,
     initials: getCompanyInitials(company),
-    logoUrl: domain ? `https://www.google.com/s2/favicons?domain_url=https://${domain}&sz=128` : null,
     soft,
   };
 }

@@ -4,6 +4,11 @@ export type LegalDocumentId = 'privacy' | 'terms' | 'imprint' | 'about';
 export type LegalSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type LegalDocument = { title: string; updated?: string; intro: string; sections: LegalSection[]; externalUrl?: string };
 
+export const LEGAL_URLS = {
+  privacy: 'https://apprenticeatlas.com/privacy',
+  terms: 'https://apprenticeatlas.com/tos',
+} as const;
+
 const company = {
   name: 'Estopia Engineering Ltd',
   number: 'SC874827',
@@ -16,7 +21,7 @@ const company = {
 const documents: Record<Locale, Record<LegalDocumentId, LegalDocument>> = {
   de: {
     privacy: {
-      title: 'Datenschutzerklärung', updated: '15. Juli 2026', externalUrl: 'https://estopia.net/privacy',
+      title: 'Datenschutzerklärung', updated: '15. Juli 2026', externalUrl: LEGAL_URLS.privacy,
       intro: 'Diese Erklärung beschreibt verständlich, welche Daten Apprentice Atlas verarbeitet und welche Rechte du hast.',
       sections: [
         { heading: 'Verantwortlicher', paragraphs: [`${company.name}, ${company.address}. Kontakt: ${company.email}, ${company.phone}.`] },
@@ -31,7 +36,7 @@ const documents: Record<Locale, Record<LegalDocumentId, LegalDocument>> = {
       ],
     },
     terms: {
-      title: 'Nutzungsbedingungen', updated: '15. Juli 2026', externalUrl: 'https://estopia.net/terms',
+      title: 'Nutzungsbedingungen', updated: '15. Juli 2026', externalUrl: LEGAL_URLS.terms,
       intro: 'Mit der Nutzung von Apprentice Atlas stimmst du diesen Bedingungen zu.',
       sections: [
         { heading: 'Wofür die App da ist', paragraphs: ['Apprentice Atlas hilft dir, Ausbildungs- und Einstiegsstellen zu entdecken und deinen Bewerbungsweg zu organisieren. Die App vermittelt keine Beschäftigung und ersetzt keine Berufs-, Rechts- oder Finanzberatung.'] },
@@ -62,7 +67,7 @@ const documents: Record<Locale, Record<LegalDocumentId, LegalDocument>> = {
   },
   en: {
     privacy: {
-      title: 'Privacy policy', updated: '15 July 2026', externalUrl: 'https://estopia.net/privacy',
+      title: 'Privacy policy', updated: '15 July 2026', externalUrl: LEGAL_URLS.privacy,
       intro: 'This policy explains in plain language which data Apprentice Atlas processes and what rights you have.',
       sections: [
         { heading: 'Controller', paragraphs: [`${company.name}, ${company.address}. Contact: ${company.email}, ${company.phone}.`] },
@@ -77,7 +82,7 @@ const documents: Record<Locale, Record<LegalDocumentId, LegalDocument>> = {
       ],
     },
     terms: {
-      title: 'Terms of service', updated: '15 July 2026', externalUrl: 'https://estopia.net/terms', intro: 'By using Apprentice Atlas, you agree to these terms.',
+      title: 'Terms of service', updated: '15 July 2026', externalUrl: LEGAL_URLS.terms, intro: 'By using Apprentice Atlas, you agree to these terms.',
       sections: [
         { heading: 'What the app does', paragraphs: ['Apprentice Atlas helps you discover apprenticeships and early-career roles and organise your application journey. It does not provide employment and is not career, legal, or financial advice.'] },
         { heading: 'Listings and applications', paragraphs: ['Listings come from official external sources. The original source controls content, deadlines, availability, and applications. We cannot guarantee every listing is complete, current, or error-free. Applications are made with the external provider.'] },

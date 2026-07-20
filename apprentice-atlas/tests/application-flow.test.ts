@@ -262,6 +262,8 @@ describe('application journey route integration', () => {
     expect(sheet).toMatch(/return \(\s*<ScrollView/);
     expect(sheet).toMatch(/contentInsetAdjustmentBehavior="automatic"/);
     expect(sheet).toMatch(/deriveApplicationJourney\(status\)\.map/);
+    expect(sheet).toContain('stepLineBefore');
+    expect(sheet).toContain('stepLineAfter');
     expect(sheet).toMatch(/minHeight: 44/);
     expect(sheet).toMatch(/getApplicationForJob/);
     expect(sheet).toMatch(/upsertApplication/);

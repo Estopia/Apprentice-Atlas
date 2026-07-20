@@ -119,7 +119,7 @@ export default function HomeScreen() {
           <Text style={styles.eyebrow}>{t(locale, 'home.eyebrow')}</Text>
           <Text style={styles.title}>{t(locale, 'home.title')}</Text>
         </View>
-        <Pressable accessibilityLabel={t(locale, 'settings.title')} accessibilityRole="button" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+        <Pressable accessibilityLabel={t(locale, 'settings.title')} accessibilityRole="button" onPress={() => router.push({ pathname: '/settings', params: { from: 'home' } })} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <AppIcon name={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }} size={21} tintColor={Palette.text} />
         </Pressable>
       </View>

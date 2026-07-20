@@ -390,7 +390,8 @@ export default function ApplicationSheet() {
                       style={({ pressed }) => [styles.statusRow, terminal && styles.terminalRow, pressed && styles.pressed]}
                     >
                       <View style={styles.stepRail}>
-                        {!terminal && candidate !== 'offer' && <View style={[styles.stepLine, completed && styles.stepLineComplete]} />}
+                        {index > 0 && !terminal && <View style={[styles.stepLineBefore, (completed || selected) && styles.stepLineComplete]} />}
+                        {!terminal && candidate !== 'offer' && <View style={[styles.stepLineAfter, completed && styles.stepLineComplete]} />}
                         <View style={[styles.stepCircle, terminal && styles.terminalCircle, (selected || completed) && styles.stepCircleActive]}>
                           {terminal
                             ? <AppIcon name={{ ios: 'xmark', android: 'close', web: 'close' }} size={14} tintColor={selected ? Palette.white : Palette.textSecondary} />
@@ -534,7 +535,8 @@ const styles = StyleSheet.create({
   statusRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, backgroundColor: Palette.white },
   terminalRow: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Palette.border },
   stepRail: { width: 30, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
-  stepLine: { position: 'absolute', top: 34, bottom: -34, width: 2, backgroundColor: Palette.border },
+  stepLineBefore: { position: 'absolute', top: 0, bottom: '50%', width: 2, backgroundColor: Palette.border },
+  stepLineAfter: { position: 'absolute', top: '50%', bottom: 0, width: 2, backgroundColor: Palette.border },
   stepLineComplete: { backgroundColor: Palette.blue },
   stepCircle: { zIndex: 1, width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: Palette.border, backgroundColor: Palette.white, alignItems: 'center', justifyContent: 'center' },
   terminalCircle: { borderStyle: 'dashed', borderColor: Palette.textSecondary },

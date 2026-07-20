@@ -37,9 +37,14 @@ describe('App Store readiness contracts', () => {
 
   it('offers privacy, terms, legal notice, support, export, and in-app account deletion from Settings', () => {
     const settings = read('src/app/settings.tsx');
+    const legal = read('src/lib/legal.ts');
     expect(settings).toMatch(/settings\.privacy/);
     expect(settings).toMatch(/settings\.terms/);
     expect(settings).toMatch(/settings\.imprint/);
+    expect(settings).toContain('LEGAL_URLS.privacy');
+    expect(settings).toContain('LEGAL_URLS.terms');
+    expect(legal).toContain('https://apprenticeatlas.com/privacy');
+    expect(legal).toContain('https://apprenticeatlas.com/tos');
     expect(settings).toContain('mailto:hello@estopia.net');
     expect(settings).toMatch(/exportData/);
     expect(settings).toMatch(/deleteAccount/);

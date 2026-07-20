@@ -64,7 +64,7 @@ export default function AtlasScreen() {
         <Pressable
           accessibilityLabel={t(locale, 'settings.title')}
           accessibilityRole="button"
-          onPress={() => router.push('/settings')}
+          onPress={() => router.push({ pathname: '/settings', params: { from: 'atlas' } })}
           style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
         >
           <AppIcon name={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }} size={21} tintColor={Palette.text} />

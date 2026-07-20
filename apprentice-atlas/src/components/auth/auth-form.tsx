@@ -1,8 +1,7 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
-import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Palette } from '@/constants/theme';
 import {
@@ -18,6 +17,7 @@ import {
   submitEmailWhenValid,
 } from '@/lib/auth-presentation';
 import { t, useLocale } from '@/lib/i18n';
+import { LEGAL_URLS } from '@/lib/legal';
 import { createSingleFlightGate, runSingleFlightAction } from '@/lib/single-flight-gate';
 
 export function AuthForm({ onSuccess, redirectTo }: { onSuccess: (userId: string) => void | Promise<void>; redirectTo: string }) {
@@ -179,9 +179,9 @@ export function AuthForm({ onSuccess, redirectTo }: { onSuccess: (userId: string
 
       <View style={styles.legalNotice}>
         <Text style={styles.legalCopy}>{t(locale, 'auth.legalPrefix')}</Text>
-        <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/legal/[document]', params: { document: 'terms' } } as never)}><Text style={styles.legalLink}>{t(locale, 'settings.terms')}</Text></Pressable>
+        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(LEGAL_URLS.terms)}><Text style={styles.legalLink}>{t(locale, 'settings.terms')}</Text></Pressable>
         <Text style={styles.legalCopy}>{t(locale, 'auth.legalAnd')}</Text>
-        <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/legal/[document]', params: { document: 'privacy' } } as never)}><Text style={styles.legalLink}>{t(locale, 'settings.privacy')}</Text></Pressable>
+        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(LEGAL_URLS.privacy)}><Text style={styles.legalLink}>{t(locale, 'settings.privacy')}</Text></Pressable>
       </View>
     </View>
   );

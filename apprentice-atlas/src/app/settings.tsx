@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import * as Print from 'expo-print';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
@@ -13,8 +13,10 @@ import { buildAccountExport, buildAccountPdfHtml, deleteAccount, retryAccountCle
 import { listApplications } from '@/lib/applications';
 import { listFavorites } from '@/lib/favorites';
 import { localizeCountry, t, useLocale } from '@/lib/i18n';
+import { LEGAL_URLS } from '@/lib/legal';
 
 export default function SettingsScreen() {
+  const { from } = useLocalSearchParams<{ from?: 'home' | 'atlas' }>();
   const [locale] = useLocale();
   const auth = useAuth();
   const { preferences, savePreferences, completeOnboarding } = usePreferences();
@@ -146,7 +148,11 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
-      <Stack.Screen options={{ title: t(locale, 'settings.title') }} />
+      <Stack.Screen options={{
+        title: t(locale, 'settings.title'),
+        headerBackButtonDisplayMode: 'default',
+        headerBackTitle: t(locale, from === 'atlas' ? 'tabs.atlas' : 'tabs.home'),
+      }} />
 
       <SettingsSection title={t(locale, 'settings.preferences')}>
         <SettingsRow icon={{ ios: 'slider.horizontal.3', android: 'tune', web: 'tune' }} label={t(locale, 'settings.personalize')} detail={t(locale, 'settings.personalizeHint')} onPress={() => router.push('/onboarding')} />
@@ -172,8 +178,8 @@ export default function SettingsScreen() {
       </SettingsSection>
 
       <SettingsSection title={t(locale, 'settings.privacyLegal')}>
-        <SettingsRow icon={{ ios: 'hand.raised.fill', android: 'privacy_tip', web: 'privacy_tip' }} label={t(locale, 'settings.privacy')} onPress={() => openLegal('privacy')} />
-        <SettingsRow icon={{ ios: 'doc.text.fill', android: 'description', web: 'description' }} label={t(locale, 'settings.terms')} onPress={() => openLegal('terms')} />
+        <SettingsRow icon={{ ios: 'hand.raised.fill', android: 'privacy_tip', web: 'privacy_tip' }} label={t(locale, 'settings.privacy')} onPress={() => void Linking.openURL(LEGAL_URLS.privacy)} />
+        <SettingsRow icon={{ ios: 'doc.text.fill', android: 'description', web: 'description' }} label={t(locale, 'settings.terms')} onPress={() => void Linking.openURL(LEGAL_URLS.terms)} />
         <SettingsRow icon={{ ios: 'building.2.fill', android: 'business', web: 'business' }} label={t(locale, 'settings.imprint')} onPress={() => openLegal('imprint')} last />
       </SettingsSection>
 

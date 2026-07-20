@@ -16,7 +16,8 @@ describe('adaptive home screen', () => {
   it('provides the primary search, map, settings, job, and application routes', () => {
     expect(home).toContain("router.push('/search')");
     expect(home).toContain("pathname: '/map'");
-    expect(home).toContain("router.push('/settings')");
+    expect(home).toContain("pathname: '/settings'");
+    expect(home).toContain("from: 'home'");
     expect(home).toContain("pathname: '/job/[id]'");
     expect(home).toContain("pathname: '/application/[jobId]'");
   });
