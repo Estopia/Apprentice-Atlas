@@ -6,6 +6,17 @@ Apprentice Atlas is a bilingual, map-first mobile app that helps students and pe
 
 Built for the **Education** category of OpenAI Build Week 2026 with **Codex**, **GPT-5.6**, Expo, React Native, and Supabase.
 
+## OpenAI Build Week submission at a glance
+
+| Requirement | How Apprentice Atlas meets it |
+| --- | --- |
+| **Meaningful Codex use** | Codex was our repository-aware product and engineering partner from the initial specification through full-stack implementation, native iOS debugging, design iteration, testing, and TestFlight release hardening. The concrete workflow and human decisions are documented below. |
+| **Meaningful GPT-5.6 use** | GPT-5.6 powers plain-language vacancy explanations, balanced fit guidance, grounded job Q&A, interview practice, and skill-gap analysis through protected Supabase Edge Functions. It is part of the core user journey rather than a standalone chatbot. |
+| **Working, non-trivial product** | The bilingual Expo app combines official German and UK apprenticeship sources, native map discovery, authentication, private saved jobs, application tracking, deadlines, exports, and responsible AI safeguards. It has been exercised through a production TestFlight build on a physical iPhone. |
+| **Engineering evidence** | The repository contains the product specification, implementation history, Supabase migrations and policies, Edge Functions, source adapters, structured AI schemas, and **362 passing automated tests**. |
+
+Read the complete [Project Story](PROJECT_STORY.md), or jump directly to [how GPT-5.6 works](#gpt-56-in-the-product) and [how we collaborated with Codex](#how-we-collaborated-with-codex).
+
 ## The problem
 
 Young people are often asked to choose a career before they understand what the available roles actually involve. Traditional job boards assume that users already know what to search for, present dense employer language, and stop at the application link.
@@ -104,7 +115,7 @@ The application consumes official job sources through server-side adapters; it d
 - OpenAI Responses API with GPT-5.6 and validated structured outputs
 - Official German and UK apprenticeship data sources
 - Vitest, Expo lint, TypeScript, Expo Doctor, and static platform exports
-- EAS development builds tested on a physical iPhone
+- EAS production builds distributed and tested through TestFlight on a physical iPhone
 
 ## Verification
 
@@ -151,6 +162,7 @@ Full setup, migration order, source configuration, security boundaries, native-b
 ```text
 .
 ├── README.md                 # Project and Build Week overview
+├── PROJECT_STORY.md          # Devpost-ready inspiration, build, and lessons
 ├── LICENSE                   # PolyForm Noncommercial 1.0.0
 └── apprentice-atlas/
     ├── src/                  # Expo application and shared product code
@@ -172,7 +184,7 @@ Full setup, migration order, source configuration, security boundaries, native-b
 
 ## Status and limitations
 
-Apprentice Atlas is a functional Build Week release tested through native development builds on a physical iPhone. AI availability and live source synchronization depend on correctly configured server-side credentials and network access. The app supports discovery and preparation; final applications are completed on the official provider page.
+Apprentice Atlas is a functional Build Week release tested through a production TestFlight build on a physical iPhone. AI availability and live source synchronization depend on correctly configured server-side credentials and network access. The app supports discovery and preparation; final applications are completed on the official provider page.
 
 ## License
 
